@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Casta</title>
+
+    <style>
+        html, body, div, iframe {
+            margin: 0px; 
+            padding: 0px; 
+            height: 100%; 
+            width: 100%;
+            border: none;
+        }
+
+        iframe {
+            display: block; 
+            width: 100%; 
+            border: none; 
+            overflow-y: auto; 
+            overflow-x: hidden;
+        }
+    </style>
+
+    <script>
+        window.onload = () => {
+            const iframe = document.getElementById("iframe")
+            let socket = null;
+
+            socket = new WebSocket(`ws://${location.host}/ws`);
+
+            socket.addEventListener("open", () => {
+                console.log("connected to socket")
+            })
+
+            socket.addEventListener("close", () => {
+                console.log("disconnected to socket")
+            })
+
+            socket.addEventListener('message', (event) => {
+                const url = event.data.replaceAll("\"", "")
+                iframe.setAttribute("src", url)
+                console.log(`URL from server: ${url}`);
+            });
+        }
+    </script>
+</head>
+<body>
+    <iframe 
+        src="https://dsek.se" 
+        id="iframe" 
+        frameborder="0" 
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+        allowfullscreen>
+    </iframe>
+</body>
+</html>
