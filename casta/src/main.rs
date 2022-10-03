@@ -116,5 +116,5 @@ async fn main() -> std::io::Result<()> {
         .service(set_url)
         .service(youtube)
         .service(websocket)
-    ).bind(format!("127.0.0.1:{port}"))?.run().await
+    ).bind(format!("0.0.0.0:{port}"))?.run().await
 }
