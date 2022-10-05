@@ -4,5 +4,8 @@
   },
   "devDependencies": {
     "tsc": "^2.0.4"
+  },
+  "dependencies": {
+    "typescript": "^4.8.4"
   }
 }
