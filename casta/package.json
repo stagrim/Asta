@@ -1,0 +1,8 @@
+{
+  "scripts": {
+    "build": "tsc ./static/*.ts --outfile ./static/target/index.js"
+  },
+  "devDependencies": {
+    "tsc": "^2.0.4"
+  }
+}

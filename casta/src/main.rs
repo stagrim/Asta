@@ -1,70 +1,17 @@
+mod websocket;
+
 use std::{sync::Mutex, fmt::Debug};
 
-use actix::{Actor, StreamHandler, AsyncContext, Addr, Message, Handler};
-use actix_web::{web, App, HttpRequest, HttpResponse, Responder, HttpServer, get};
-use actix_web_actors::ws::{self, WsResponseBuilder};
+use actix::Addr;
+use actix_web::{web, App, HttpRequest, HttpResponse, Responder, HttpServer, get, post};
+use actix_web_actors::ws::WsResponseBuilder;
 use actix_files::NamedFile;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use dotenv::dotenv;
 use std::env;
 
 struct AppState {
-    handle: Mutex<Option<Addr<Websocket>>>
-}
-
-#[derive(Deserialize, Debug)]
-struct ApiRequest {
-    url: String
-}
-#[derive(Deserialize, Debug)]
-struct YoutubeRequest {
-    id: String
-}
-
-struct Websocket;
-
-impl Actor for Websocket {
-    type Context = ws::WebsocketContext<Self>;
-}
-
-impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Websocket {
-    fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
-        
-        match msg {
-            Ok(ws::Message::Ping(msg)) => {
-                println!("{:?}\nAddress{:?}", msg, ctx.address());
-                ctx.pong(&msg)
-            },
-            Ok(ws::Message::Text(text)) => {
-                println!("{}\nAddress{:?}", text, ctx.address());
-                ctx.text(text)},
-            Ok(ws::Message::Binary(bin)) => {
-                println!("{:?}\nAddress{:?}", bin, ctx.address());
-                ctx.binary(bin)},
-            _ => (),
-        }
-    }
-    fn started(&mut self, _ctx: &mut Self::Context) {
-        println!("New Client detected");
-    }
-    fn finished(&mut self, _ctx: &mut Self::Context) {
-        println!("Client disconnected");
-    }
-}
-
-
-#[derive(Message)]
-#[rtype(result = "()")]
-pub struct Payload<T> {
-    pub payload: T,
-}
- 
-impl<T> Handler<Payload<T>> for Websocket where T: Serialize + Debug {
-    type Result = ();
- 
-    fn handle(&mut self, msg: Payload<T>, ctx: &mut Self::Context) {
-        ctx.text(serde_json::to_string(&msg.payload).expect("Cannot serialize"));
-    }
+    handle: Mutex<Option<Addr<websocket::Websocket>>>
 }
 
 #[get("/")]
@@ -72,30 +19,46 @@ async fn index() -> impl Responder {
     NamedFile::open_async("./static/index.html").await.unwrap()
 }
 
-//TODO: add response with errors, like no connected clients
-#[get("/api")]
-async fn set_url(data: web::Data<AppState>, queries: web::Query<ApiRequest>) -> String {
-    println!("url: {:?}", queries);
-    let handle = data.handle.lock().unwrap();
-    let h = handle.clone().unwrap();
-    let r = h.recipient().send(Payload { payload: queries.url.clone() }).await;
-    format!("r: {:?}", r)
+#[get("/index.js")]
+async fn js() -> impl Responder {
+    NamedFile::open_async("./static/target/index.js").await.unwrap()
 }
 
-//TODO: redirect to /api instead
-#[get("/youtube")]
-async fn youtube(data: web::Data<AppState>, queries: web::Query<YoutubeRequest>) -> String {
-    println!("url: {:?}", queries);
-    let handle = data.handle.lock().unwrap();
-    let h = handle.clone().unwrap();
-    let r = h.recipient().send(Payload { payload: format!("https://www.youtube.com/embed/{}?autoplay=1&controls=0&rel=0&modestbranding=1", queries.id) }).await;
-    format!("r: {:?}", r)
+//Replace with enum?
+#[derive(Serialize, Deserialize, Debug)]
+struct Api {
+    #[serde(rename(deserialize = "Website"))]
+    website: Option<String>,
+    #[serde(rename(deserialize = "Image"))]
+    image: Option<String>,
+    #[serde(rename(deserialize = "Video"))]
+    video: Option<String>,
+    //TODO: replace with image, background_audio server side?
+    #[serde(rename(deserialize = "Audio"))]
+    audio: Option<String>,
+    #[serde(rename(deserialize = "Background_audio"))]
+    background_audio: Option<String>,
 }
 
+/// Takes post request as struct Api and sends it to clients connected to websocket
+#[post("/api")]
+async fn set_url(data: web::Data<AppState>, api: web::Json<Api>) -> String {
+    println!("api: {:?}", api);
+    let handle = data.handle.lock().unwrap();
+    match handle.clone() {
+        Some(h) => {
+            let r = h.recipient().send(websocket::Payload { payload: api }).await; 
+            format!("result: {:?}", r)
+        },
+        None => format!("Handle has not yet been created. Let a client connect to the websocket and try again")
+    }
+}
+
+///Returns a websocket connection
 #[get("/ws")]
-async fn websocket(req: HttpRequest, stream: web::Payload, data: web::Data<AppState>) -> HttpResponse {
+async fn get_ws(req: HttpRequest, stream: web::Payload, data: web::Data<AppState>) -> HttpResponse {
     let mut handle = data.handle.lock().unwrap();
-    let (addr, resp) = WsResponseBuilder::new(Websocket, &req, stream).start_with_addr().unwrap();
+    let (addr, resp) = WsResponseBuilder::new(websocket::Websocket, &req, stream).start_with_addr().expect("An error occurred during the handshake");
     *handle = Some(addr);
     resp
 }
@@ -113,8 +76,8 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || App::new()
         .app_data(app_state.clone())
         .service(index)
+        .service(js)
         .service(set_url)
-        .service(youtube)
-        .service(websocket)
+        .service(get_ws)
     ).bind(format!("0.0.0.0:{port}"))?.run().await
 }
