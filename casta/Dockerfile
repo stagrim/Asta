@@ -10,8 +10,7 @@ FROM node:16 as build2
 WORKDIR /usr/src/casta
 COPY . .
 
-RUN npm install
-RUN npm run build
+RUN npm install && npm run build
 
 FROM gcr.io/distroless/cc-debian10
 # FROM debian:stable
