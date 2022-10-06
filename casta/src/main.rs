@@ -1,6 +1,6 @@
 mod websocket;
 
-use std::{sync::Mutex, fmt::Debug};
+use std::{fmt::Debug, env};
 
 use actix::Addr;
 use actix_web::{web, App, HttpRequest, HttpResponse, Responder, HttpServer, get, post};
@@ -8,11 +8,8 @@ use actix_web_actors::ws::WsResponseBuilder;
 use actix_files::NamedFile;
 use serde::{Deserialize, Serialize};
 use dotenv::dotenv;
-use std::env;
-
-struct AppState {
-    handle: Mutex<Option<Addr<websocket::Websocket>>>
-}
+use lazy_static::lazy_static;
+use tokio::sync::Mutex;
 
 #[get("/")]
 async fn index() -> impl Responder {
@@ -24,7 +21,11 @@ async fn js() -> impl Responder {
     NamedFile::open_async("./static/target/index.js").await.unwrap()
 }
 
-//Replace with enum?
+//Other solutions not including a shared mutable state are welcome
+lazy_static! {
+    static ref HANDLE: Mutex<Option<Addr<websocket::Websocket>>> = Mutex::new(None);
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 struct Api {
     #[serde(rename(deserialize = "Website"))]
@@ -42,12 +43,16 @@ struct Api {
 
 /// Takes post request as struct Api and sends it to clients connected to websocket
 #[post("/api")]
-async fn set_url(data: web::Data<AppState>, api: web::Json<Api>) -> String {
+async fn set_url(api: web::Json<Api>) -> String {
     println!("api: {:?}", api);
-    let handle = data.handle.lock().unwrap();
+    send_to_view(api.into_inner()).await
+}
+
+async fn send_to_view(api: Api) -> String {
+    let handle = HANDLE.lock().await;
     match handle.clone() {
         Some(h) => {
-            let r = h.recipient().send(websocket::Payload { payload: api }).await; 
+            let r = h.recipient().send(websocket::Payload { payload: api }).await;
             format!("result: {:?}", r)
         },
         None => format!("Handle has not yet been created. Let a client connect to the websocket and try again")
@@ -56,8 +61,9 @@ async fn set_url(data: web::Data<AppState>, api: web::Json<Api>) -> String {
 
 ///Returns a websocket connection
 #[get("/ws")]
-async fn get_ws(req: HttpRequest, stream: web::Payload, data: web::Data<AppState>) -> HttpResponse {
-    let mut handle = data.handle.lock().unwrap();
+async fn get_ws(req: HttpRequest, stream: web::Payload) -> HttpResponse {
+    let mut handle = HANDLE.lock().await;
+
     let (addr, resp) = WsResponseBuilder::new(websocket::Websocket, &req, stream).start_with_addr().expect("An error occurred during the handshake");
     *handle = Some(addr);
     resp
@@ -69,12 +75,23 @@ async fn main() -> std::io::Result<()> {
 
     let port = env::var("PORT").unwrap_or("3000".to_string());
 
-    let app_state = web::Data::new(AppState {
-        handle: Mutex::new(None)
+    tokio::task::spawn(async {
+        //TODO: Websocket to sasta goes here
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(2));
+        loop {
+            interval.tick().await;
+            let api = Api {
+                website: Some("https://dsek.se/".to_string()),
+                image: None,
+                video: None,
+                audio: None,
+                background_audio: None,
+            };
+            println!("spawned thread: {}", send_to_view(api).await);
+        };
     });
 
     HttpServer::new(move || App::new()
-        .app_data(app_state.clone())
         .service(index)
         .service(js)
         .service(set_url)
