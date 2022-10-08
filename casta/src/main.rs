@@ -1,4 +1,5 @@
 mod websocket;
+mod sasta;
 
 use std::{fmt::Debug, env};
 
@@ -6,10 +7,14 @@ use actix::Addr;
 use actix_web::{web, App, HttpRequest, HttpResponse, Responder, HttpServer, get, post};
 use actix_web_actors::ws::WsResponseBuilder;
 use actix_files::NamedFile;
+use tokio_tungstenite::tungstenite::error::ProtocolError;
+use tokio_tungstenite::tungstenite::{self, Error};
+use tokio_tungstenite::tungstenite::{connect, Message};
 use serde::{Deserialize, Serialize};
 use dotenv::dotenv;
 use lazy_static::lazy_static;
 use tokio::sync::Mutex;
+use url::Url;
 
 #[get("/")]
 async fn index() -> impl Responder {
@@ -76,19 +81,40 @@ async fn main() -> std::io::Result<()> {
     let port = env::var("PORT").unwrap_or("3000".to_string());
 
     tokio::task::spawn(async {
-        //TODO: Websocket to sasta goes here
-        let mut interval = tokio::time::interval(std::time::Duration::from_secs(2));
+        let (mut socket, response) = connect(Url::parse("ws://localhost:8000").unwrap()).expect("Can't connect");
+        println!("Response on connect: {:?}", response);
+        socket.write_message(Message::Text(r#"{
+            "uuid": "47e7836b-ddfe-40f4-aaeb-e2db22bc1a24",
+            "hostname": "Bernadetta"
+        }"#.into())).unwrap();
+        
+        // Loop forever, handling parsing each message
         loop {
-            interval.tick().await;
-            let api = Api {
-                website: Some("https://dsek.se/".to_string()),
-                image: None,
-                video: None,
-                audio: None,
-                background_audio: None,
-            };
-            println!("spawned thread: {}", send_to_view(api).await);
-        };
+
+            match socket.read_message() {
+                Ok(msg) => {
+                    let msg = match msg {
+                        tungstenite::Message::Text(s) => { s }
+                        tungstenite::Message::Ping(s) => { 
+                            format!("Received Ping from server with payload: [{}]", s.into_iter().map(|s| s.to_string()).collect::<String>())
+                        }
+                        _ => { println!("{:?}", msg); panic!() }
+                    };
+                    println!("{}", msg);
+                    // let parsed: serde_json::Value = serde_json::from_str(&msg).expect("Can't parse to JSON");
+                    // println!("{:?}", parsed["result"]);
+                },
+                Err(e) => { 
+                    println!("Error: {}", e);
+                    let close = socket.close(None);
+                    println!("close: {:?}", close);
+                    println!("Connection closed, attempting reconnect");
+                    break;
+                }
+            }
+
+            
+        }
     });
 
     HttpServer::new(move || App::new()

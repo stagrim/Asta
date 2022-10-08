@@ -18,6 +18,10 @@ window.onload = () => {
         console.log("connected to socket")
     })
 
+    socket.addEventListener("ping", () => {
+        console.log("Received ping from server")
+    })
+
     socket.addEventListener("close", () => {
         console.log("disconnected to socket")
     })
