@@ -1,20 +1,19 @@
 mod websocket;
 mod sasta;
 
+use std::process;
 use std::{fmt::Debug, env};
 
 use actix::Addr;
 use actix_web::{web, App, HttpRequest, HttpResponse, Responder, HttpServer, get, post};
 use actix_web_actors::ws::WsResponseBuilder;
 use actix_files::NamedFile;
-use tokio_tungstenite::tungstenite::error::ProtocolError;
-use tokio_tungstenite::tungstenite::{self, Error};
-use tokio_tungstenite::tungstenite::{connect, Message};
+use sasta::Sasta;
+use tokio::signal;
 use serde::{Deserialize, Serialize};
 use dotenv::dotenv;
 use lazy_static::lazy_static;
 use tokio::sync::Mutex;
-use url::Url;
 
 #[get("/")]
 async fn index() -> impl Responder {
@@ -33,16 +32,16 @@ lazy_static! {
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Api {
-    #[serde(rename(deserialize = "Website"))]
+    #[serde(rename(deserialize = "WEBSITE"))]
     website: Option<String>,
-    #[serde(rename(deserialize = "Image"))]
+    #[serde(rename(deserialize = "IMAGE"))]
     image: Option<String>,
-    #[serde(rename(deserialize = "Video"))]
+    #[serde(rename(deserialize = "VIDEO"))]
     video: Option<String>,
     //TODO: replace with image, background_audio server side?
-    #[serde(rename(deserialize = "Audio"))]
+    #[serde(rename(deserialize = "AUDIO"))]
     audio: Option<String>,
-    #[serde(rename(deserialize = "Background_audio"))]
+    #[serde(rename(deserialize = "BACKGROUND_AUDIO"))]
     background_audio: Option<String>,
 }
 
@@ -74,46 +73,30 @@ async fn get_ws(req: HttpRequest, stream: web::Payload) -> HttpResponse {
     resp
 }
 
-#[actix_web::main]
+#[tokio::main]
 async fn main() -> std::io::Result<()> {
     dotenv().ok();
-
     let port = env::var("PORT").unwrap_or("3000".to_string());
 
     tokio::task::spawn(async {
-        let (mut socket, response) = connect(Url::parse("ws://localhost:8000").unwrap()).expect("Can't connect");
-        println!("Response on connect: {:?}", response);
-        socket.write_message(Message::Text(r#"{
-            "uuid": "47e7836b-ddfe-40f4-aaeb-e2db22bc1a24",
-            "hostname": "Bernadetta"
-        }"#.into())).unwrap();
-        
-        // Loop forever, handling parsing each message
+        match signal::ctrl_c().await {
+            Ok(()) => println!("\nReceived shutdown signal, exiting..."),
+            Err(err) => {
+                eprintln!("Unable to listen for shutdown signal: {}", err);
+            },
+        }
+        process::exit(0);
+    });
+
+    tokio::task::spawn(async { 
+        let address = String::from("localhost");
+        let port = String::from("8040");
+        let uuid = String::from("631f6175-6829-4e16-ad7f-cee6105f4c39");
+        let hostname = String::from("Hostname here");
+        let mut sasta = Sasta::new(address, port, uuid, hostname).await;
+
         loop {
-
-            match socket.read_message() {
-                Ok(msg) => {
-                    let msg = match msg {
-                        tungstenite::Message::Text(s) => { s }
-                        tungstenite::Message::Ping(s) => { 
-                            format!("Received Ping from server with payload: [{}]", s.into_iter().map(|s| s.to_string()).collect::<String>())
-                        }
-                        _ => { println!("{:?}", msg); panic!() }
-                    };
-                    println!("{}", msg);
-                    // let parsed: serde_json::Value = serde_json::from_str(&msg).expect("Can't parse to JSON");
-                    // println!("{:?}", parsed["result"]);
-                },
-                Err(e) => { 
-                    println!("Error: {}", e);
-                    let close = socket.close(None);
-                    println!("close: {:?}", close);
-                    println!("Connection closed, attempting reconnect");
-                    break;
-                }
-            }
-
-            
+            println!("Do something with this: {}", sasta.read_message().await);
         }
     });
 
