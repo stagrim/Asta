@@ -4,6 +4,8 @@ use actix::{Actor, StreamHandler, Message, Handler, AsyncContext};
 use actix_web_actors::ws;
 use serde::Serialize;
 
+use crate::send_cached_to_view;
+
 pub struct Websocket;
 
 impl Actor for Websocket {
@@ -29,6 +31,10 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Websocket {
     }
     fn started(&mut self, _ctx: &mut Self::Context) {
         println!("New Client detected");
+        //This is dumb, find better method of calling async method in sync block
+        tokio::task::spawn(async {
+            send_cached_to_view().await;
+        });
     }
     fn finished(&mut self, _ctx: &mut Self::Context) {
         println!("Client disconnected");

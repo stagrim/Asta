@@ -8,7 +8,7 @@ use actix::Addr;
 use actix_web::{web, App, HttpRequest, HttpResponse, Responder, HttpServer, get, post};
 use actix_web_actors::ws::WsResponseBuilder;
 use actix_files::NamedFile;
-use sasta::Sasta;
+use sasta::{Sasta, SastaResponse, DisplayData};
 use tokio::signal;
 use serde::{Deserialize, Serialize};
 use dotenv::dotenv;
@@ -28,9 +28,11 @@ async fn js() -> impl Responder {
 //Other solutions not including a shared mutable state are welcome
 lazy_static! {
     static ref HANDLE: Mutex<Option<Addr<websocket::Websocket>>> = Mutex::new(None);
+    static ref CACHED: Mutex<Option<Api>> = Mutex::new(None);
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+//TODO: old Api was created before actually understanding how Sasta would work, so currently the Sasta requests are converted to this old Api. fix!
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
 struct Api {
     #[serde(rename(deserialize = "WEBSITE"))]
     website: Option<String>,
@@ -63,6 +65,15 @@ async fn send_to_view(api: Api) -> String {
     }
 }
 
+pub async fn send_cached_to_view() {
+    let cached = CACHED.lock().await;
+    match cached.clone() {
+        Some(c) => { send_to_view(c).await; },
+        None => (),
+    }
+}
+
+//TODO?: If websocket disconnects, no data will be sent to it since last SastaResponse is not cached. Send cached result to newly connected frontend?
 ///Returns a websocket connection
 #[get("/ws")]
 async fn get_ws(req: HttpRequest, stream: web::Payload) -> HttpResponse {
@@ -71,6 +82,24 @@ async fn get_ws(req: HttpRequest, stream: web::Payload) -> HttpResponse {
     let (addr, resp) = WsResponseBuilder::new(websocket::Websocket, &req, stream).start_with_addr().expect("An error occurred during the handshake");
     *handle = Some(addr);
     resp
+}
+
+async fn handle_sasta_response(response: SastaResponse) {
+    let mut api = Api::default();
+    match response {
+        SastaResponse::Name(name) => println!("Handshake done, received name \"{name}\""),
+        SastaResponse::Display(display) => {
+            match display {
+                DisplayData::Website { data } => {
+                    println!("[Message] Website {:?}", data.content);
+                    api.website = Some(data.content);
+                    send_to_view(api.clone()).await;
+                },
+            }
+        }
+    }
+    let mut cached = CACHED.lock().await;
+    *cached = Some(api);
 }
 
 #[tokio::main]
@@ -88,7 +117,7 @@ async fn main() -> std::io::Result<()> {
         process::exit(0);
     });
 
-    tokio::task::spawn(async { 
+    tokio::task::spawn(async {
         let address = String::from("localhost");
         let port = String::from("8040");
         let uuid = String::from("631f6175-6829-4e16-ad7f-cee6105f4c39");
@@ -96,7 +125,8 @@ async fn main() -> std::io::Result<()> {
         let mut sasta = Sasta::new(address, port, uuid, hostname).await;
 
         loop {
-            println!("Do something with this: {}", sasta.read_message().await);
+            let resp: SastaResponse = sasta.read_message().await;
+            handle_sasta_response(resp).await;
         }
     });
 

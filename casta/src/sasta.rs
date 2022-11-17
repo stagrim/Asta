@@ -1,11 +1,31 @@
 use std::net::TcpStream;
 
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use tokio::time;
 use tokio_tungstenite::{tungstenite::{connect, Message, WebSocket, stream::MaybeTlsStream, self}};
 use url::Url;
 
 type Socket = WebSocket<MaybeTlsStream<TcpStream>>;
+
+#[derive(Deserialize, Debug)]
+pub enum SastaResponse {
+    #[serde(rename(deserialize = "display"))]
+    Display(DisplayData),
+    #[serde(rename(deserialize = "name"))]
+    Name(String)
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(tag = "type")]
+pub enum DisplayData {
+    #[serde(rename(deserialize = "WEBSITE"))]
+    Website { data: WebsiteData }
+}
+
+#[derive(Deserialize, Debug)]
+pub struct WebsiteData {
+    pub content: String
+}
 
 #[derive(Serialize)]
 struct SastaHello {
@@ -35,7 +55,7 @@ impl Sasta {
             socket = match connect(url.clone()) {
                 Ok(r) => Some(r.0),
                 Err(_) => {
-                    println!(r#"[Error] could not connect to "{url}", retrying in {wait_sec} seconds"#);
+                    println!(r#"[Error] Could not connect to "{url}", retrying in {wait_sec} seconds"#);
                     None
                 },
             };
@@ -66,21 +86,18 @@ impl Sasta {
         self.socket = socket.await;
     }
 
-    //TODO: respond with structs instead and handle them in main
-    pub async fn read_message(&mut self) -> String {
+    /// Reads incoming messages from Sasta. Responds to Ping with a Pong, and returns Text parsed as a SastaResponse
+    pub async fn read_message(&mut self) -> SastaResponse {
         loop {            
             match self.socket.read_message() {
                 Ok(msg) => {
                     match msg {
                         tungstenite::Message::Text(s) => { 
-                            return s;
+                            return serde_json::from_str(&s)
+                                .expect(&format!("Cannot parse string: {:?}", s))
                         }
-                        tungstenite::Message::Ping(_) => println!("Ping"),
                         _ => (),
                     };
-                    // println!("{}", msg);
-                    // let parsed: serde_json::Value = serde_json::from_str(&msg).expect("Can't parse to JSON");
-                    // println!("{:?}", parsed["result"]);
                 },
                 Err(e) => {
                     println!("{e}");
