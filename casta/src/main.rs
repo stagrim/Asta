@@ -105,7 +105,10 @@ async fn handle_sasta_response(response: SastaResponse) {
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     dotenv().ok();
-    let port = env::var("PORT").unwrap_or("3000".to_string());
+    let port = env::var("PORT").unwrap_or("8040".to_string());
+    let address = env::var("ADDRESS").unwrap_or("127.0.0.1".to_string());
+    let uuid = env::var("UUID").unwrap_or("631f6175-6829-4e16-ad7f-cee6105f4c39".to_string());
+    let hostname = env::var("HOSTNAME").unwrap_or("Hostname here".to_string());
 
     tokio::task::spawn(async {
         match signal::ctrl_c().await {
@@ -118,10 +121,6 @@ async fn main() -> std::io::Result<()> {
     });
 
     tokio::task::spawn(async {
-        let address = String::from("localhost");
-        let port = String::from("8040");
-        let uuid = String::from("631f6175-6829-4e16-ad7f-cee6105f4c39");
-        let hostname = String::from("Hostname here");
         let mut sasta = Sasta::new(address, port, uuid, hostname).await;
 
         loop {
@@ -135,5 +134,5 @@ async fn main() -> std::io::Result<()> {
         .service(js)
         .service(set_url)
         .service(get_ws)
-    ).bind(format!("0.0.0.0:{port}"))?.run().await
+    ).bind("127.0.0.1:3000")?.run().await
 }
