@@ -105,10 +105,17 @@ async fn handle_sasta_response(response: SastaResponse) {
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     dotenv().ok();
-    let port = env::var("PORT").unwrap_or("8040".to_string());
-    let address = env::var("ADDRESS").unwrap_or("127.0.0.1".to_string());
-    let uuid = env::var("UUID").unwrap_or("631f6175-6829-4e16-ad7f-cee6105f4c39".to_string());
-    let hostname = env::var("HOSTNAME").unwrap_or("Hostname here".to_string());
+    let uuid = env::var("UUID").expect("Must provide a UUID");
+    let port = env::var("PORT").expect("Must provide a port");
+    let casta_port = env::var("CASTA_PORT").unwrap_or("3000".to_string());
+    let address = env::var("ADDRESS").expect("Must provide an address");
+    let hostname = env::var("HOSTNAME").unwrap_or("Casta Client".to_string());
+
+    println!("Started Casta\n");
+    println!("Serving Casta on http://127.0.0.1/{casta_port}");
+    println!("Connecting to Sasta on ws://{address}/{port}");
+    println!("hostname={hostname}");
+    println!("uuid={uuid}\n");
 
     tokio::task::spawn(async {
         match signal::ctrl_c().await {
@@ -134,5 +141,5 @@ async fn main() -> std::io::Result<()> {
         .service(js)
         .service(set_url)
         .service(get_ws)
-    ).bind("127.0.0.1:3000")?.run().await
+    ).bind(format!("127.0.0.1:{casta_port}"))?.run().await
 }

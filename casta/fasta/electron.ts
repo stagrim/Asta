@@ -3,9 +3,7 @@ import { app, BrowserWindow } from "electron";
 async function createWindow() {
 	let win = new BrowserWindow({
 		autoHideMenuBar: true,
-		webPreferences: {
-			nodeIntegration: true,
-		}
+		kiosk: true
 	});
 
 	var onHeadersReceived = (d: any, c: any) => {
@@ -21,7 +19,6 @@ async function createWindow() {
 	});
 
 	await win.loadURL("http://127.0.0.1:3000/");
-	// await win.loadURL("https://stagrim.github.io/svell/");
 }
 
 app.on("ready", createWindow);

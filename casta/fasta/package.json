@@ -1,7 +1,7 @@
 {
   "scripts": {
-    "build": "./node_modules/typescript/bin/tsc ./electron.ts --outfile ./target/electron.js",
-    "electron": "electron ./target/electron.js --no-sandbox"
+    "build": "./node_modules/typescript/bin/tsc ./electron.ts --outDir ./target/",
+    "start": "electron ./target/electron.js"
   },
   "devDependencies": {
     "tsc": "^2.0.4"
