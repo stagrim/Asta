@@ -8,6 +8,9 @@ window.onload = () => {
     }
 
     const website = document.getElementById("website")
+    const website2 = document.getElementById("website2")
+    let first_website = true
+
     const image = document.getElementById("image")
     const background_audio = document.getElementById("background_audio")
     let current_background_audio: string = "";
@@ -33,6 +36,7 @@ window.onload = () => {
         let data: Data = JSON.parse(event.data)
         
         if (website && background_audio && image) {
+            const current_website = first_website ? website : website2
             // TODO: implement behavior for the other keys
             // Hierarchy goes: website -> image -> video
             if (data.website) {
