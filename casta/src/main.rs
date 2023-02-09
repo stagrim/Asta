@@ -5,16 +5,17 @@ use std::process;
 use std::{fmt::Debug, env};
 
 use actix::Addr;
-use actix_web::{web, App, HttpRequest, HttpResponse, Responder, HttpServer, get, post};
+use actix_web::{web, App, HttpRequest, HttpResponse, Responder, HttpServer, get};
 use actix_web_actors::ws::WsResponseBuilder;
 use actix_files::NamedFile;
 use sasta::{Sasta, SastaResponse, DisplayData};
 use tokio::signal;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use dotenv::dotenv;
 use lazy_static::lazy_static;
 use tokio::sync::Mutex;
 
+// TODO: Set these during Actix build call in main instead?
 #[get("/")]
 async fn index() -> impl Responder {
     NamedFile::open_async("./static/index.html").await.unwrap()
@@ -25,42 +26,28 @@ async fn js() -> impl Responder {
     NamedFile::open_async("./static/target/index.js").await.unwrap()
 }
 
+#[get("/disconnected")]
+async fn disconnected_image() -> impl Responder {
+    NamedFile::open_async("./static/disconnect.png").await.unwrap()
+}
+
 //Other solutions not including a shared mutable state are welcome
 lazy_static! {
     static ref HANDLE: Mutex<Option<Addr<websocket::Websocket>>> = Mutex::new(None);
-    static ref CACHED: Mutex<Option<Api>> = Mutex::new(None);
+    static ref CACHED: Mutex<Option<ClientPayload>> = Mutex::new(None);
 }
 
-//TODO: old Api was created before actually understanding how Sasta would work, so currently the Sasta requests are converted to this old Api. fix!
-#[derive(Serialize, Deserialize, Default, Debug, Clone)]
-struct Api {
-    #[serde(rename(deserialize = "WEBSITE"))]
-    website: Option<String>,
-    #[serde(rename(deserialize = "IMAGE"))]
-    image: Option<String>,
-    #[serde(rename(deserialize = "VIDEO"))]
-    video: Option<String>,
-    //TODO: replace with image, background_audio server side?
-    #[serde(rename(deserialize = "AUDIO"))]
-    audio: Option<String>,
-    #[serde(rename(deserialize = "BACKGROUND_AUDIO"))]
-    background_audio: Option<String>,
-    #[serde(rename(deserialize = "DISCONNECTED"))]
-    disconnected: bool,
+#[derive(Serialize, Debug, Clone)]
+pub enum ClientPayload {
+    Display(DisplayData),
+    Disconnected()
 }
 
-/// Takes post request as struct Api and sends it to clients connected to websocket
-#[post("/api")]
-async fn set_url(api: web::Json<Api>) -> String {
-    println!("api: {:?}", api);
-    send_to_view(api.into_inner()).await
-}
-
-async fn send_to_view(api: Api) -> String {
+async fn send_to_view(payload: ClientPayload) -> String {
     let handle = HANDLE.lock().await;
     match handle.clone() {
         Some(h) => {
-            let r = h.recipient().send(websocket::Payload { payload: api }).await;
+            let r = h.recipient().send(websocket::Payload { payload }).await;
             format!("result: {:?}", r)
         },
         None => format!("Handle has not yet been created. Let a client connect to the websocket and try again")
@@ -86,30 +73,29 @@ async fn get_ws(req: HttpRequest, stream: web::Payload) -> HttpResponse {
 }
 
 async fn handle_sasta_response(response: SastaResponse) {
-    let mut api = Api::default();
+    let mut api: Option<ClientPayload> = None;
     match response {
         SastaResponse::Name(name) => println!("Handshake done, received name \"{name}\""),
         SastaResponse::Display(display) => {
-            match display {
-                DisplayData::Website { data } => {
-                    println!("[Message] Website {:?}", data.content);
-                    api.website = Some(data.content);
-                    send_to_view(api.clone()).await;
-                },
-            }
+            println!("[Message] {:?}", display);
+            let send = ClientPayload::Display(display);
+            send_to_view(send.clone()).await;
+            api = Some(send);
         }
     }
-    cache_api(api).await;
+    if let Some(a) = api {
+        cache_api(a).await;
+    }
 }
 
-async fn cache_api(api: Api) {
+/// Caches api call given to send to newly connected devices
+async fn cache_api(api: ClientPayload) {
     let mut cached = CACHED.lock().await;
     *cached = Some(api);
 }
 
 async fn send_disconnected_to_view() {
-    let mut api = Api::default();
-    api.disconnected = true;
+    let api = ClientPayload::Disconnected();
     send_to_view(api.clone()).await;
     cache_api(api).await;
 }
@@ -157,7 +143,7 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || App::new()
         .service(index)
         .service(js)
-        .service(set_url)
+        .service(disconnected_image)
         .service(get_ws)
     ).bind(format!("127.0.0.1:{casta_port}"))?.run().await
 }

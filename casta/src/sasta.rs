@@ -15,14 +15,14 @@ pub enum SastaResponse {
     Name(String)
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(tag = "type")]
 pub enum DisplayData {
     #[serde(rename(deserialize = "WEBSITE"))]
     Website { data: WebsiteData }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct WebsiteData {
     pub content: String
 }
@@ -88,11 +88,12 @@ impl Sasta {
 
     /// Reads incoming messages from Sasta. Responds to Ping with a Pong, and returns Text parsed as a SastaResponse
     pub async fn read_message(&mut self) -> Option<SastaResponse> {
-        loop {            
+        loop {
             match self.socket.read_message() {
                 Ok(msg) => {
                     match msg {
-                        tungstenite::Message::Text(s) => { 
+                        tungstenite::Message::Text(s) => {
+                            // println!("{:#?}", s);
                             return serde_json::from_str(&s)
                                 .expect(&format!("Cannot parse string: {:?}", s))
                         }

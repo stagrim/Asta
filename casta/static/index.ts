@@ -1,10 +1,16 @@
 window.onload = () => {
-    interface Data {
-        website?: string;
-        image?: string;
-        audio?: string;
-        video?: string;
-        background_audio?: string;
+    interface Payload {
+        Display?: Content<Website>,
+        Disconnected?: any,
+    }
+
+    interface Content<T> {
+        type: "Website",
+        data: T
+    }
+
+    interface Website {
+        content: string
     }
 
     const website = document.getElementById("website")
@@ -32,28 +38,34 @@ window.onload = () => {
     const assign = (element: HTMLElement, src?: string) => element.setAttribute("src", src ?? "")
 
     socket.addEventListener('message', (event) => {
-        console.log(event.data)
-        let data: Data = JSON.parse(event.data)
+        console.log(`[Debug] ${event.data}`)
+        let payload: Payload = JSON.parse(event.data)
         
         if (website && background_audio && image) {
-            const current_website = first_website ? website : website2
-            // TODO: implement behavior for the other keys
-            // Hierarchy goes: website -> image -> video
-            if (data.website) {
-                data.image = undefined
-                image.classList.add("hidden")
-                website.classList.remove("hidden")
-            } else if (data.image) {
+            if (payload.Disconnected) {
+                console.log("Now it is Disconnected")
+
                 website.classList.add("hidden")
                 image.classList.remove("hidden")
-            }
-            assign(website, data.website)
-            assign(image, data.image)
+                assign(image, "/disconnected")
 
-            if (data.background_audio != undefined && data.background_audio !== current_background_audio) {
-                current_background_audio = data.background_audio
-                assign(background_audio, data.background_audio)
+            } else if (payload.Display) {
+                const type = payload.Display.type
+                if (type === "Website") {
+                    const content = payload.Display.data.content
+                    console.log("Website with data: " +content +" received")
+
+                    image.classList.add("hidden")
+                    website.classList.remove("hidden")
+
+                    assign(website, content)
+                }
             }
+
+            // if (data.background_audio != undefined && data.background_audio !== current_background_audio) {
+            //     current_background_audio = data.background_audio
+            //     assign(background_audio, data.background_audio)
+            // }
         } else {
             console.error("Document did not load correctly");
         }

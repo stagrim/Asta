@@ -18,5 +18,6 @@ FROM debian:stable
 COPY --from=build /usr/src/casta/target/release/casta /
 COPY --from=build2 /usr/src/casta/static/index.html /static/index.html
 COPY --from=build2 /usr/src/casta/static/target/index.js /static/target/index.js
+COPY --from=build2 /usr/src/casta/static/disconnect.png /static/disconnect.png
 
 CMD ["/casta"]
