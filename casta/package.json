@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "build": "./node_modules/typescript/bin/tsc ./static/*.ts --outfile ./static/target/index.js && ./node_modules/typescript/bin/tsc ./electron.ts"
+    "build": "./node_modules/typescript/bin/tsc ./static/*.ts --outfile ./static/target/index.js"
   },
   "devDependencies": {
     "tsc": "^2.0.4"

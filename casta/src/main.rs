@@ -45,6 +45,8 @@ struct Api {
     audio: Option<String>,
     #[serde(rename(deserialize = "BACKGROUND_AUDIO"))]
     background_audio: Option<String>,
+    #[serde(rename(deserialize = "DISCONNECTED"))]
+    disconnected: bool,
 }
 
 /// Takes post request as struct Api and sends it to clients connected to websocket
@@ -73,7 +75,6 @@ pub async fn send_cached_to_view() {
     }
 }
 
-//TODO?: If websocket disconnects, no data will be sent to it since last SastaResponse is not cached. Send cached result to newly connected frontend?
 ///Returns a websocket connection
 #[get("/ws")]
 async fn get_ws(req: HttpRequest, stream: web::Payload) -> HttpResponse {
@@ -98,8 +99,19 @@ async fn handle_sasta_response(response: SastaResponse) {
             }
         }
     }
+    cache_api(api).await;
+}
+
+async fn cache_api(api: Api) {
     let mut cached = CACHED.lock().await;
     *cached = Some(api);
+}
+
+async fn send_disconnected_to_view() {
+    let mut api = Api::default();
+    api.disconnected = true;
+    send_to_view(api.clone()).await;
+    cache_api(api).await;
 }
 
 #[tokio::main]
@@ -128,11 +140,17 @@ async fn main() -> std::io::Result<()> {
     });
 
     tokio::task::spawn(async {
+        send_disconnected_to_view().await;
         let mut sasta = Sasta::new(address, port, uuid, hostname).await;
-
+        
         loop {
-            let resp: SastaResponse = sasta.read_message().await;
-            handle_sasta_response(resp).await;
+            match sasta.read_message().await {
+                Some(resp) => handle_sasta_response(resp).await,
+                None => {
+                    send_disconnected_to_view().await;
+                    sasta.reconnect().await
+                }
+            }
         }
     });
 

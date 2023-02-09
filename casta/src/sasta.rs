@@ -87,7 +87,7 @@ impl Sasta {
     }
 
     /// Reads incoming messages from Sasta. Responds to Ping with a Pong, and returns Text parsed as a SastaResponse
-    pub async fn read_message(&mut self) -> SastaResponse {
+    pub async fn read_message(&mut self) -> Option<SastaResponse> {
         loop {            
             match self.socket.read_message() {
                 Ok(msg) => {
@@ -101,7 +101,7 @@ impl Sasta {
                 },
                 Err(e) => {
                     println!("{e}");
-                    self.reconnect().await;
+                    return None
                 }
             }
         }
