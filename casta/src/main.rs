@@ -145,5 +145,5 @@ async fn main() -> std::io::Result<()> {
         .service(js)
         .service(disconnected_image)
         .service(get_ws)
-    ).bind(format!("127.0.0.1:{casta_port}"))?.run().await
+    ).bind(format!("0.0.0.0:{casta_port}"))?.run().await
 }

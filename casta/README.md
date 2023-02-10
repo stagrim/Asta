@@ -12,6 +12,12 @@ To start server with optimizations (remove release flag for debug build). Replac
 
 `cargo run --release`
 
+## Build Docker image
+
+`docker buildx build --platform linux/arm/v7 --load -t casta .`
+
+`--load` outputs the build as a docker image which is imported to the system. 
+
 ## Run
 
 Casta will provide an api server and a view hosted on specified port. Casta (and build docker image) does not *yet* provide a way to view the hosted site in and of itself. Fasta (not in built docker image) is a super simple electron window (for now) which displays the view which Casta hosts. Another way of viewing the hosted site would be using the kiosk mode in popular browsers:
