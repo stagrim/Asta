@@ -30,7 +30,7 @@ window.onload = () => {
     socket.addEventListener("ping", () => {
         console.log("Received ping from server")
     })
-
+    //TODO: make sure it tires to reconnect infinitely on close so refreshing page manually is not necessary
     socket.addEventListener("close", () => {
         console.log("disconnected to socket")
     })

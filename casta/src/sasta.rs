@@ -7,6 +7,7 @@ use url::Url;
 
 type Socket = WebSocket<MaybeTlsStream<TcpStream>>;
 
+//TODO: handle rejection from not sending a known uuid and display to uuid on the screen
 #[derive(Deserialize, Debug)]
 pub enum SastaResponse {
     #[serde(rename(deserialize = "display"))]
