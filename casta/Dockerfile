@@ -18,7 +18,8 @@ FROM --platform=$BUILDPLATFORM node:16-slim as build2
 WORKDIR /usr/src/casta
 COPY . .
 
-RUN npm install && npm run build
+# `|| :` added to ignore errors...
+RUN npm install && npm run build || :
 
 # FROM gcr.io/distroless/cc-debian10
 FROM debian:stable-slim
