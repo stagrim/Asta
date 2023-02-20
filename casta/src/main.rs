@@ -67,7 +67,14 @@ pub async fn send_cached_to_view() {
 async fn get_ws(req: HttpRequest, stream: web::Payload) -> HttpResponse {
     let mut handle = HANDLE.lock().await;
 
-    let (addr, resp) = WsResponseBuilder::new(websocket::Websocket, &req, stream).start_with_addr().expect("An error occurred during the handshake");
+    let (addr, resp) =
+        WsResponseBuilder::new(
+            websocket::Websocket::new(),
+            &req,
+            stream,
+        ).start_with_addr()
+        .expect("An error occurred during the handshake");
+
     *handle = Some(addr);
     resp
 }

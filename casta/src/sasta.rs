@@ -6,6 +6,8 @@ use url::Url;
 
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
+const TIMEOUT_SECS: u64 = 10;
+
 //TODO: handle rejection from not sending a known uuid and display to uuid on the screen
 #[derive(Deserialize, Debug)]
 pub enum SastaResponse {
@@ -92,7 +94,7 @@ impl Sasta {
 
     /// Reads incoming messages from Sasta. Responds to Ping with a Pong, and returns Text parsed as a SastaResponse. Returns None if not having received a message within specified duration, 
     pub async fn read_message(&mut self) -> Option<SastaResponse> {
-        let timeout = time::Duration::from_secs(10);
+        let timeout = time::Duration::from_secs(TIMEOUT_SECS);
         loop {
             let res = match time::timeout(timeout, self.ws_receiver.next()).await {
                 Ok(r) => r.expect("Got None"),
