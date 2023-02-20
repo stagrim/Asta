@@ -1,22 +1,25 @@
-use std::{fmt::Debug, time::{Instant, Duration}};
+use std::{time::{Instant, Duration}, sync::Arc};
 
 use actix::{Actor, StreamHandler, Message, Handler, AsyncContext};
 use actix_web_actors::ws;
 use serde::Serialize;
+use tokio::sync::Mutex;
 
-use crate::send_cached_to_view;
+use crate::{send_cached_to_view, ClientPayload};
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub struct Websocket {
-    heart_beat: Instant
+    heart_beat: Instant,
+    cached_ref: Arc<Mutex<Option<ClientPayload>>>
 }
 
 impl Websocket {
-    pub fn new() -> Self {
+    pub fn new(cached_ref: Arc<Mutex<Option<ClientPayload>>>) -> Self {
         Websocket { 
             heart_beat: Instant::now(),
+            cached_ref
         }
     }
 
@@ -69,11 +72,15 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Websocket {
     }
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        self.heart_beat(ctx);
         println!("New Client detected");
+        // Start heart beat to client
+        self.heart_beat(ctx);
+
+        // Send cached site to view
+        let cached_ref = self.cached_ref.clone();
         //This is dumb, find better method of calling async method in sync block
         tokio::task::spawn(async {
-            send_cached_to_view().await;
+            send_cached_to_view(cached_ref).await;
         });
     }
     fn finished(&mut self, _ctx: &mut Self::Context) {
@@ -88,7 +95,7 @@ pub struct Payload<T> {
     pub(crate) payload: T
 }
  
-impl<T> Handler<Payload<T>> for Websocket where T: Serialize + Debug {
+impl<T> Handler<Payload<T>> for Websocket where T: Serialize {
     type Result = ();
  
     fn handle(&mut self, msg: Payload<T>, ctx: &mut Self::Context) {
