@@ -2,6 +2,8 @@
 
 Casta currently consist of a server which handles api requests, and a view which receives updates from server using a websocket. To display Casta an external web browser is currently needed. This will be replaced with Fasta (front end for Casta) using Electron or Tauri ([preferred once this is implemented](https://github.com/tauri-apps/tauri/issues/3478)) in the future.
 
+![Child Asta](img/child_asta.jpg "Child Asta")
+
 ## Build
 
 To compile Typescript in view.
@@ -14,9 +16,71 @@ To start server with optimizations (remove release flag for debug build). Replac
 
 ## Build Docker image
 
-`docker buildx build --platform linux/arm/v7 --load -t casta .`
+### Build for multiple platforms and push all to repo
 
-`--load` outputs the build as a docker image which is imported to the system. 
+```bash
+docker buildx b --platform linux/amd64,linux/arm/v7 --push -t imagerepo.dsek.se/casta .
+# May need to create new builder using `docker buildx create --use` before build command
+```
+
+### Load to system
+
+```bash
+docker buildx build --load -t casta .
+# `--load` outputs the build as a docker image which is imported to the system. 
+```
+
+
+### Upload image build for raspberry pi
+
+```bash
+docker buildx build --platform linux/arm/v7 --push -t imagerepo.dsek.se/casta .
+# `--push` outputs the build as a registry and pushes it to online repo based on specified tag
+```
+
+## Expected Server Requests
+
+Upon connecting to websocket server Casta expects to be given a name like:
+
+```json
+{
+  "name": "<name>"
+}
+```
+
+Casta also expects server to contiguously get pinged, and will close the connection and attempt a reconnect if not having received a message within 10 seconds.
+
+During a connection and after having received a name Casta listens and updates view by request from server like:
+
+```json
+{
+  "display": {
+    "type": "<TYPE>",
+    "data": { ... },
+  }
+}
+```
+
+Defined values for type are described in [SastaConfDoc.md](../SastaConfDoc.md#Items) with object data changing depending on type.
+
+Defined values for type in Casta
+
+| TYPE | data |
+|---|---|
+| WEBSITE | `{ "content": "<Website to be shown>" }`
+
+Example to make Casta display the website https://dsek.se/:
+
+```json
+{
+  "display": {
+    "type": "WEBSITE",
+    "data": {
+      "content": "https://dsek.se/"
+    },
+  }
+}
+```
 
 ## Run
 

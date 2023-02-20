@@ -1,11 +1,13 @@
 {
   "scripts": {
-    "build": "./node_modules/typescript/bin/tsc ./static/*.ts --outfile ./static/target/index.js"
+    "build": "browserify static/index.ts -p [ tsify ] --outfile static/target/index.js"
   },
   "devDependencies": {
-    "tsc": "^2.0.4"
+    "tsc": "^2.0.4",
+    "tsify": "^5.0.4"
   },
   "dependencies": {
+    "reconnecting-websocket": "^4.4.0",
     "typescript": "^4.8.4"
   }
 }

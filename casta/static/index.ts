@@ -1,3 +1,8 @@
+// One issue here is that since vanilla js websocket cannot check for pings, it cannot disconnect itself if no pings are received for a long time. 
+// Big problem, and if so is a solution to use another npm package for websocket instead?
+
+import ReconnectingWebSocket from "reconnecting-websocket"
+
 interface Payload {
     Display?: Content<Website>,
     Disconnected?: any,
@@ -16,17 +21,13 @@ window.onload = () => {
     const website: HTMLIFrameElement = document.getElementById("website") as HTMLIFrameElement
 
     const image: HTMLImageElement = document.getElementById("image") as HTMLImageElement
-    const background_audio: HTMLIFrameElement = document.getElementById("background_audio") as HTMLIFrameElement
-
-    // Ignore error, library is defined in index.html
-    // TODO: import correctly?
-    // let socket = new WebSocket(`ws://${location.host}/ws`)
-    let socket = new ReconnectingWebSocket(`ws://${location.host}/ws`)
+    // const background_audio: HTMLIFrameElement = document.getElementById("background_audio") as HTMLIFrameElement
     
+    let socket = new ReconnectingWebSocket(`ws://${location.host}/ws`)
 
-    socket.addEventListener("open", () => {
+    socket.onopen = () => {
         console.log("connected to socket")
-    })
+    }
 
     const assign = (element: HTMLElement | null, src?: string) => element?.setAttribute("src", src ?? "")
 
@@ -51,12 +52,22 @@ window.onload = () => {
         display_image("/disconnected")
     }
 
-    socket.addEventListener("close", () => {
+    socket.onclose = () => {
         display_disconnected_casta()
         console.log("disconnected to socket")
-    })
+    }
 
-    socket.addEventListener('message', (event: MessageEvent<any>) => {
+    socket.onerror = err => {
+        console.error(
+            "Socket encountered error: ",
+            err.message,
+            "Closing socket"
+        )
+        socket.close()
+    }
+    
+
+    socket.onmessage = event => {
         console.log(`[Debug] ${event.data}`)
         let payload: Payload = JSON.parse(event.data)
         
@@ -73,5 +84,5 @@ window.onload = () => {
             //     current_background_audio = data.background_audio
             //     assign(background_audio, data.background_audio)
             // }
-    });
+    }
 }
