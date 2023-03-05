@@ -14,14 +14,20 @@ pub enum SastaResponse {
     #[serde(rename(deserialize = "display"))]
     Display(DisplayData),
     #[serde(rename(deserialize = "name"))]
-    Name(String)
+    Name(String),
+    #[serde(rename(deserialize = "pending"))]
+    Pending(bool)
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(tag = "type")]
 pub enum DisplayData {
     #[serde(rename(deserialize = "WEBSITE"))]
-    Website { data: WebsiteData }
+    Website { data: WebsiteData },
+    #[serde(rename(deserialize = "TEXT"))]
+    Text { data: WebsiteData },
+    #[serde(rename(deserialize = "IMAGE"))]
+    Image { data: WebsiteData }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]

@@ -4,45 +4,20 @@
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <script src="/index.js"></script>
+    <script src="/target/index.js"></script>
     <title>Casta</title>
-    <style>
-        html, body, div, iframe {
-            margin: 0px;
-            padding: 0px;
-            height: 100%;
-            width: 100%;
-            border: none;
-            background-color: #1e1e1e;
-        }
-
-        iframe {
-            display: block;
-            width: 100%;
-            border: none;
-            overflow-y: auto;
-            overflow-x: hidden;
-        }
-
-        img {
-            width: 100%;
-            height: 100%;
-            max-width: 100%;
-            object-fit: contain;
-        }
-
-        .hidden {
-            display: none;
-        }
-    </style>
-    <link rel="prefetch" as="image" href="disconnected">
+    <link rel="stylesheet" href="style.css">
+    <link rel="prefetch" as="image" href="disconnected.png">
 </head>
 <body>
     <!-- Main view -->
-    <iframe id="website" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+    <iframe id="website" class="hidden" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
 
     <!-- Image view -->
-    <img src="disconnected" class="hidden" id="image">
+    <img src="disconnected.png" class="hidden" id="image">
+
+    <!-- Text view -->
+    <div id="text" class="hidden"></div>
 
     <!-- Background audio -->
     <iframe id="background_audio" width="640" height="360" style="display: none;"></iframe>

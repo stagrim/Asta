@@ -6,9 +6,9 @@ use std::sync::Arc;
 use std::{fmt::Debug, env};
 
 use actix::Addr;
-use actix_web::{web, App, HttpRequest, HttpResponse, Responder, HttpServer, get};
+use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer, get};
 use actix_web_actors::ws::WsResponseBuilder;
-use actix_files::NamedFile;
+use actix_files::Files;
 use sasta::{Sasta, SastaResponse, DisplayData};
 use tokio::signal;
 use serde::Serialize;
@@ -16,22 +16,7 @@ use dotenv::dotenv;
 use lazy_static::lazy_static;
 use tokio::sync::Mutex;
 
-// TODO: View page detailing pending connection from Sasta and show UUID
-
-#[get("/")]
-async fn index() -> impl Responder {
-    NamedFile::open_async("./static/index.html").await.unwrap()
-}
-
-#[get("/index.js")]
-async fn js() -> impl Responder {
-    NamedFile::open_async("./static/target/index.js").await.unwrap()
-}
-
-#[get("/disconnected")]
-async fn disconnected_image() -> impl Responder {
-    NamedFile::open_async("./static/disconnect.png").await.unwrap()
-}
+use crate::sasta::WebsiteData;
 
 //Other solutions not including a shared mutable state are welcome
 lazy_static! {
@@ -98,7 +83,7 @@ async fn main() -> std::io::Result<()> {
     println!("Serving Casta on http://0.0.0.0:{casta_port}");
     println!("Connecting to Sasta on ws://{address}:{port}");
     println!("hostname={hostname}");
-    println!("uuid={uuid}\n");
+    println!("uuid={}\n", &uuid);
 
     let cached_display_req = Arc::new(Mutex::new(None::<ClientPayload>));
     let cached_display_req_2 = cached_display_req.clone();
@@ -115,7 +100,7 @@ async fn main() -> std::io::Result<()> {
 
     tokio::task::spawn(async move {
         send_disconnected_to_view(cached_display_req.clone()).await;
-        let mut sasta = Sasta::new(address, port, uuid, hostname).await;
+        let mut sasta = Sasta::new(address, port, uuid.clone(), hostname).await;
         
         loop {
             match sasta.read_message().await {
@@ -123,6 +108,16 @@ async fn main() -> std::io::Result<()> {
                     let mut api: Option<ClientPayload> = None;
                     match resp {
                         SastaResponse::Name(name) => println!("Handshake done, received name {name:?}"),
+                        SastaResponse::Pending(pending) => {
+                            println!("[Pending {}] Waiting to be defined in Sasta", pending);
+                            let send = ClientPayload::Display(DisplayData::Text { 
+                                data: WebsiteData {
+                                    content: format!("Pending connection to Sasta with uuid {}", &uuid)
+                                },
+                            });
+                            send_to_view(send.clone()).await;
+                            api = Some(send);
+                        },
                         SastaResponse::Display(display) => {
                             println!("[Message] {:?}", display);
                             let send = ClientPayload::Display(display);
@@ -146,9 +141,7 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(move || App::new()
         .app_data(web::Data::from(cached_display_req_2.clone()))
-        .service(index)
-        .service(js)
-        .service(disconnected_image)
         .service(get_ws)
+        .service(Files::new("/", "./static").index_file("index.html"))
     ).bind(format!("0.0.0.0:{casta_port}"))?.run().await
 }

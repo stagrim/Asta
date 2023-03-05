@@ -68,6 +68,8 @@ Defined values for type in Casta
 | TYPE | data |
 |---|---|
 | WEBSITE | `{ "content": "<Website to be shown>" }`
+| TEXT | `{ "content": "<Text to be shown>" }`
+| IMAGE | `{ "content": "<Image to be shown>" }`
 
 Example to make Casta display the website https://dsek.se/:
 

@@ -4,16 +4,16 @@
 import ReconnectingWebSocket from "reconnecting-websocket"
 
 interface Payload {
-    Display?: Content<Website>,
+    Display?: Content<ContentData>,
     Disconnected?: any,
 }
 
 interface Content<T> {
-    type: "Website",
+    type: "Website" | "Image" | "Text",
     data: T
 }
 
-interface Website {
+interface ContentData {
     content: string
 }
 
@@ -21,49 +21,56 @@ window.onload = () => {
     const website: HTMLIFrameElement = document.getElementById("website") as HTMLIFrameElement
 
     const image: HTMLImageElement = document.getElementById("image") as HTMLImageElement
+    const text: HTMLDivElement = document.getElementById("text") as HTMLDivElement
     // const background_audio: HTMLIFrameElement = document.getElementById("background_audio") as HTMLIFrameElement
+    const all_elements = [website, image, text]
     
     let socket = new ReconnectingWebSocket(`ws://${location.host}/ws`)
 
+    //TODO: on first connect save hash of index.ts. On subsequent connects compare string
+    let version_hash: string
     socket.onopen = () => {
+        if (!version_hash) {
+            //TODO
+        } else {
+            //TODO
+        }
         console.log("connected to socket")
     }
 
-    const assign = (element: HTMLElement | null, src?: string) => element?.setAttribute("src", src ?? "")
+    const assign_src = (element: HTMLElement, src?: string) => element.setAttribute("src", src ?? "")
+
+    /** Hide all elements in all_elements except for given element element */
+    const hide_other = (element: HTMLElement) =>
+        all_elements.forEach(e => e.id === element.id ? e.classList.remove("hidden") : e.classList.add("hidden"))
 
     const display_image = (src: string) => {
-        website?.classList.add("hidden")
-        image?.classList.remove("hidden")
-        assign(image, src)
+        hide_other(image)
+        assign_src(image, src)
     }
 
     const display_website = (href: string) => {
         console.log("Website with data: " +href +" received")
-        image.classList.add("hidden")
-        website.classList.remove("hidden")
-        assign(website, href)
+        hide_other(website)
+        assign_src(website, href)
+    }
+
+    const display_text = (content: string) => {
+        hide_other(text)
+        text.innerHTML = content
     }
 
     const display_disconnected_sasta = () => {
-        display_image("/disconnected")
+        display_image("/disconnected.png")
     }
 
     const display_disconnected_casta = () => {
-        display_image("/disconnected")
+        display_image("/disconnected.png")
     }
 
     socket.onclose = () => {
         display_disconnected_casta()
         console.log("disconnected to socket")
-    }
-
-    socket.onerror = err => {
-        console.error(
-            "Socket encountered error: ",
-            err.message,
-            "Closing socket"
-        )
-        socket.close()
     }
     
 
@@ -75,8 +82,16 @@ window.onload = () => {
             display_disconnected_sasta()
         } else if (payload.Display) {
             const type = payload.Display.type
+
             if (type === "Website") {
-                display_website(payload.Display.data.content)
+                const data = payload.Display.data as ContentData
+                display_website(data.content)
+            } else if (type === "Text") {
+                const data = payload.Display.data as ContentData
+                display_text(data.content)
+            } else if (type === "Image") {
+                const data = payload.Display.data as ContentData
+                display_image(data.content)
             }
         }
 
