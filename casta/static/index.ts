@@ -6,6 +6,7 @@ import ReconnectingWebSocket from "reconnecting-websocket"
 interface Payload {
     Display?: Content<ContentData>,
     Disconnected?: any,
+    Hash?: string
 }
 
 interface Content<T> {
@@ -27,14 +28,7 @@ window.onload = () => {
     
     let socket = new ReconnectingWebSocket(`ws://${location.host}/ws`)
 
-    //TODO: on first connect save hash of index.ts. On subsequent connects compare string
-    let version_hash: string
     socket.onopen = () => {
-        if (!version_hash) {
-            //TODO
-        } else {
-            //TODO
-        }
         console.log("connected to socket")
     }
 
@@ -74,12 +68,26 @@ window.onload = () => {
     }
     
 
+    let version_hash: string
+
     socket.onmessage = event => {
         console.log(`[Debug] ${event.data}`)
         let payload: Payload = JSON.parse(event.data)
         
         if (payload.Disconnected) {
             display_disconnected_sasta()
+        } else if (payload.Hash) {
+            if (!version_hash) {
+                console.log(`[Hash] New hash received: "${payload.Hash}"`)
+                version_hash = payload.Hash
+            } else {
+                if (version_hash === payload.Hash) {
+                    console.log("[Hash] Sent hash matches with saved hash")
+                } else {
+                    console.log("[Hash] Saved hash does not match with sent one, refreshing page")
+                    window.location.reload()
+                }
+            }
         } else if (payload.Display) {
             const type = payload.Display.type
 

@@ -380,6 +380,7 @@ dependencies = [
  "actix-files",
  "actix-web",
  "actix-web-actors",
+ "adler",
  "dotenv",
  "futures-util",
  "lazy_static",

@@ -1,6 +1,8 @@
 mod websocket;
 mod sasta;
 
+use std::fs::File;
+use std::io::BufReader;
 use std::process;
 use std::sync::Arc;
 use std::{fmt::Debug, env};
@@ -9,6 +11,7 @@ use actix::Addr;
 use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer, get};
 use actix_web_actors::ws::WsResponseBuilder;
 use actix_files::Files;
+use adler::adler32;
 use sasta::{Sasta, SastaResponse, DisplayData};
 use tokio::signal;
 use serde::Serialize;
@@ -26,7 +29,8 @@ lazy_static! {
 #[derive(Serialize, Debug, Clone)]
 pub enum ClientPayload {
     Display(DisplayData),
-    Disconnected()
+    Disconnected(),
+    Hash(String)
 }
 
 async fn send_to_view(payload: ClientPayload) -> String {
@@ -54,7 +58,7 @@ async fn get_ws(cached_display_req: web::Data<Mutex<Option<ClientPayload>>>, req
 
     let (addr, resp) =
         WsResponseBuilder::new(
-            websocket::Websocket::new(cached_display_req.into_inner().clone()),
+            websocket::Websocket::new(cached_display_req.into_inner().clone(), *req.app_data::<u32>().unwrap()),
             &req,
             stream,
         ).start_with_addr()
@@ -78,6 +82,12 @@ async fn main() -> std::io::Result<()> {
     let casta_port = env::var("CASTA_PORT").unwrap_or("3000".to_string());
     let address = env::var("ADDRESS").expect("Must provide an address");
     let hostname = env::var("HOSTNAME").unwrap_or("Casta Client".to_string());
+
+    let file = File::open("./static/target/index.js")
+        .expect("Error frontend does not seem to be built, run \"npm run build\"");
+    let mut file = BufReader::new(file);
+
+    let hash = adler32(&mut file).expect("Could not calculate hash");
 
     println!("Starting Casta\n");
     println!("Serving Casta on http://0.0.0.0:{casta_port}");
@@ -140,6 +150,7 @@ async fn main() -> std::io::Result<()> {
     });
 
     HttpServer::new(move || App::new()
+        .app_data(hash)
         .app_data(web::Data::from(cached_display_req_2.clone()))
         .service(get_ws)
         .service(Files::new("/", "./static").index_file("index.html"))

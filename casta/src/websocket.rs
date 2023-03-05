@@ -5,21 +5,23 @@ use actix_web_actors::ws;
 use serde::Serialize;
 use tokio::sync::Mutex;
 
-use crate::{send_cached_to_view, ClientPayload};
+use crate::{send_cached_to_view, ClientPayload, send_to_view};
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub struct Websocket {
     heart_beat: Instant,
-    cached_ref: Arc<Mutex<Option<ClientPayload>>>
+    cached_ref: Arc<Mutex<Option<ClientPayload>>>,
+    hash: u32
 }
 
 impl Websocket {
-    pub fn new(cached_ref: Arc<Mutex<Option<ClientPayload>>>) -> Self {
+    pub fn new(cached_ref: Arc<Mutex<Option<ClientPayload>>>, hash: u32) -> Self {
         Websocket { 
             heart_beat: Instant::now(),
-            cached_ref
+            cached_ref,
+            hash
         }
     }
 
@@ -78,8 +80,10 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Websocket {
 
         // Send cached site to view
         let cached_ref = self.cached_ref.clone();
+        let hash = self.hash.clone();
         //This is dumb, find better method of calling async method in sync block
-        tokio::task::spawn(async {
+        tokio::task::spawn(async move {
+            send_to_view(ClientPayload::Hash(hash.to_string())).await;
             send_cached_to_view(cached_ref).await;
         });
     }
