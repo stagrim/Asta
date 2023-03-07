@@ -1,0 +1,186 @@
+{
+  "displays": {
+    "d3ec4508-ba89-11ed-808a-a3d359416ec9": {
+      "name": "Screendump0",
+      "schedule": "2f1b2042-ba8b-11ed-bbd8-279501201887"
+    },
+    "631f6175-6829-4e16-ad7f-cee6105f4c39": {
+      "name": "Screendump1",
+      "schedule": "7fbd376b-a92a-40c2-8d20-0c67bfcc350d"
+    },
+    "e0dacdda-ba92-11ed-bed4-73ff27ab2796": {
+      "name": "Screendump2",
+      "schedule": "4cffa890-ba94-11ed-a08a-7fc7abc2912b"
+    },
+    "a8383792-66fc-4b0d-93d9-567dcf532610": {
+      "name": "Pine",
+      "schedule": "c6b7e06a-f118-4240-91a2-444d460041e2"
+    },
+    "af6d747d-988c-4e9e-8143-1537259fcb9d": {
+      "name": "Cone",
+      "schedule": "ebdfba39-2322-4fd2-a15b-39ef4fd998f8"
+    }
+  },
+  "playlists": {
+    "5e597b6a-ba8b-11ed-add4-af90ffe0a375": {
+      "name": "Screendump0",
+      "items": [
+	{
+          "name": "Now Playing",
+          "type": "WEBSITE",
+          "settings": {
+            "url": "https://music.dsek.se/iris/modal/kiosk-mode?ui={%22initial_setup_complete%22:true}",
+            "duration": 60
+          }
+        },
+        {
+          "name": "CafeScreen1",
+          "type": "WEBSITE",
+          "settings": {
+            "url": "https://01ste02.github.io/displayMaterial/cafe/1.html",
+            "duration": 360
+          }
+	}
+      ]
+    },
+    "d8486510-7931-43cc-9f86-e7c67a827ec0": {
+      "name": "Screendump1",
+      "items": [
+        {
+          "name": "CafeScreen2",
+          "type": "WEBSITE",
+          "settings": {
+            "url": "https://01ste02.github.io/displayMaterial/cafe/2.html",
+            "duration": 360
+          }
+        },
+        {
+          "name": "Event calendar",
+          "type": "WEBSITE",
+          "settings": {
+            "url": "https://member.dsek.se/en/events/tv",
+            "duration": 15
+          }
+        },
+        {
+          "name": "Calendar",
+          "type": "WEBSITE",
+          "settings": {
+            "url": "https://member.dsek.se/en/calendar/tv",
+            "duration": 15
+          }
+        },
+        {
+          "name": "News",
+          "type": "WEBSITE",
+          "settings": {
+            "url": "https://member.dsek.se/en/news/tv",
+            "duration": 15
+          }
+        },
+        {
+          "name": "AEWSOMEbinaryCLOCK",
+          "type": "WEBSITE",
+          "settings": {
+            "url": "https://stagrim.github.io/basta",
+            "duration": 360
+          }
+        }
+      ]
+    },
+    "7bfa297c-ba94-11ed-bd82-1febb03a7a5a": {
+      "name": "Screendump2",
+      "items": [
+        {
+          "name": "CafeScreen3",
+          "type": "WEBSITE",
+          "settings": {
+            "url": "https://01ste02.github.io/displayMaterial/cafe/3.html",
+            "duration": 360
+          }
+        },
+        {
+          "name": "Funny",
+          "type": "WEBSITE",
+          "settings": {
+            "url": "https://floatingqrcode.com/",
+            "duration": 120
+          }
+        }
+      ]
+    },
+    "0ea69bbb-aef8-40c8-b73e-cc58ffd1c607": {
+      "name": "Binärklocka",
+      "items": [
+        {
+          "name": "Basta",
+          "type": "WEBSITE",
+          "settings": {
+            "url": "https://stagrim.github.io/basta?numbers&split",
+            "duration": 360
+          }
+        }
+      ]
+    },
+    "e0a81ce7-7640-4b80-ab69-387995fcccf4": {
+      "name": "eventsAndChill",
+      "items": [
+        {
+          "name": "Event calendar",
+          "type": "WEBSITE",
+          "settings": {
+            "url": "https://www.dsek.se/en/events/tv?zoom=150%&dark=true&scrollSpeed=0.9",
+            "duration": 60
+          }
+        },
+        {
+          "name": "Calendar",
+          "type": "WEBSITE",
+          "settings": {
+            "url": "https://www.dsek.se/en/calendar/tv?zoom=100%&dark=true",
+            "duration": 30
+          }
+        },
+        {
+          "name": "News",
+          "type": "WEBSITE",
+          "settings": {
+            "url": "https://www.dsek.se/en/news/tv?zoom=200%&dark=true&scrollSpeed=0.9",
+            "duration": 60
+          }
+        },
+        {
+          "name": "Chillstream",
+          "type": "WEBSITE",
+          "settings": {
+            "url": "https://www.youtube.com/embed/jfKfPfyJRdk?controls=0&fs=1&autoplay=1&ap=%2526fmt%3D18",
+            "duration": 360
+          }
+        }
+      ]
+    }
+  },
+  "schedules": {
+    "2f1b2042-ba8b-11ed-bbd8-279501201887": {
+      "name": "Screendump0",
+      "playlist": "5e597b6a-ba8b-11ed-add4-af90ffe0a375"
+    },
+    "7fbd376b-a92a-40c2-8d20-0c67bfcc350d": {
+      "name": "Screendump1",
+      "playlist": "d8486510-7931-43cc-9f86-e7c67a827ec0"
+    },
+    "4cffa890-ba94-11ed-a08a-7fc7abc2912b": {
+      "name": "Screendump2",
+      "playlist": "7bfa297c-ba94-11ed-bd82-1febb03a7a5a"
+    },
+    "c6b7e06a-f118-4240-91a2-444d460041e2": {
+      "name": "Pine",
+      "playlist": "0ea69bbb-aef8-40c8-b73e-cc58ffd1c607"
+    },
+    "ebdfba39-2322-4fd2-a15b-39ef4fd998f8": {
+      "name": "Cone",
+      "playlist": "e0a81ce7-7640-4b80-ab69-387995fcccf4"
+    }
+  }
+}
+
