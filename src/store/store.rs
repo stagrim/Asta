@@ -1,28 +1,27 @@
 use std::collections::HashMap;
 
 use serde::Deserialize;
-use serde_json::Value;
 use tokio::fs;
 
 #[derive(Deserialize, Debug)]
 pub struct Display {
-    name: String,
-    schedule: String
+    pub name: String,
+    pub schedule: String
 }
 
 #[derive(Deserialize, Debug)]
 pub struct Schedule {
-    name: String,
-    playlist: String
+    pub name: String,
+    pub playlist: String
 }
 
 #[derive(Deserialize, Debug)]
 pub struct Playlist {
-    name: String,
-    items: Vec<PlaylistItem>
+    pub name: String,
+    pub items: Vec<PlaylistItem>
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 #[serde(tag = "type")]
 pub enum PlaylistItem {
     #[serde(rename(deserialize = "WEBSITE"))]
@@ -33,10 +32,10 @@ pub enum PlaylistItem {
     // Image { name: String, settings: WebsiteData }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct WebsiteData {
-    url: String,
-    duration: u32
+    pub url: String,
+    pub duration: u64
 }
 
 #[derive(Deserialize, Debug)]
@@ -61,8 +60,6 @@ impl Store {
         let str = fs::read_to_string(&self.filename).await
             .expect("Could not read json file");
 
-        let content: Content = serde_json::from_str(&str).unwrap();
-
-        content
+        serde_json::from_str(&str).unwrap()
     }
 }
