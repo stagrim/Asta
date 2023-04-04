@@ -90,7 +90,10 @@ impl Sasta {
     }
 
     pub async fn reconnect(&mut self) {
-        self.ws_sender.close().await.unwrap();
+        match self.ws_sender.close().await {
+            Ok(_) => println!("Closed Sasta connection"),
+            Err(e) => println!("Could not close Sasta connection: {e:?}"),
+        }
         println!("Connection closed, attempting reconnect");
         let (s, r) = Self::connect(self.address.clone(), self.port.clone(), self.uuid.clone(), self.hostname.clone()).await;
 
