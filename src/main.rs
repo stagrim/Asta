@@ -1,15 +1,18 @@
 use core::time;
-use std::{net::SocketAddr, sync::Arc, collections::HashMap, time::Duration};
+use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use axum::{Router, routing::get, extract::{WebSocketUpgrade, ConnectInfo, ws::{Message, WebSocket}, State}, response::IntoResponse};
 use futures_util::{StreamExt, SinkExt, stream::SplitSink};
+use serde::{Deserialize, Serialize};
 use store::store::{Store, Content};
-use tokio::{sync::Mutex};
+use tokio::{sync::{Mutex, watch::{self, Receiver}}};
 
 mod store;
 
+#[derive(Clone)]
 struct ServerState {
-    content: Mutex<Content>,
+    // content: Mutex<Content>,
+    rx: Receiver<Content>
 }
 
 #[tokio::main]
@@ -20,7 +23,9 @@ async fn main() {
     let loaded = store.load().await;
     println!("{:#?}", loaded);
 
-    let server_state = Arc::new(ServerState { content: Mutex::new(loaded) });
+    let (tx, rx) = watch::channel(loaded);
+
+    let server_state = ServerState { rx };
 
     let app = Router::new()
         .route("/", get(ws_handler))
@@ -38,7 +43,7 @@ async fn main() {
 async fn ws_handler(
     ws: WebSocketUpgrade,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    State(state): State<Arc<ServerState>>,
+    State(state): State<ServerState>,
 ) -> impl IntoResponse {
     println!("{addr} connected.");
     // finalize the upgrade process by returning upgrade callback.
@@ -46,15 +51,73 @@ async fn ws_handler(
     ws.on_upgrade(move |socket| handle_socket(socket, addr, state))
 }
 
-async fn handle_socket(socket: WebSocket, who: SocketAddr, state: Arc<ServerState>) {
+#[derive(Deserialize)]
+struct HelloRequest {
+    uuid: String,
+    hostname: String
+}
+
+#[derive(Debug, Serialize)]
+pub enum Payload {
+    #[serde(rename(serialize = "display"))]
+    Display(DisplayPayload),
+    #[serde(rename(serialize = "name"))]
+    Name(String),
+    #[serde(rename(serialize = "pending"))]
+    Pending(bool)
+}
+
+#[derive(Serialize, Debug, Clone)]
+#[serde(tag = "type")]
+pub enum DisplayPayload {
+    #[serde(rename(serialize = "WEBSITE"))]
+    Website { data: WebsitePayload },
+    #[serde(rename(serialize = "TEXT"))]
+    Text { data: WebsitePayload },
+    #[serde(rename(serialize = "IMAGE"))]
+    Image { data: WebsitePayload }
+}
+
+
+#[derive(Serialize, Debug, Clone)]
+pub struct WebsitePayload {
+    pub content: String
+}
+
+async fn handle_socket(socket: WebSocket, who: SocketAddr, state: ServerState) {
     let (sender, mut reciever) = socket.split();
     let sender = Arc::new(Mutex::new(sender));
     let mut hb = heart_beat(sender.clone());
     //send a ping (unsupported by some browsers) just to kick things off and get a response
 
     let mut send = tokio::spawn(async move {
-        let content = state.content.lock().await;
-        let schedule = &content.displays.get("631f6175-6829-4e16-ad7f-cee6105f4c39").unwrap().schedule;
+
+        let hello: HelloRequest = loop {
+            if let Some(Ok(Message::Text(msg))) = reciever.next().await {
+                match serde_json::from_str(&msg) {
+                    Ok(msg) => break msg,
+                    Err(_) => {
+                        println!("{msg:?} was not a HelloRequest");
+                        continue
+                    },
+                };
+            }
+        };
+        let rx = state.rx.clone();
+        let content = rx.borrow().clone();
+        let display = loop {
+            match content.displays.get(&hello.uuid) {
+                Some(d) => break d,
+                None => {
+                    println!("No screen defined with UUID {:?}", hello.uuid);
+                    sender.lock().await.send(Message::Text(r#"{"pending":true}"#.to_owned())).await.unwrap();
+                    std::thread::sleep(Duration::from_secs(10));
+                    continue;
+                },
+            }
+        };
+
+        let schedule = &display.schedule;
         let playlist = content.playlists.get(&content.schedules.get(schedule).unwrap().playlist).unwrap().items.clone();
         drop(content);
         
@@ -70,15 +133,18 @@ async fn handle_socket(socket: WebSocket, who: SocketAddr, state: Arc<ServerStat
         loop {
             for item in &playlist {
                 let sleep;
-                println!("{item:?}");
-                match item {
-                    store::store::PlaylistItem::Website { name: _, settings } => {
+                // println!("{item:?}");
+                let msg = match item {
+                    store::store::PlaylistItem::Website { name, settings } => {
+                        println!("Sending {name:?} website to {:?}", hello.hostname);
                         sleep = settings.duration;
+                        DisplayPayload::Website { data: WebsitePayload { content: settings.url.clone() } }
                     },
                 };
+                sender.lock().await.send(Message::Text(serde_json::to_string(&Payload::Display(msg)).unwrap())).await.unwrap();
                 tokio::time::sleep(Duration::from_secs(sleep)).await;
             }
-        }
+        };
     });
 
     tokio::select! {

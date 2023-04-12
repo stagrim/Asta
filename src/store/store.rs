@@ -3,19 +3,19 @@ use std::collections::HashMap;
 use serde::Deserialize;
 use tokio::fs;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Display {
     pub name: String,
     pub schedule: String
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Schedule {
     pub name: String,
     pub playlist: String
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Playlist {
     pub name: String,
     pub items: Vec<PlaylistItem>
@@ -38,7 +38,7 @@ pub struct WebsiteData {
     pub duration: u64
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Content {
     pub displays: HashMap<String, Display>,
     pub playlists: HashMap<String, Playlist>,
