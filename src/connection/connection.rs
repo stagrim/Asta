@@ -45,7 +45,7 @@ pub async fn client_connection(socket: WebSocket, who: SocketAddr, mut rx: Recei
     let (sender, mut reciever) = socket.split();
     let sender = Arc::new(Mutex::new(sender));
     
-    let mut heart_beat_handle = heart_beat(sender.clone());
+    let mut heart_beat_handle = tokio::spawn(heart_beat(sender.clone()));
 
     // Wait for a hellorespone from connected client to get its UUID
     let hello: HelloRequest = loop {
@@ -146,23 +146,21 @@ fn get_display_playlist(rx: &Receiver<Content>, uuid: &String) -> Option<Vec<Pla
 }
 
 
-fn heart_beat(sender: Arc<Mutex<SplitSink<WebSocket, Message>>>) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(3));
-        loop {
-            interval.tick().await;
-            let mut socket = sender.lock().await;
-            match socket.send(Message::Ping(vec![])).await {
-                Ok(_) => println!("Sent Ping"),
-                Err(_) => {
-                    println!("Could not ping, fuck");
-                    match socket.close().await {
-                        Ok(_) => println!("hej"),
-                        Err(_) => println!("nej"),
-                    }
-                    return;
-                },
-            };
+async fn heart_beat(sender: Arc<Mutex<SplitSink<WebSocket, Message>>>) {
+    let mut interval = tokio::time::interval(Duration::from_secs(3));
+    loop {
+        interval.tick().await;
+        let mut socket = sender.lock().await;
+        match socket.send(Message::Ping(vec![])).await {
+            Ok(_) => println!("Sent Ping"),
+            Err(_) => {
+                println!("Could not ping, fuck");
+                match socket.close().await {
+                    Ok(_) => println!("hej"),
+                    Err(_) => println!("nej"),
+                }
+                return
+            },
         };
-    })
+    };
 }
