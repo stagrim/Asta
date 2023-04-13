@@ -78,7 +78,6 @@ pub enum DisplayPayload {
     Image { data: WebsitePayload }
 }
 
-
 #[derive(Serialize, Debug, Clone)]
 pub struct WebsitePayload {
     pub content: String
@@ -88,7 +87,6 @@ async fn handle_socket(socket: WebSocket, who: SocketAddr, state: ServerState) {
     let (sender, mut reciever) = socket.split();
     let sender = Arc::new(Mutex::new(sender));
     let mut hb = heart_beat(sender.clone());
-    //send a ping (unsupported by some browsers) just to kick things off and get a response
 
     let mut send = tokio::spawn(async move {
 
