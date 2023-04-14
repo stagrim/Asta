@@ -85,6 +85,13 @@ Example to make Casta display the website https://dsek.se/:
 ```
 
 ## Run
+### Casta
+
+To run the server from source cargo is used. Use `cargo run` with or without the release flag to build with or without optimizations. Running the docker image and connecting to the server running on the same system can be done with
+
+`docker run --network host --env-file <env file> -p <local port>:3000 casta`
+
+### Browser front-end
 
 Casta will provide an api server and a view hosted on specified port. Casta (and build docker image) does not *yet* provide a way to view the hosted site in and of itself. Fasta (not in built docker image) is a super simple electron window (for now) which displays the view which Casta hosts. Another way of viewing the hosted site would be using the kiosk mode in popular browsers:
 
