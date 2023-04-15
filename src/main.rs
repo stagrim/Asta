@@ -107,11 +107,7 @@ async fn set_display_schedule(State(state): State<ServerState>, Path((display, s
     )))
 }
 
-async fn ws_handler(
-    ws: WebSocketUpgrade,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    State(state): State<ServerState>,
-) -> impl IntoResponse {
+async fn ws_handler(ws: WebSocketUpgrade, ConnectInfo(addr): ConnectInfo<SocketAddr>, State(state): State<ServerState>) -> impl IntoResponse {
     println!("{addr} connected.");
     ws.on_upgrade(move |socket| client_connection(socket, addr, state.rx.clone()))
 }

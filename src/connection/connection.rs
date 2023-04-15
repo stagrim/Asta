@@ -2,9 +2,9 @@
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use axum::extract::ws::{Message, WebSocket};
-use futures_util::{SinkExt, stream::SplitSink, StreamExt};
+use futures_util::{SinkExt, stream::{SplitSink, SplitStream}, StreamExt};
 use serde::{Deserialize, Serialize};
-use tokio::{sync::{Mutex, watch::Receiver}};
+use tokio::{sync::{Mutex, watch::Receiver}, time::timeout};
 use tokio_util::sync::CancellationToken;
 
 use crate::store::store::{Content, PlaylistItem};
@@ -44,8 +44,6 @@ pub struct WebsitePayload {
 pub async fn client_connection(socket: WebSocket, who: SocketAddr, mut rx: Receiver<Content>) {
     let (sender, mut reciever) = socket.split();
     let sender = Arc::new(Mutex::new(sender));
-    
-    let mut heart_beat_handle = tokio::spawn(heart_beat(sender.clone()));
 
     // Wait for a hellorespone from connected client to get its UUID
     let hello: HelloRequest = loop {
@@ -57,7 +55,12 @@ pub async fn client_connection(socket: WebSocket, who: SocketAddr, mut rx: Recei
         }
     };
 
+    let mut heart_beat_handle = tokio::spawn(heart_beat(sender.clone(), reciever));
+    let send_loop_abort = Arc::new(Mutex::new(None));
+    let send_loop_abort_clone = send_loop_abort.clone();
+
     let mut client_handle = tokio::spawn(async move {
+        //TODO: Does this really need two threads? Combine message await and send logic
         let display = loop {
             let display_option = rx.borrow().displays.get(&hello.uuid).and_then(|d| Some(d.clone()));
             match display_option {
@@ -78,7 +81,10 @@ pub async fn client_connection(socket: WebSocket, who: SocketAddr, mut rx: Recei
         sender.lock().await.send(msg).await.unwrap();
 
         let mut cancellation_token = CancellationToken::new();
+        let mut abort = send_loop_abort.lock().await;
         let mut send_loop_handle = tokio::spawn(send_task(rx.clone(), hello.clone(), sender.clone(), cancellation_token.clone()));
+        *abort = Some(send_loop_handle.abort_handle());
+        drop(abort);
 
         loop {
             tokio::select! {
@@ -88,7 +94,11 @@ pub async fn client_connection(socket: WebSocket, who: SocketAddr, mut rx: Recei
                         cancellation_token.cancel();
                         send_loop_handle.await.unwrap();
                         cancellation_token = CancellationToken::new();
+
+                        let mut abort = send_loop_abort.lock().await;
                         send_loop_handle = tokio::spawn(send_task(rx.clone(), hello.clone(), sender.clone(), cancellation_token.clone()));
+                        *abort = Some(send_loop_handle.abort_handle());
+                        drop(abort);
                     }
                 },
                 _ = &mut send_loop_handle => {
@@ -100,7 +110,12 @@ pub async fn client_connection(socket: WebSocket, who: SocketAddr, mut rx: Recei
     });
 
     tokio::select! {
-        _ = &mut heart_beat_handle => client_handle.abort(),
+        _ = &mut heart_beat_handle => {
+            if let Some(a) = &mut *send_loop_abort_clone.lock().await {
+                a.abort();
+            }
+            client_handle.abort();
+        },
         _ = &mut client_handle => heart_beat_handle.abort(),
     };
 
@@ -146,20 +161,45 @@ fn get_display_playlist(rx: &Receiver<Content>, uuid: &String) -> Option<Vec<Pla
 }
 
 
-async fn heart_beat(sender: Arc<Mutex<SplitSink<WebSocket, Message>>>) {
+async fn heart_beat(sender: Arc<Mutex<SplitSink<WebSocket, Message>>>, mut receiver: SplitStream<WebSocket>) {
     let mut interval = tokio::time::interval(Duration::from_secs(3));
+    // Must make sure a pong is received before the next ping is sent out.
+    let time = Duration::from_secs(3);
     loop {
         interval.tick().await;
-        let mut socket = sender.lock().await;
-        match socket.send(Message::Ping(vec![])).await {
-            Ok(_) => println!("Sent Ping"),
-            Err(_) => {
-                println!("Could not ping, fuck");
-                match socket.close().await {
-                    Ok(_) => println!("hej"),
-                    Err(_) => println!("nej"),
-                }
-                return
+        
+        let ping = timeout(time, async {
+            let mut socket = sender.lock().await;
+            match socket.send(Message::Ping(vec![])).await {
+                Ok(_) => println!("Sent Ping"),
+                Err(_) => {
+                    println!("Could not ping, fuck");
+                    match socket.close().await {
+                        Ok(_) => println!("hej"),
+                        Err(_) => println!("nej"),
+                    }
+                    return Err(());
+                },
+            };
+            loop {
+                if let Some(msg) = receiver.next().await {
+                    match msg {
+                        Ok(Message::Pong(_)) => break,
+                        Err(e) => {
+                            println!("Error receiving messages: {e:?}");
+                            return Err(());
+                        }
+                        _ => ()
+                    }
+                };
+            };
+            Ok(())
+        });
+        match ping.await {
+            Ok(Ok(_)) => println!("Pong received"),
+            _ => {
+                println!("No Pong response before timeout, disconnecting from client");
+                return;
             },
         };
     };
