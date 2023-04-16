@@ -4,9 +4,9 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 use axum::extract::ws::{Message, WebSocket};
 use futures_util::{SinkExt, stream::{SplitSink, SplitStream}, StreamExt};
 use serde::{Deserialize, Serialize};
-use tokio::{sync::{Mutex, watch::Receiver}, time::timeout};
+use tokio::{sync::Mutex, time::timeout};
 
-use crate::store::store::{Content, PlaylistItem};
+use crate::store::store::{PlaylistItem, Store};
 
 #[derive(Deserialize, Clone)]
 struct HelloRequest {
@@ -40,7 +40,7 @@ pub struct WebsitePayload {
     pub content: String
 }
 
-pub async fn client_connection(socket: WebSocket, who: SocketAddr, mut rx: Receiver<Content>) {
+pub async fn client_connection(socket: WebSocket, who: SocketAddr, store: Arc<Store>) {
     let (client_send, mut client_receive) = socket.split();
     let client_send = Arc::new(Mutex::new(client_send));
 
@@ -57,9 +57,10 @@ pub async fn client_connection(socket: WebSocket, who: SocketAddr, mut rx: Recei
     let mut heart_beat_handle = tokio::spawn(heart_beat(client_send.clone(), client_receive));
 
     let mut client_handle = tokio::spawn(async move {
-        //TODO: Does this really need two threads? Combine message await and send logic
+        
+        let mut rx = store.receiver();
         let display = loop {
-            let display_option = rx.borrow().displays.get(&hello.uuid).and_then(|d| Some(d.clone()));
+            let display_option = store.read().await.displays.get(&hello.uuid).and_then(|d| Some(d.clone()));
             match display_option {
                 Some(d) => break d,
                 None => {
@@ -79,7 +80,7 @@ pub async fn client_connection(socket: WebSocket, who: SocketAddr, mut rx: Recei
 
         // outer loop collects the PlaylistItems(s) before entering the repeating send loop
         'outer_send_loop: loop {
-            let playlist = match get_display_playlist(&rx, &hello.uuid) {
+            let playlist = match store.get_display_playlists(&hello.uuid).await {
                 Some(p) => p,
                 None => {
                     println!("Error: Display playlist could not be found");
@@ -133,12 +134,6 @@ pub async fn client_connection(socket: WebSocket, who: SocketAddr, mut rx: Recei
     };
 
     println!("Done with {who}!");
-}
-
-fn get_display_playlist(rx: &Receiver<Content>, uuid: &String) -> Option<Vec<PlaylistItem>> {
-    let content = rx.borrow();
-    let schedule = &content.displays.get(uuid)?.schedule;
-    Some(content.playlists.get(&content.schedules.get(schedule)?.playlist)?.items.clone())
 }
 
 

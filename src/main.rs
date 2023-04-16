@@ -3,8 +3,7 @@ use std::{net::SocketAddr, sync::Arc};
 use axum::{Router, routing::get, extract::{WebSocketUpgrade, ConnectInfo, State, Path}, response::IntoResponse, Json, ServiceExt};
 use hyper::StatusCode;
 use serde::Serialize;
-use store::store::{Store, Content};
-use tokio::sync::{Mutex, watch::{self, Receiver, Sender}};
+use store::store::Store;
 use tower_http::normalize_path::NormalizePath;
 
 use crate::connection::connection::client_connection;
@@ -13,13 +12,6 @@ mod store;
 mod connection;
 
 type UUID = String;
-
-#[derive(Clone)]
-struct ServerState {
-    // content: Mutex<Content>,
-    rx: Receiver<Content>,
-    tx: Arc<Mutex<Sender<Content>>>
-}
 
 #[derive(Serialize)]
 struct ErrorResponse {
@@ -35,18 +27,9 @@ impl From<(u8, String)> for ErrorResponse {
 
 #[tokio::main]
 async fn main() {
-    let store = Store::new();
+    let store = Arc::new(Store::new().await);
     
-    let loaded = store.load().await;
-    println!("{:#?}", loaded);
-
-    let (tx, rx) = watch::channel(loaded);
-
-    // Must wrap tx in Mutex since it does not implement the Copy trait like rx. 
-    // Watch still makes since for this project over broadcast , since no history is needed
-    let tx = Arc::new(Mutex::new(tx));
-
-    let server_state = ServerState { rx, tx };
+    println!("{}", store.to_string().await);
 
     let app = NormalizePath::trim_trailing_slash(
         Router::new()
@@ -55,7 +38,7 @@ async fn main() {
                 .route("/schedule", get(get_schedules))
             )
             .route("/", get(ws_handler))
-            .with_state(server_state)
+            .with_state(store)
     );
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 8040));
@@ -72,29 +55,29 @@ struct Schedule {
     playlist: UUID
 }
 
-async fn get_schedules(State(state): State<ServerState>) -> Json<Vec<Schedule>> {
+async fn get_schedules(State(store): State<Arc<Store>>) -> Json<Vec<Schedule>> {
     Json(
-        state.rx
-        .borrow().schedules.clone()
-        .into_iter()
-        .map(|(uuid, s)| Schedule {
-            uuid,
-            name: s.name,
-            playlist: s.playlist
-        }).collect()
+        store.read().await
+            .schedules.clone()
+            .into_iter()
+            .map(|(uuid, s)| Schedule {
+                uuid,
+                name: s.name,
+                playlist: s.playlist
+            }).collect()
     )
 }
 
-async fn set_display_schedule(State(state): State<ServerState>, Path((display, schedule)): Path<(UUID, UUID)>) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
-    let rx = state.rx;
-    let schedule_exists = rx.borrow().schedules.contains_key(&schedule);
-    let display_exists = rx.borrow().displays.contains_key(&display);
+async fn set_display_schedule(State(store): State<Arc<Store>>, Path((display, schedule)): Path<(UUID, UUID)>) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    let read = store.read().await;
+    let schedule_exists = read.schedules.contains_key(&schedule);
+    let display_exists = read.displays.contains_key(&display);
+    let set_to_schedule = read.displays.get(&display).unwrap().schedule != schedule;
+    drop(read);
 
-    if schedule_exists && display_exists && rx.borrow().displays.get(&display).unwrap().schedule != schedule {
-        let mut content = rx.borrow().clone();
+    if schedule_exists && display_exists && set_to_schedule {
         let res = format!("set display {display} to schedule {schedule}");
-        content.displays.entry(display).and_modify(|d| d.schedule = schedule);
-        state.tx.lock().await.send(content).unwrap();
+        store.update_display_schedule(display, schedule).await;
         return Ok(res)
     }
 
@@ -109,7 +92,7 @@ async fn set_display_schedule(State(state): State<ServerState>, Path((display, s
     )))
 }
 
-async fn ws_handler(ws: WebSocketUpgrade, ConnectInfo(addr): ConnectInfo<SocketAddr>, State(state): State<ServerState>) -> impl IntoResponse {
+async fn ws_handler(ws: WebSocketUpgrade, ConnectInfo(addr): ConnectInfo<SocketAddr>, State(store): State<Arc<Store>>) -> impl IntoResponse {
     println!("{addr} connected.");
-    ws.on_upgrade(move |socket| client_connection(socket, addr, state.rx.clone()))
+    ws.on_upgrade(move |socket| client_connection(socket, addr, store))
 }
