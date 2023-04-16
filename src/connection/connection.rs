@@ -100,19 +100,16 @@ pub async fn client_connection(socket: WebSocket, who: SocketAddr, mut rx: Recei
                 let msg = Message::Text(serde_json::to_string(&Payload::Display(payload)).unwrap());
                 client_send.lock().await.send(msg).await.unwrap();
                 
-                tokio::select! {
-                    _ = tokio::time::sleep(Duration::from_secs(sleep)) => (),
-                    notification = rx.changed() => {
-                        match notification {
-                            Ok(_) => {
-                                println!("Message received, restarting send loop");
-                                continue 'outer_send_loop;
-                            },
-                            Err(e) => {
-                                println!("Exit thread due to error: {e}");
-                                return;
-                            },
-                        }
+                if let Ok(notification) = timeout(Duration::from_secs(sleep), rx.changed()).await {
+                    match notification {
+                        Ok(_) => {
+                            println!("Message received, restarting send loop");
+                            continue 'outer_send_loop;
+                        },
+                        Err(e) => {
+                            println!("Exit thread due to error: {e}");
+                            return;
+                        },
                     }
                 }
             }

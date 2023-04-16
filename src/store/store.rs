@@ -3,6 +3,9 @@ use std::collections::HashMap;
 use serde::Deserialize;
 use tokio::fs;
 
+// TODO: Move all state logic here, and replace Watch with RwLock and Watch to only signal a change.
+// Pass around a Content or Store instance to create consumers?
+
 #[derive(Deserialize, Debug, Clone)]
 pub struct Display {
     pub name: String,

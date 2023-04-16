@@ -42,6 +42,8 @@ async fn main() {
 
     let (tx, rx) = watch::channel(loaded);
 
+    // Must wrap tx in Mutex since it does not implement the Copy trait like rx. 
+    // Watch still makes since for this project over broadcast , since no history is needed
     let tx = Arc::new(Mutex::new(tx));
 
     let server_state = ServerState { rx, tx };
