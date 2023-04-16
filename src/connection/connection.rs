@@ -5,7 +5,6 @@ use axum::extract::ws::{Message, WebSocket};
 use futures_util::{SinkExt, stream::{SplitSink, SplitStream}, StreamExt};
 use serde::{Deserialize, Serialize};
 use tokio::{sync::{Mutex, watch::Receiver}, time::timeout};
-use tokio_util::sync::CancellationToken;
 
 use crate::store::store::{Content, PlaylistItem};
 
@@ -42,12 +41,12 @@ pub struct WebsitePayload {
 }
 
 pub async fn client_connection(socket: WebSocket, who: SocketAddr, mut rx: Receiver<Content>) {
-    let (sender, mut reciever) = socket.split();
-    let sender = Arc::new(Mutex::new(sender));
+    let (client_send, mut client_receive) = socket.split();
+    let client_send = Arc::new(Mutex::new(client_send));
 
-    // Wait for a hellorespone from connected client to get its UUID
+    // Wait for a hello response from connected client to get its UUID
     let hello: HelloRequest = loop {
-        if let Some(Ok(Message::Text(msg))) = reciever.next().await {
+        if let Some(Ok(Message::Text(msg))) = client_receive.next().await {
             match serde_json::from_str(&msg) {
                 Ok(msg) => break msg,
                 Err(_) => println!("{msg:?} was not a HelloRequest")
@@ -55,9 +54,7 @@ pub async fn client_connection(socket: WebSocket, who: SocketAddr, mut rx: Recei
         }
     };
 
-    let mut heart_beat_handle = tokio::spawn(heart_beat(sender.clone(), reciever));
-    let send_loop_abort = Arc::new(Mutex::new(None));
-    let send_loop_abort_clone = send_loop_abort.clone();
+    let mut heart_beat_handle = tokio::spawn(heart_beat(client_send.clone(), client_receive));
 
     let mut client_handle = tokio::spawn(async move {
         //TODO: Does this really need two threads? Combine message await and send logic
@@ -68,7 +65,7 @@ pub async fn client_connection(socket: WebSocket, who: SocketAddr, mut rx: Recei
                 None => {
                     println!("No screen defined with UUID {:?}", hello.uuid);
                     let msg = Message::Text(serde_json::to_string(&Payload::Pending(true)).unwrap());
-                    sender.lock().await.send(msg).await.unwrap();
+                    client_send.lock().await.send(msg).await.unwrap();
 
                     // Wait until content change, then try again 
                     rx.changed().await.unwrap();
@@ -78,80 +75,56 @@ pub async fn client_connection(socket: WebSocket, who: SocketAddr, mut rx: Recei
         };
     
         let msg = Message::Text(serde_json::to_string(&Payload::Name(display.name)).unwrap());
-        sender.lock().await.send(msg).await.unwrap();
+        client_send.lock().await.send(msg).await.unwrap();
 
-        let mut cancellation_token = CancellationToken::new();
-        let mut abort = send_loop_abort.lock().await;
-        let mut send_loop_handle = tokio::spawn(send_task(rx.clone(), hello.clone(), sender.clone(), cancellation_token.clone()));
-        *abort = Some(send_loop_handle.abort_handle());
-        drop(abort);
-
-        loop {
-            tokio::select! {
-                message = rx.changed() => {
-                    if message.is_ok() {
-                        // TODO: check if playlist has actually changed
-                        cancellation_token.cancel();
-                        send_loop_handle.await.unwrap();
-                        cancellation_token = CancellationToken::new();
-
-                        let mut abort = send_loop_abort.lock().await;
-                        send_loop_handle = tokio::spawn(send_task(rx.clone(), hello.clone(), sender.clone(), cancellation_token.clone()));
-                        *abort = Some(send_loop_handle.abort_handle());
-                        drop(abort);
+        // outer loop collects the PlaylistItems(s) before entering the repeating send loop
+        'outer_send_loop: loop {
+            let playlist = match get_display_playlist(&rx, &hello.uuid) {
+                Some(p) => p,
+                None => {
+                    println!("Error: Display playlist could not be found");
+                    return
+                },
+            };
+        
+            loop { for item in &playlist {
+                let sleep;
+                let payload = match item {
+                    PlaylistItem::Website { name, settings } => {
+                        println!("Sending {name:?} website to {:?}", hello.hostname);
+                        sleep = settings.duration;
+                        DisplayPayload::Website { data: WebsitePayload { content: settings.url.clone() } }
+                    },
+                };
+    
+                let msg = Message::Text(serde_json::to_string(&Payload::Display(payload)).unwrap());
+                client_send.lock().await.send(msg).await.unwrap();
+                
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_secs(sleep)) => (),
+                    notification = rx.changed() => {
+                        match notification {
+                            Ok(_) => {
+                                println!("Message received, restarting send loop");
+                                continue 'outer_send_loop;
+                            },
+                            Err(e) => {
+                                println!("Receive Error: {e}");
+                                return;
+                            },
+                        }
                     }
-                },
-                _ = &mut send_loop_handle => {
-                    println!("Send loop did not exit correctly, exiting send thread");
-                    break
-                },
-            };   
+                }
+            }}
         }
     });
 
     tokio::select! {
-        _ = &mut heart_beat_handle => {
-            if let Some(a) = &mut *send_loop_abort_clone.lock().await {
-                a.abort();
-            }
-            client_handle.abort();
-        },
-        _ = &mut client_handle => heart_beat_handle.abort(),
+        _ = &mut heart_beat_handle  => client_handle.abort(),
+        _ = &mut client_handle      => heart_beat_handle.abort(),
     };
 
     println!("Done with {who}!");
-}
-
-async fn send_task(rx: Receiver<Content>, hello: HelloRequest, sender: Arc<Mutex<SplitSink<WebSocket, Message>>>, cancellation_token: CancellationToken) {
-    let playlist = match get_display_playlist(&rx, &hello.uuid) {
-        Some(p) => p,
-        None => {
-            println!("Error: Display playlist could not be found");
-            return
-        },
-    };
-
-    'outer: loop {
-        for item in &playlist {
-            let sleep;
-            // println!("{item:?}");
-            let payload = match item {
-                PlaylistItem::Website { name, settings } => {
-                    println!("Sending {name:?} website to {:?}", hello.hostname);
-                    sleep = settings.duration;
-                    DisplayPayload::Website { data: WebsitePayload { content: settings.url.clone() } }
-                },
-            };
-
-            let msg = Message::Text(serde_json::to_string(&Payload::Display(payload)).unwrap());
-            sender.lock().await.send(msg).await.unwrap();
-            
-            tokio::select! {
-                _ = tokio::time::sleep(Duration::from_secs(sleep)) => (),
-                _ = cancellation_token.cancelled() => break 'outer,
-            };
-        }
-    };
 }
 
 fn get_display_playlist(rx: &Receiver<Content>, uuid: &String) -> Option<Vec<PlaylistItem>> {
