@@ -87,7 +87,7 @@ pub async fn client_connection(socket: WebSocket, who: SocketAddr, mut rx: Recei
                 },
             };
         
-            loop { for item in &playlist {
+            for item in playlist.iter().cycle() {
                 let sleep;
                 let payload = match item {
                     PlaylistItem::Website { name, settings } => {
@@ -109,13 +109,13 @@ pub async fn client_connection(socket: WebSocket, who: SocketAddr, mut rx: Recei
                                 continue 'outer_send_loop;
                             },
                             Err(e) => {
-                                println!("Receive Error: {e}");
+                                println!("Exit thread due to error: {e}");
                                 return;
                             },
                         }
                     }
                 }
-            }}
+            }
         }
     });
 
