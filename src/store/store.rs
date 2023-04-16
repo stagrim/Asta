@@ -29,15 +29,27 @@ pub struct Playlist {
 pub enum PlaylistItem {
     #[serde(rename(deserialize = "WEBSITE"))]
     Website { name: String, settings: WebsiteData },
-    // #[serde(rename(deserialize = "TEXT"))]
-    // Text { name: String, settings: WebsiteData },
-    // #[serde(rename(deserialize = "IMAGE"))]
-    // Image { name: String, settings: WebsiteData }
+    #[serde(rename(deserialize = "TEXT"))]
+    Text { name: String, settings: TextData },
+    #[serde(rename(deserialize = "IMAGE"))]
+    Image { name: String, settings: ImageData }
 }
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct WebsiteData {
     pub url: String,
+    pub duration: u64
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct TextData {
+    pub text: String,
+    pub duration: u64
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct ImageData {
+    pub src: String,
     pub duration: u64
 }
 

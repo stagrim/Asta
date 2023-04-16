@@ -29,10 +29,10 @@ pub enum Payload {
 pub enum DisplayPayload {
     #[serde(rename(serialize = "WEBSITE"))]
     Website { data: WebsitePayload },
-    // #[serde(rename(serialize = "TEXT"))]
-    // Text { data: WebsitePayload },
-    // #[serde(rename(serialize = "IMAGE"))]
-    // Image { data: WebsitePayload }
+    #[serde(rename(serialize = "TEXT"))]
+    Text { data: WebsitePayload },
+    #[serde(rename(serialize = "IMAGE"))]
+    Image { data: WebsitePayload }
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -95,6 +95,17 @@ pub async fn client_connection(socket: WebSocket, who: SocketAddr, mut rx: Recei
                         sleep = settings.duration;
                         DisplayPayload::Website { data: WebsitePayload { content: settings.url.clone() } }
                     },
+                    PlaylistItem::Text { name, settings } => {
+                        println!("Sending {name:?} text to {:?}", hello.hostname);
+                        sleep = settings.duration;
+                        DisplayPayload::Text { data: WebsitePayload { content: settings.text.clone() } }
+                    },
+                    PlaylistItem::Image { name, settings } => {
+                        println!("Sending {name:?} image to {:?}", hello.hostname);
+                        sleep = settings.duration;
+                        DisplayPayload::Image { data: WebsitePayload { content: settings.src.clone() } }
+                    },
+                    
                 };
     
                 let msg = Message::Text(serde_json::to_string(&Payload::Display(payload)).unwrap());
