@@ -5,13 +5,12 @@ use hyper::StatusCode;
 use serde::Serialize;
 use store::store::Store;
 use tower_http::normalize_path::NormalizePath;
+use uuid::Uuid;
 
 use crate::connection::connection::client_connection;
 
 mod store;
 mod connection;
-
-type UUID = String;
 
 #[derive(Serialize)]
 struct ErrorResponse {
@@ -50,9 +49,9 @@ async fn main() {
 
 #[derive(Serialize)]
 struct Schedule {
-    uuid: UUID,
+    uuid: Uuid,
     name: String,
-    playlist: UUID
+    playlist: Uuid
 }
 
 async fn get_schedules(State(store): State<Arc<Store>>) -> Json<Vec<Schedule>> {
@@ -68,7 +67,7 @@ async fn get_schedules(State(store): State<Arc<Store>>) -> Json<Vec<Schedule>> {
     )
 }
 
-async fn set_display_schedule(State(store): State<Arc<Store>>, Path((display, schedule)): Path<(UUID, UUID)>) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+async fn set_display_schedule(State(store): State<Arc<Store>>, Path((display, schedule)): Path<(Uuid, Uuid)>) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
     let read = store.read().await;
     let schedule_exists = read.schedules.contains_key(&schedule);
     let display_exists = read.displays.contains_key(&display);

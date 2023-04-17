@@ -2,21 +2,20 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 use tokio::{fs, sync::{watch::{self, Sender, Receiver}, RwLock, RwLockReadGuard, RwLockWriteGuard}};
-
-type UUID = String;
+use uuid::Uuid;
 
 // TODO: Does currently not update the file when read state is updated. Updates are not synced
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Display {
     pub name: String,
-    pub schedule: String
+    pub schedule: Uuid
 }
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Schedule {
     pub name: String,
-    pub playlist: String
+    pub playlist: Uuid
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -56,9 +55,9 @@ pub struct ImageData {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Content {
-    pub displays: HashMap<String, Display>,
-    pub playlists: HashMap<String, Playlist>,
-    pub schedules: HashMap<String, Schedule>,
+    pub displays: HashMap<Uuid, Display>,
+    pub playlists: HashMap<Uuid, Playlist>,
+    pub schedules: HashMap<Uuid, Schedule>,
 }
 
 pub struct Store {
@@ -88,17 +87,19 @@ impl Store {
         self.content.read().await
     }
 
+    /// Runs closure with lock write guard handle given as argument
+    /// and sends a message signalling a state change once it is done
     async fn write<F>(&self, fun: F)
     where F: FnOnce(RwLockWriteGuard<Content>) -> () {
         let c = self.content.write().await;
         fun(c);
-        self.sender.send(()).expect("Sender dropped");
+        self.sender.send(()).expect("Channel closed");
     }
 
     /// Updates an existing display to the schedule given.
     /// 
     /// Does not check if the schedule exists or not.
-    pub async fn update_display_schedule(&self, display: UUID, schedule: UUID) {
+    pub async fn update_display_schedule(&self, display: Uuid, schedule: Uuid) {
         self.write(|mut c| { 
             c.displays
                 .entry(display)
@@ -112,7 +113,7 @@ impl Store {
     }
 
     /// Get all PlaylistItem(s) from the scheduled playlist in the display's schedule
-    pub async fn get_display_playlists(&self, display: &UUID) -> Option<Vec<PlaylistItem>> {
+    pub async fn get_display_playlists(&self, display: &Uuid) -> Option<Vec<PlaylistItem>> {
         let content = self.read().await;
         let schedule = &content.displays.get(display)?.schedule;
         Some(content.playlists.get(&content.schedules.get(schedule)?.playlist)?.items.clone())

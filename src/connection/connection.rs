@@ -5,12 +5,13 @@ use axum::extract::ws::{Message, WebSocket};
 use futures_util::{SinkExt, stream::{SplitSink, SplitStream}, StreamExt};
 use serde::{Deserialize, Serialize};
 use tokio::{sync::Mutex, time::timeout};
+use uuid::Uuid;
 
 use crate::store::store::{PlaylistItem, Store};
 
 #[derive(Deserialize, Clone)]
 struct HelloRequest {
-    uuid: String,
+    uuid: Uuid,
     hostname: String
 }
 
