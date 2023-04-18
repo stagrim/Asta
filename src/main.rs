@@ -27,7 +27,6 @@ impl From<(u8, String)> for ErrorResponse {
 #[tokio::main]
 async fn main() {
     let store = Arc::new(Store::new().await);
-    
     println!("{}", store.to_string().await);
 
     let app = NormalizePath::trim_trailing_slash(
@@ -48,20 +47,20 @@ async fn main() {
 }
 
 #[derive(Serialize)]
-struct Schedule {
+struct ScheduleResponse {
     uuid: Uuid,
     name: String,
     playlist: Uuid
 }
 
-async fn get_schedules(State(store): State<Arc<Store>>) -> Json<Vec<Schedule>> {
+async fn get_schedules(State(store): State<Arc<Store>>) -> Json<Vec<ScheduleResponse>> {
     Json(
         store.read().await
-            .schedules.clone()
-            .into_iter()
-            .map(|(uuid, s)| Schedule {
-                uuid,
-                name: s.name,
+            .schedules
+            .iter()
+            .map(|(uuid, s)| ScheduleResponse {
+                uuid: uuid.clone(),
+                name: s.name.clone(),
                 playlist: s.playlist
             }).collect()
     )

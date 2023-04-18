@@ -4,6 +4,8 @@ use serde::Deserialize;
 use tokio::{fs, sync::{watch::{self, Sender, Receiver}, RwLock, RwLockReadGuard, RwLockWriteGuard}};
 use uuid::Uuid;
 
+use super::schedule::Schedule;
+
 // TODO: Does currently not update the file when read state is updated. Updates are not synced
 
 #[derive(Deserialize, Debug, Clone)]
@@ -12,13 +14,7 @@ pub struct Display {
     pub schedule: Uuid
 }
 
-#[derive(Deserialize, Debug, Clone)]
-pub struct Schedule {
-    pub name: String,
-    pub playlist: Uuid
-}
-
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug)]
 pub struct Playlist {
     pub name: String,
     pub items: Vec<PlaylistItem>
@@ -53,7 +49,7 @@ pub struct ImageData {
     pub duration: u64
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug)]
 pub struct Content {
     pub displays: HashMap<Uuid, Display>,
     pub playlists: HashMap<Uuid, Playlist>,
@@ -83,6 +79,11 @@ impl Store {
         serde_json::from_str(&str).unwrap()
     }
 
+    /// Returns receiver handle to a watch channel which gets notified if store has been updated
+    pub fn receiver(&self) -> Receiver<()> {
+        self.receiver.clone()
+    }
+
     pub async fn read(&self) -> RwLockReadGuard<Content> {
         self.content.read().await
     }
@@ -105,11 +106,6 @@ impl Store {
                 .entry(display)
                 .and_modify(|d| d.schedule = schedule);
         }).await;
-    }
-
-    /// Returns receiver handle to a watch channel which gets notified if store has been updated
-    pub fn receiver(&self) -> Receiver<()> {
-        self.receiver.clone()
     }
 
     /// Get all PlaylistItem(s) from the scheduled playlist in the display's schedule
