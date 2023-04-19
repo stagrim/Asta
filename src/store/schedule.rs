@@ -6,40 +6,6 @@ use uuid::Uuid;
 use cron::Schedule as CronSchedule;
 
 #[derive(Debug)]
-pub struct Schedule {
-    pub name: String,
-    pub playlist: Uuid,
-    scheduled: Scheduled
-}
-
-impl<'de> Deserialize<'de> for Schedule {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de> {
-        let input = ScheduleInput::deserialize(deserializer).unwrap();
-        Ok(Schedule {
-            name: input.name,
-            playlist: input.playlist,
-            scheduled: Scheduled::new(input.scheduled.unwrap_or(vec![]), input.playlist)
-        })
-    }
-}
-
-#[derive(Deserialize, Debug)]
-struct ScheduleInput {
-    name: String,
-    scheduled: Option<Vec<ScheduledPlaylistInput>>,
-    playlist: Uuid
-}
-
-#[derive(Deserialize, Debug)]
-struct ScheduledPlaylistInput {
-    playlist: Uuid,
-    start: String,
-    end: String
-}
-
-#[derive(Debug)]
 enum ScheduledItem {
     Schedule {
         start: CronSchedule,
@@ -50,15 +16,19 @@ enum ScheduledItem {
 }
 
 #[derive(Debug)]
-struct Scheduled {
+pub struct Schedule {
+    pub name: String,
+    pub playlist: Uuid,
     schedules: Vec<ScheduledItem>
 }
 
-impl Scheduled {
-    fn new(playlist: Vec<ScheduledPlaylistInput>, fallback: Uuid) -> Self {
-        Scheduled { 
-            schedules: 
-                playlist.iter().map(|s| ScheduledItem::Schedule { 
+impl Schedule {
+    fn new(name: String, schedules: Vec<ScheduledPlaylistInput>, fallback: Uuid) -> Self {
+        Schedule {
+            name,
+            playlist: fallback,
+            schedules:
+                schedules.iter().map(|s| ScheduledItem::Schedule { 
                     start: CronSchedule::from_str(&s.start).unwrap(),
                     end: CronSchedule::from_str(&s.end).unwrap(),
                     playlist: s.playlist
@@ -94,8 +64,9 @@ impl Scheduled {
                     if let (Some(last_start), Some(last_end)) = (last_start, last_end) {
                         // If both previous start and end moments were found, return Some if the most recent one was a start action
                         match last_start.cmp(&last_end) {
+                            std::cmp::Ordering::Greater => Some(playlist.clone()),
                             std::cmp::Ordering::Less => None,
-                            _ => Some(playlist.clone()),
+                            std::cmp::Ordering::Equal => panic!("Start and end action happening at the same moment ({})", last_start.to_string()),
                         }
                     } else {
                         // If at most one previous moment was found, return Some if it was a last_start
@@ -106,6 +77,96 @@ impl Scheduled {
             }
         }).unwrap()
     }
+
+    fn get_fallback(&self) -> Uuid {
+        if let ScheduledItem::Fallback(uuid) = self.schedules.last().unwrap() {
+            uuid.clone()
+        } else {
+            panic!("Last element should always be a fallback: {:#?}", self.schedules);
+        }
+    }
+
+    /// Returns next scheduled moment if any
+    /// 
+    /// Does not return scheduled moments at the exact time passed as argument
+    pub fn next_schedule(&self, from: &DateTime<Local>) -> Option<Moment> {
+        let moments: Vec<Moment> = self.schedules.iter()
+            .filter_map(|schedule| {
+                match schedule {
+                    ScheduledItem::Schedule { start, end, playlist } => {
+                        let (mut next_start_iter, mut next_end_iter) =
+                            (start.after(from), end.after(from));
+                        
+                        let current_playlist = self.current_playlist(&from);
+                        loop {
+                            let (next_start, next_end) = (next_start_iter.next(), next_end_iter.next());
+                            let a = if let (Some(next_start), Some(next_end)) = (next_start, next_end) {
+                                // If both previous start and end moments were found, return Some if the most recent one was a start action
+                                if next_start == next_end {
+                                    panic!("Start and end action happening at the same moment ({})", next_start.to_string());
+                                }
+                                Some(next_start.min(next_end))
+                            } else {
+                                next_start.or(next_end)
+                            };
+                            if let Some(time) = a {
+                                let playlist_at_moment = self.current_playlist(&time);
+                                if playlist_at_moment != current_playlist {
+                                    break Some(Moment { time, playlist: playlist_at_moment })
+                                }
+                            } else {
+                                break None
+                            }
+                        }
+                    },
+                    ScheduledItem::Fallback(_) => None,
+                }
+            })
+            .collect();
+        
+        let closest_time = moments.iter().min_by_key(|m| m.time)?.time;
+        let fallback = self.get_fallback();
+        
+        moments.into_iter()
+            .take_while(|m| m.time == closest_time)
+            .find(|m| m.playlist != fallback)
+            .or(Some(Moment { time: closest_time, playlist: fallback }))
+        
+    }
+}
+
+#[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq))]
+pub struct Moment {
+    /// Scheduled time of change
+    pub time: DateTime<Local>,
+    // /// Uuid of schedule to be updated 
+    // schedule: Uuid,
+    /// Uuid of playlist which will become active at moment
+    pub playlist: Uuid,
+}
+
+#[derive(Deserialize, Debug)]
+struct ScheduleInput {
+    name: String,
+    scheduled: Option<Vec<ScheduledPlaylistInput>>,
+    playlist: Uuid
+}
+
+#[derive(Deserialize, Debug, Clone)]
+struct ScheduledPlaylistInput {
+    playlist: Uuid,
+    start: String,
+    end: String
+}
+
+impl<'de> Deserialize<'de> for Schedule {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de> {
+        let input = ScheduleInput::deserialize(deserializer).unwrap();
+        Ok(Schedule::new(input.name, input.scheduled.unwrap_or(vec![]), input.playlist))
+    }
 }
 
 #[cfg(test)]
@@ -113,20 +174,103 @@ mod test {
     use chrono::{Local, TimeZone};
     use uuid::Uuid;
 
-    use super::{Scheduled, ScheduledPlaylistInput};
+    use crate::store::schedule::Moment;
+
+    use super::{Schedule, ScheduledPlaylistInput};
+
+    #[test]
+    fn test_next_schedule() {
+        let scheduled_uuid = Uuid::parse_str("8626f6e1-df7c-48d9-83c8-d7845b774ecd").unwrap();
+        let scheduled2_uuid = Uuid::parse_str("d125a360-4e41-45d5-b6c7-ea471c542510").unwrap();
+        let default_uuid = Uuid::parse_str("25cd63df-1f10-4c3f-afdb-58156ca47ebd").unwrap();
+        let schedules = vec![
+            ScheduledPlaylistInput {
+                playlist: scheduled_uuid,
+                start: "0 0 10 * * * *".to_string(),
+                end: "0 0 14 * * * *".to_string(),
+            },
+            ScheduledPlaylistInput {
+                playlist: scheduled2_uuid,
+                start: "0 0 11 * * * *".to_string(),
+                end: "0 0 15 * * * *".to_string(),
+            }
+        ];
+        let schedule: Schedule = Schedule::new("test".to_string(), schedules, default_uuid);
+        
+        assert_eq!(
+            Moment { time: Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap(), playlist: scheduled_uuid },
+            schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 9, 59, 59).unwrap()).unwrap()
+        );
+
+        let first_schedule_end =
+            Moment { time: Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap(), playlist: scheduled2_uuid };
+
+        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap()).unwrap());
+        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 1).unwrap()).unwrap());
+
+        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 10, 59, 59).unwrap()).unwrap());
+        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 11, 0, 0).unwrap()).unwrap());
+        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 11, 0, 1).unwrap()).unwrap());
+    }
+
+    #[test]
+    fn test_next_schedule_specific_date() {
+        let scheduled_uuid = Uuid::parse_str("8626f6e1-df7c-48d9-83c8-d7845b774ecd").unwrap();
+        let scheduled2_uuid = Uuid::parse_str("d125a360-4e41-45d5-b6c7-ea471c542510").unwrap();
+        let default_uuid = Uuid::parse_str("25cd63df-1f10-4c3f-afdb-58156ca47ebd").unwrap();
+        let schedules = vec![
+            ScheduledPlaylistInput {
+                playlist: scheduled_uuid,
+                start: "0 0 10 18 4 * 2023".to_string(),
+                end: "0 0 14 18 4 * 2023".to_string(),
+            },
+            ScheduledPlaylistInput {
+                playlist: scheduled2_uuid,
+                start: "0 0 11 18 4 * 2023".to_string(),
+                end: "0 0 15 18 4 * 2023".to_string(),
+            }
+        ];
+        let schedule: Schedule = Schedule::new("test".to_string(), schedules, default_uuid);
+        
+        assert_eq!(
+            Moment { time: Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap(), playlist: scheduled_uuid },
+            schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 9, 59, 59).unwrap()).unwrap()
+        );
+
+        let first_schedule_end =
+            Some(Moment { time: Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap(), playlist: scheduled2_uuid });
+
+        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap()));
+        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 1).unwrap()));
+
+        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 10, 59, 59).unwrap()));
+        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 11, 0, 0).unwrap()));
+        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 11, 0, 1).unwrap()));
+
+        let second_schedule_end =
+            Some(Moment { time: Local.with_ymd_and_hms(2023, 4, 18, 15, 0, 0).unwrap(), playlist: default_uuid });
+
+        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 13, 59, 59).unwrap()));
+        assert_eq!(second_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap()));
+        assert_eq!(second_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 1).unwrap()));
+
+        assert_eq!(second_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 14, 59, 59).unwrap()));
+        assert_eq!(None, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 15, 0, 0).unwrap()));
+        assert_eq!(None, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 15, 0, 1).unwrap()));
+    }
 
     #[test]
     fn test_current_playlist_specific_date() {
         let scheduled_uuid = Uuid::parse_str("8626f6e1-df7c-48d9-83c8-d7845b774ecd").unwrap();
         let default_uuid = Uuid::parse_str("25cd63df-1f10-4c3f-afdb-58156ca47ebd").unwrap();
-        let playlist = vec![
+        let schedules = vec![
             ScheduledPlaylistInput {
                 playlist: scheduled_uuid,
                 start: "0 0 10 18 4 * 2023".to_string(),
                 end: "0 0 14 18 4 * 2023".to_string(),
             }
         ];
-        let schedule: Scheduled = Scheduled::new(playlist, default_uuid);
+        let schedule: Schedule = Schedule::new("test".to_string(), schedules, default_uuid);
 
         assert_eq!(default_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 9, 59, 59).unwrap()));
         assert_eq!(scheduled_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap()));
@@ -148,7 +292,7 @@ mod test {
                 end: "0 0 14 * * * *".to_string(),
             }
         ];
-        let schedule: Scheduled = Scheduled::new(playlist, default_uuid);
+        let schedule: Schedule = Schedule::new("test".to_string(), playlist, default_uuid);
 
         assert_eq!(default_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 9, 59, 59).unwrap()));
         assert_eq!(scheduled_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap()));
@@ -157,5 +301,36 @@ mod test {
         assert_eq!(scheduled_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 13, 59, 59).unwrap()));
         assert_eq!(default_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap()));
         assert_eq!(default_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 1).unwrap()));
+    }
+
+    #[test]
+    fn test_current_playlist_smooth_transition() {
+        let scheduled_uuid = Uuid::parse_str("8626f6e1-df7c-48d9-83c8-d7845b774ecd").unwrap();
+        let scheduled2_uuid = Uuid::parse_str("d125a360-4e41-45d5-b6c7-ea471c542510").unwrap();
+        let default_uuid = Uuid::parse_str("25cd63df-1f10-4c3f-afdb-58156ca47ebd").unwrap();
+        let mut playlist = vec![
+            ScheduledPlaylistInput {
+                playlist: scheduled_uuid,
+                start: "0 0 10 * * * *".to_string(),
+                end: "0 0 14 * * * *".to_string(),
+            },
+            ScheduledPlaylistInput {
+                playlist: scheduled2_uuid,
+                start: "0 0 14 * * * *".to_string(),
+                end: "0 0 18 * * * *".to_string(),
+            }
+        ];
+        let schedule: Schedule = Schedule::new("test".to_string(), playlist.clone(), default_uuid);
+
+        assert_eq!(scheduled_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 13, 59, 59).unwrap()));
+        assert_eq!(scheduled2_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap()));
+        assert_eq!(scheduled2_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 1).unwrap()));
+
+        playlist.reverse();
+        let schedule: Schedule = Schedule::new("test".to_string(), playlist, default_uuid);
+
+        assert_eq!(scheduled_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 13, 59, 59).unwrap()));
+        assert_eq!(scheduled2_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap()));
+        assert_eq!(scheduled2_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 1).unwrap()));
     }
 }
