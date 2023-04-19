@@ -90,7 +90,7 @@ impl Schedule {
     /// 
     /// Does not return scheduled moments at the exact time passed as argument
     pub fn next_schedule(&self, from: &DateTime<Local>) -> Option<Moment> {
-        let moments: Vec<Moment> = self.schedules.iter()
+        let mut moments = self.schedules.iter()
             .filter_map(|schedule| {
                 match schedule {
                     ScheduledItem::Schedule { start, end, playlist } => {
@@ -98,7 +98,7 @@ impl Schedule {
                             (start.after(from), end.after(from));
                         
                         let current_playlist = self.current_playlist(&from);
-                        loop {
+                        Some(move || {
                             let (next_start, next_end) = (next_start_iter.next(), next_end_iter.next());
                             let a = if let (Some(next_start), Some(next_end)) = (next_start, next_end) {
                                 // If both previous start and end moments were found, return Some if the most recent one was a start action
@@ -112,26 +112,33 @@ impl Schedule {
                             if let Some(time) = a {
                                 let playlist_at_moment = self.current_playlist(&time);
                                 if playlist_at_moment != current_playlist {
-                                    break Some(Moment { time, playlist: playlist_at_moment })
+                                    return Ok(Moment { time, playlist: playlist_at_moment })
                                 }
-                            } else {
-                                break None
+                                return Err(Some(time))
                             }
-                        }
+                            Err(None)
+                        })
                     },
                     ScheduledItem::Fallback(_) => None,
                 }
-            })
-            .collect();
+            });
         
-        let closest_time = moments.iter().min_by_key(|m| m.time)?.time;
-        let fallback = self.get_fallback();
-        
-        moments.into_iter()
-            .take_while(|m| m.time == closest_time)
-            .find(|m| m.playlist != fallback)
-            .or(Some(Moment { time: closest_time, playlist: fallback }))
-        
+        loop {
+            let mut closest_time =
+                (&mut moments).filter_map(|mut f| match f() {
+                    Ok(m) => Some(Ok(m)),
+                    Err(Some(t)) => Some(Err((f, t))),
+                    Err(None) => None,
+                });
+            
+            if let Some(Ok(m)) = closest_time.find(|r| r.is_ok()) {
+                return Some(m)
+            }
+
+            if closest_time.count() == 0 {
+                return None
+            }
+        }
     }
 }
 
