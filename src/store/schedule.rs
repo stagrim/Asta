@@ -15,6 +15,16 @@ enum ScheduledItem {
     Fallback (Uuid)
 }
 
+#[derive(Clone)]
+enum NextMoment {
+    /// Next moment which changes active playlist
+    Moment(Moment),
+    /// Moment found, but does not change active playlist, a moment from tested scheduled time may exist
+    Continue(DateTime<Local>),
+    /// No future scheduled times exists, a moment will not be found
+    Exhausted
+}
+
 #[derive(Debug)]
 pub struct Schedule {
     pub name: String,
@@ -91,27 +101,20 @@ impl Schedule {
     /// Does not return scheduled moments at the exact time passed as argument
     pub fn next_schedule<'a>(&self, from: &DateTime<Local>) -> Option<Moment> {
         // Vector with closures returning the next scheduled time
-        // Ok contains a Moment when an action will have (change active playlist) an effect at that time
-        // Err contains a Some when the action would not have an effect at that time, but still could at a future time
-        // Err contains a None when no iterator has any scheduled times left and is reached when the schedule is unable to yield an Ok
-        // TODO: Add enum for return to clarify things
         let mut future_moments = self.schedules.iter()
             .filter_map(|schedule| { match schedule {
-                ScheduledItem::Schedule { start, end, playlist: _ } => {
+                ScheduledItem::Schedule { start, end, playlist } => {
                     let (mut next_start_iter, mut next_end_iter) =
                         (start.after(from).peekable(), end.after(from).peekable());
                     
                     let current_playlist = self.current_playlist(&from);
-                    // TODO: replace caching in closure with caching of result from calling the closure instead
-                    let mut moment: Option<Moment> = None;
 
                     Some(move || {
-                        if let Some(m) = &moment {
-                            return Ok(m.clone())
-                        }
-
-                        let time_opt = {
-                            // Consume item from the iterator which holds the lowest(?) time without modifying the other one
+                        // Only use the end scheduled times if current schedule's playlist is already active
+                        let time_opt = if &current_playlist == playlist {
+                            next_end_iter.next()
+                        } else {
+                            // Consume item from the iterator which holds the lowest(?) time without modifying the other iterator
                             let (next_start, next_end) = (next_start_iter.peek(), next_end_iter.peek());
                             match (next_start, next_end) {
                                 (None, None) => None,
@@ -127,28 +130,47 @@ impl Schedule {
 
                         if let Some(time) = time_opt {
                             let playlist_at_moment = self.current_playlist(&time);
+                            // Return a moment if schedule becomes active at time
                             if playlist_at_moment != current_playlist {
-                                let m = Moment { time, playlist: playlist_at_moment };
-                                moment = Some(m.clone());
-                                return Ok(m)
-                                // return Ok(Moment { time, playlist: playlist_at_moment })
+                                return NextMoment::Moment(Moment { time, playlist: playlist_at_moment })
                             }
-                            return Err(Some(time))
+                            return NextMoment::Continue(time)
                         }
-                        Err(None)
+                        NextMoment::Exhausted
                     })
                 },
                 ScheduledItem::Fallback(_) => None,
             }
-        }).collect::<Vec<_>>();
+        })
+        // Create tuple structure where first value is the last result from the closure and the second is the closure itself
+        // All start with with continue result since a new result should be calculated in the loop
+        .map(|f| (NextMoment::Continue(*from), f))
+        .collect::<Vec<_>>();
 
+        // Lowest found timestamp for found moment
+        let mut lowest_date: DateTime<Local> = DateTime::from(DateTime::<Local>::MAX_UTC);
+
+        // Loop until the closest Moment to the from timestamp is found or until all schedules are exhausted
         loop {
-            // TODO: save timestamps to only calculate the values for those with a lesser timestamp to maybe save time
-            // maybe save last value together with function and choose wether to call it based on last result?
-            let mut closest_time = future_moments.iter_mut().filter_map(|f| match f() {
-                    Ok(m) => Some(Ok(m)),
-                    Err(Some(f)) => Some(Err(f)),
-                    Err(None) => None,
+            let mut closest_time = future_moments.iter_mut()
+                .filter_map(|(res, f)| match res {
+                        NextMoment::Moment(m) => Some(NextMoment::Moment(m.clone())),
+                        NextMoment::Continue(time) => {
+                            if time < &mut lowest_date {
+                                *res = f();
+                                match res {
+                                    NextMoment::Exhausted => None,
+                                    NextMoment::Moment(m) => {
+                                        lowest_date = lowest_date.min(m.time);
+                                        Some(NextMoment::Moment(m.clone()))
+                                    },
+                                    next => Some(next.clone())
+                                }
+                            } else {
+                                Some(NextMoment::Continue(time.clone()))
+                            }
+                        },
+                        NextMoment::Exhausted => None,
                 }).peekable();
 
             // Check if iterator is empty
@@ -156,9 +178,10 @@ impl Schedule {
                 return None
             }
 
-            if let Some(Ok(m)) = closest_time.min_by_key(|m| match m {
-                Ok(m) => m.time,
-                Err(t) => *t,
+            if let Some(NextMoment::Moment(m)) = closest_time.min_by_key(|m| match m {
+                NextMoment::Moment(m) => m.time,
+                NextMoment::Continue(t) => *t,
+                NextMoment::Exhausted => panic!("Should be filtered out")
             }) {
                 return Some(m)
             }
