@@ -89,60 +89,84 @@ impl Schedule {
     /// Returns next scheduled moment if any
     /// 
     /// Does not return scheduled moments at the exact time passed as argument
-    pub fn next_schedule(&self, from: &DateTime<Local>) -> Option<Moment> {
-        let mut moments = self.schedules.iter()
-            .filter_map(|schedule| {
-                match schedule {
-                    ScheduledItem::Schedule { start, end, playlist } => {
-                        let (mut next_start_iter, mut next_end_iter) =
-                            (start.after(from), end.after(from));
-                        
-                        let current_playlist = self.current_playlist(&from);
-                        Some(move || {
-                            let (next_start, next_end) = (next_start_iter.next(), next_end_iter.next());
-                            let a = if let (Some(next_start), Some(next_end)) = (next_start, next_end) {
-                                // If both previous start and end moments were found, return Some if the most recent one was a start action
-                                if next_start == next_end {
-                                    panic!("Start and end action happening at the same moment ({})", next_start.to_string());
-                                }
-                                Some(next_start.min(next_end))
-                            } else {
-                                next_start.or(next_end)
-                            };
-                            if let Some(time) = a {
-                                let playlist_at_moment = self.current_playlist(&time);
-                                if playlist_at_moment != current_playlist {
-                                    return Ok(Moment { time, playlist: playlist_at_moment })
-                                }
-                                return Err(Some(time))
+    pub fn next_schedule<'a>(&self, from: &DateTime<Local>) -> Option<Moment> {
+        // Vector with closures returning the next scheduled time
+        // Ok contains a Moment when an action will have (change active playlist) an effect at that time
+        // Err contains a Some when the action would not have an effect at that time, but still could at a future time
+        // Err contains a None when no iterator has any scheduled times left and is reached when the schedule is unable to yield an Ok
+        // TODO: Add enum for return to clarify things
+        let mut future_moments = self.schedules.iter()
+            .filter_map(|schedule| { match schedule {
+                ScheduledItem::Schedule { start, end, playlist: _ } => {
+                    let (mut next_start_iter, mut next_end_iter) =
+                        (start.after(from).peekable(), end.after(from).peekable());
+                    
+                    let current_playlist = self.current_playlist(&from);
+                    // TODO: replace caching in closure with caching of result from calling the closure instead
+                    let mut moment: Option<Moment> = None;
+
+                    Some(move || {
+                        if let Some(m) = &moment {
+                            return Ok(m.clone())
+                        }
+
+                        let time_opt = {
+                            // Consume item from the iterator which holds the lowest(?) time without modifying the other one
+                            let (next_start, next_end) = (next_start_iter.peek(), next_end_iter.peek());
+                            match (next_start, next_end) {
+                                (None, None) => None,
+                                (Some(_), None) => next_start_iter.next(),
+                                (None, Some(_)) => next_end_iter.next(),
+                                (Some(s), Some(e)) => match s.cmp(e) {
+                                    std::cmp::Ordering::Less => next_start_iter.next(),
+                                    std::cmp::Ordering::Greater => next_end_iter.next(),
+                                    std::cmp::Ordering::Equal => panic!("Start and end action happening at the same moment ({})", s.to_string()),
+                                },
                             }
-                            Err(None)
-                        })
-                    },
-                    ScheduledItem::Fallback(_) => None,
-                }
-            });
-        
+                        };
+
+                        if let Some(time) = time_opt {
+                            let playlist_at_moment = self.current_playlist(&time);
+                            if playlist_at_moment != current_playlist {
+                                let m = Moment { time, playlist: playlist_at_moment };
+                                moment = Some(m.clone());
+                                return Ok(m)
+                                // return Ok(Moment { time, playlist: playlist_at_moment })
+                            }
+                            return Err(Some(time))
+                        }
+                        Err(None)
+                    })
+                },
+                ScheduledItem::Fallback(_) => None,
+            }
+        }).collect::<Vec<_>>();
+
         loop {
-            let mut closest_time =
-                (&mut moments).filter_map(|mut f| match f() {
+            // TODO: save timestamps to only calculate the values for those with a lesser timestamp to maybe save time
+            // maybe save last value together with function and choose wether to call it based on last result?
+            let mut closest_time = future_moments.iter_mut().filter_map(|f| match f() {
                     Ok(m) => Some(Ok(m)),
-                    Err(Some(t)) => Some(Err((f, t))),
+                    Err(Some(f)) => Some(Err(f)),
                     Err(None) => None,
-                });
-            
-            if let Some(Ok(m)) = closest_time.find(|r| r.is_ok()) {
-                return Some(m)
+                }).peekable();
+
+            // Check if iterator is empty
+            if closest_time.peek().is_none() {
+                return None
             }
 
-            if closest_time.count() == 0 {
-                return None
+            if let Some(Ok(m)) = closest_time.min_by_key(|m| match m {
+                Ok(m) => m.time,
+                Err(t) => *t,
+            }) {
+                return Some(m)
             }
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct Moment {
     /// Scheduled time of change
@@ -186,6 +210,69 @@ mod test {
     use super::{Schedule, ScheduledPlaylistInput};
 
     #[test]
+    fn test_next_schedule_many_schedules_with_wildcards() {
+        let scheduled_uuid = Uuid::parse_str("8626f6e1-df7c-48d9-83c8-d7845b774ecd").unwrap();
+        let scheduled2_uuid = Uuid::parse_str("d125a360-4e41-45d5-b6c7-ea471c542510").unwrap();
+        let scheduled3_uuid = Uuid::parse_str("05cb41ee-463d-41ca-870b-606a54f45d59").unwrap();
+        let scheduled4_uuid = Uuid::parse_str("cc3c59da-5499-4b64-98c7-ca0501163479").unwrap();
+        let default_uuid = Uuid::parse_str("25cd63df-1f10-4c3f-afdb-58156ca47ebd").unwrap();
+        let schedules = vec![
+            ScheduledPlaylistInput {
+                playlist: scheduled_uuid,
+                // Since only one path is checked of start and end, with the lesser next scheduled event picked, test that the end
+                // here still gets picked as first moment, since start schedule needs to be exhausted for end can start. This test makes sure
+                // that start is chosen instead of a moment at a later time.
+                // TODO: make algorithm skip all start moments here since none will change the value when it is already active and only focus on end schedule?
+                start: "* * 10 * * * *".to_string(),
+                end: "0 * 14 * * * *".to_string(),
+            },
+            ScheduledPlaylistInput {
+                playlist: scheduled2_uuid,
+                start: "* 0 11 * * * *".to_string(),
+                end: "0 * 15 * * * *".to_string(),
+            },
+            ScheduledPlaylistInput {
+                playlist: scheduled3_uuid,
+                start: "* * 12 * * * *".to_string(),
+                end: "* 0 16 * * * *".to_string(),
+            },
+            ScheduledPlaylistInput {
+                playlist: scheduled4_uuid,
+                start: "0 * 13 * * * *".to_string(),
+                end: "* 0 17 * * * *".to_string(),
+            },
+        ];
+        let schedule: Schedule = Schedule::new("test".to_string(), schedules, default_uuid);
+
+        let first_schedule_start =
+            Moment { time: Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap(), playlist: scheduled_uuid };
+
+        let first_schedule_end =
+            Moment { time: Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap(), playlist: scheduled2_uuid };
+
+        assert_eq!(first_schedule_start, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 9, 59, 59).unwrap()).unwrap());
+        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap()).unwrap());
+        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 1).unwrap()).unwrap());
+
+        let second_schedule_end =
+            Moment { time: Local.with_ymd_and_hms(2023, 4, 18, 15, 0, 0).unwrap(), playlist: scheduled3_uuid };
+
+        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 13, 59, 59).unwrap()).unwrap());
+        assert_eq!(second_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap()).unwrap());
+        assert_eq!(second_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 1).unwrap()).unwrap());
+
+        let forth_schedule_end =
+            Moment { time: Local.with_ymd_and_hms(2023, 4, 18, 17, 0, 0).unwrap(), playlist: default_uuid };
+
+        let first_schedule_start_next_day =
+            Moment { time: Local.with_ymd_and_hms(2023, 4, 19, 10, 0, 0).unwrap(), playlist: scheduled_uuid };
+
+        assert_eq!(forth_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 16, 59, 59).unwrap()).unwrap());
+        assert_eq!(first_schedule_start_next_day, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 17, 0, 0).unwrap()).unwrap());
+        assert_eq!(first_schedule_start_next_day, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 17, 0, 1).unwrap()).unwrap());
+    }
+
+    #[test]
     fn test_next_schedule() {
         let scheduled_uuid = Uuid::parse_str("8626f6e1-df7c-48d9-83c8-d7845b774ecd").unwrap();
         let scheduled2_uuid = Uuid::parse_str("d125a360-4e41-45d5-b6c7-ea471c542510").unwrap();
@@ -218,6 +305,20 @@ mod test {
         assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 10, 59, 59).unwrap()).unwrap());
         assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 11, 0, 0).unwrap()).unwrap());
         assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 11, 0, 1).unwrap()).unwrap());
+
+        let second_schedule_end =
+            Moment { time: Local.with_ymd_and_hms(2023, 4, 18, 15, 0, 0).unwrap(), playlist: default_uuid };
+
+        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 13, 59, 59).unwrap()).unwrap());
+        assert_eq!(second_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap()).unwrap());
+        assert_eq!(second_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 1).unwrap()).unwrap());
+
+        let first_schedule_start =
+            Moment { time: Local.with_ymd_and_hms(2023, 4, 19, 10, 0, 0).unwrap(), playlist: scheduled_uuid };
+
+        assert_eq!(second_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 14, 59, 59).unwrap()).unwrap());
+        assert_eq!(first_schedule_start, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 15, 0, 0).unwrap()).unwrap());
+        assert_eq!(first_schedule_start, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 15, 0, 1).unwrap()).unwrap());
     }
 
     #[test]
@@ -295,7 +396,7 @@ mod test {
         let playlist = vec![
             ScheduledPlaylistInput {
                 playlist: scheduled_uuid,
-                start: "0 0 10 * * * *".to_string(),
+                start: "0 * 10 * * * *".to_string(),
                 end: "0 0 14 * * * *".to_string(),
             }
         ];
