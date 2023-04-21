@@ -5,7 +5,7 @@ use serde::Deserialize;
 use uuid::Uuid;
 use cron::Schedule as CronSchedule;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum ScheduledItem {
     Schedule {
         start: CronSchedule,
@@ -34,7 +34,7 @@ impl From<&NextMoment> for bool {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Schedule {
     pub name: String,
     pub playlist: Uuid,
@@ -97,13 +97,13 @@ impl Schedule {
         }).unwrap()
     }
 
-    fn get_fallback(&self) -> Uuid {
-        if let ScheduledItem::Fallback(uuid) = self.schedules.last().unwrap() {
-            uuid.clone()
-        } else {
-            panic!("Last element should always be a fallback: {:#?}", self.schedules);
-        }
-    }
+    // fn get_fallback(&self) -> Uuid {
+    //     if let ScheduledItem::Fallback(uuid) = self.schedules.last().unwrap() {
+    //         uuid.clone()
+    //     } else {
+    //         panic!("Last element should always be a fallback: {:#?}", self.schedules);
+    //     }
+    // }
 
     /// Returns next scheduled moment if any
     /// 
@@ -258,7 +258,6 @@ mod test {
                 // Since only one path is checked of start and end, with the lesser next scheduled event picked, test that the end
                 // here still gets picked as first moment, since start schedule needs to be exhausted for end can start. This test makes sure
                 // that start is chosen instead of a moment at a later time.
-                // TODO: make algorithm skip all start moments here since none will change the value when it is already active and only focus on end schedule?
                 start: "* * 10 * * * *".to_string(),
                 end: "0 * 14 * * * *".to_string(),
             },

@@ -4,6 +4,7 @@ use axum::{Router, routing::get, extract::{WebSocketUpgrade, ConnectInfo, State,
 use hyper::StatusCode;
 use serde::Serialize;
 use store::store::Store;
+use tokio_util::sync::CancellationToken;
 use tower_http::normalize_path::NormalizePath;
 use uuid::Uuid;
 
@@ -27,6 +28,16 @@ impl From<(u8, String)> for ErrorResponse {
 #[tokio::main]
 async fn main() {
     let store = Arc::new(Store::new().await);
+
+    let store_copy = store.clone();
+    let updated_active_playlists = CancellationToken::new();
+    let done = updated_active_playlists.clone();
+
+    tokio::spawn(async move {
+        store_copy.schedules(done).await;
+    });
+    updated_active_playlists.cancelled().await;
+    
     println!("{}", store.to_string().await);
 
     let app = NormalizePath::trim_trailing_slash(
