@@ -25,6 +25,15 @@ enum NextMoment {
     Exhausted
 }
 
+impl From<&NextMoment> for bool {
+    fn from(value: &NextMoment) -> Self {
+        match value {
+            NextMoment::Exhausted => false,
+            _ => true
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Schedule {
     pub name: String,
@@ -99,7 +108,7 @@ impl Schedule {
     /// Returns next scheduled moment if any
     /// 
     /// Does not return scheduled moments at the exact time passed as argument
-    pub fn next_schedule<'a>(&self, from: &DateTime<Local>) -> Option<Moment> {
+    pub fn next_schedule(&self, from: &DateTime<Local>) -> Option<Moment> {
         // Vector with closures returning the next scheduled time
         let mut future_moments = self.schedules.iter()
             .filter_map(|schedule| { match schedule {
@@ -110,11 +119,11 @@ impl Schedule {
                     let current_playlist = self.current_playlist(&from);
 
                     Some(move || {
-                        // Only use the end scheduled times if current schedule's playlist is already active
                         let time_opt = if &current_playlist == playlist {
+                            // Only use the end scheduled times if current schedule's playlist is already active
                             next_end_iter.next()
                         } else {
-                            // Consume item from the iterator which holds the lowest(?) time without modifying the other iterator
+                            // Consume item from the iterator which holds the closest point in time without modifying the other iterator
                             let (next_start, next_end) = (next_start_iter.peek(), next_end_iter.peek());
                             match (next_start, next_end) {
                                 (None, None) => None,
@@ -134,56 +143,60 @@ impl Schedule {
                             if playlist_at_moment != current_playlist {
                                 return NextMoment::Moment(Moment { time, playlist: playlist_at_moment })
                             }
+                            // Return a continue if the Moment found was overshadowed by another Schedule
                             return NextMoment::Continue(time)
                         }
+                        // Return if no future schedules times exists for schedule
                         NextMoment::Exhausted
                     })
                 },
+                // Fallback is not used in this function, ignore
                 ScheduledItem::Fallback(_) => None,
             }
         })
         // Create tuple structure where first value is the last result from the closure and the second is the closure itself
-        // All start with with continue result since a new result should be calculated in the loop
+        // All start with with Continue result since a new result should be calculated in the loop
         .map(|f| (NextMoment::Continue(*from), f))
         .collect::<Vec<_>>();
 
-        // Lowest found timestamp for found moment
-        let mut lowest_date: DateTime<Local> = DateTime::from(DateTime::<Local>::MAX_UTC);
+        let max_date = DateTime::from(DateTime::<Local>::MAX_UTC);
+        // Lowest timestamp for a moment found
+        let mut closest_moment: DateTime<Local> = max_date;
 
         // Loop until the closest Moment to the from timestamp is found or until all schedules are exhausted
         loop {
-            let mut closest_time = future_moments.iter_mut()
-                .filter_map(|(res, f)| match res {
-                        NextMoment::Moment(m) => Some(NextMoment::Moment(m.clone())),
-                        NextMoment::Continue(time) => {
-                            if time < &mut lowest_date {
-                                *res = f();
-                                match res {
-                                    NextMoment::Exhausted => None,
-                                    NextMoment::Moment(m) => {
-                                        lowest_date = lowest_date.min(m.time);
-                                        Some(NextMoment::Moment(m.clone()))
-                                    },
-                                    next => Some(next.clone())
-                                }
-                            } else {
-                                Some(NextMoment::Continue(time.clone()))
-                            }
-                        },
-                        NextMoment::Exhausted => None,
-                }).peekable();
+            // Update the result of each item which held a previous Continue result
+            for (res, f) in future_moments.iter_mut() {
+                if let NextMoment::Continue(time) = res {
+                    // Only update if the last result yielding a Continue was had a timestamp lower than the lowest found for a Moment yield
+                    if time < &mut closest_moment {
+                        // Deref and update res in tuple with new value
+                        *res = f();
+                        // If closure yielded a Moment, check if it is closer in time than the last found moment
+                        if let NextMoment::Moment(m) = res {
+                            // Should never be two equal Moments, so case does not need to be covered
+                            closest_moment = closest_moment.min(m.time);
+                        }
+                    }
+                }
+            }
 
-            // Check if iterator is empty
-            if closest_time.peek().is_none() {
+            // Check if all results are exhausted and exits if that is the case
+            if let None = future_moments.iter().find(|(res, _)| res.into()) {
                 return None
             }
 
-            if let Some(NextMoment::Moment(m)) = closest_time.min_by_key(|m| match m {
+            // Checks the lowest timestamp of all results (trying to exclude Exhausted) and returns the result if
+            // a res of type Moment was the closest in time. Since the vec `future_moments` is ordered by schedule
+            // priority and `min_by_key` takes the first value if found equally minimum, the correct playlist is returned.
+            // Should not even be an issue though since an overshadowed schedule (only was to get two equal Moments) would
+            // result in an Continue result from closure since it is overshadowed with lower priority
+            if let Some((NextMoment::Moment(m), _)) = future_moments.iter().min_by_key(|(res, _)| match res {
                 NextMoment::Moment(m) => m.time,
                 NextMoment::Continue(t) => *t,
-                NextMoment::Exhausted => panic!("Should be filtered out")
+                NextMoment::Exhausted => max_date
             }) {
-                return Some(m)
+                return Some(m.to_owned())
             }
         }
     }
@@ -293,6 +306,37 @@ mod test {
         assert_eq!(forth_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 16, 59, 59).unwrap()).unwrap());
         assert_eq!(first_schedule_start_next_day, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 17, 0, 0).unwrap()).unwrap());
         assert_eq!(first_schedule_start_next_day, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 17, 0, 1).unwrap()).unwrap());
+    }
+
+    #[test]
+    fn test_next_schedule_priority() {
+        let scheduled_uuid = Uuid::parse_str("8626f6e1-df7c-48d9-83c8-d7845b774ecd").unwrap();
+        let scheduled2_uuid = Uuid::parse_str("d125a360-4e41-45d5-b6c7-ea471c542510").unwrap();
+        let default_uuid = Uuid::parse_str("25cd63df-1f10-4c3f-afdb-58156ca47ebd").unwrap();
+        let schedules = vec![
+            ScheduledPlaylistInput {
+                playlist: scheduled_uuid,
+                start: "0 0 10 * * * *".to_string(),
+                end: "0 0 14 * * * *".to_string(),
+            },
+            ScheduledPlaylistInput {
+                playlist: scheduled2_uuid,
+                start: "0 0 10 * * * *".to_string(),
+                end: "0 0 14 * * * *".to_string(),
+            }
+        ];
+        let schedule: Schedule = Schedule::new("test".to_string(), schedules, default_uuid);
+        
+        assert_eq!(
+            Moment { time: Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap(), playlist: scheduled_uuid },
+            schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 9, 59, 59).unwrap()).unwrap()
+        );
+
+        let first_schedule_end =
+            Moment { time: Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap(), playlist: default_uuid };
+
+        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap()).unwrap());
+        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 1).unwrap()).unwrap());
     }
 
     #[test]
