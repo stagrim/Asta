@@ -8,8 +8,8 @@ license = "GPL-3.0-or-later"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-axum = { version = "0.6.15", features = ["ws"]}
-hyper = { version = "0.14.25", features = ["full"] }
+axum = { version = "0.6.16", features = ["ws"]}
+hyper = { version = "0.14.26", features = ["full"] }
 tower = "0.4.13"
 # Using git repo until fix is available in a release https://github.com/tower-rs/tower-http/issues/318
 tower-http = { git = "https://github.com/tower-rs/tower-http.git", rev = "92d1954", features = ["normalize-path"] }

@@ -4,7 +4,7 @@ use axum::{Router, routing::get, extract::{WebSocketUpgrade, ConnectInfo, State,
 use hyper::StatusCode;
 use serde::Serialize;
 use store::store::Store;
-use tokio_util::sync::CancellationToken;
+use tokio::sync::oneshot;
 use tower_http::normalize_path::NormalizePath;
 use uuid::Uuid;
 
@@ -30,13 +30,13 @@ async fn main() {
     let store = Arc::new(Store::new().await);
 
     let store_copy = store.clone();
-    let updated_active_playlists = CancellationToken::new();
-    let done = updated_active_playlists.clone();
+    let (tx, rx) = oneshot::channel::<()>();
 
     tokio::spawn(async move {
-        store_copy.schedules(done).await;
+        store_copy.schedule_loop(tx).await;
     });
-    updated_active_playlists.cancelled().await;
+    
+    rx.await.unwrap();
     
     println!("{}", store.to_string().await);
 
@@ -102,6 +102,5 @@ async fn set_display_schedule(State(store): State<Arc<Store>>, Path((display, sc
 }
 
 async fn ws_handler(ws: WebSocketUpgrade, ConnectInfo(addr): ConnectInfo<SocketAddr>, State(store): State<Arc<Store>>) -> impl IntoResponse {
-    println!("{addr} connected.");
     ws.on_upgrade(move |socket| client_connection(socket, addr, store))
 }
