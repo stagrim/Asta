@@ -1,54 +1,54 @@
 use std::{collections::{HashMap, HashSet}, time::Duration};
 
 use chrono::Local;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tokio::{fs, sync::{broadcast::{self, Sender, Receiver}, RwLock, RwLockReadGuard, RwLockWriteGuard, oneshot}, time::sleep};
 use uuid::Uuid;
 
 use super::schedule::{Schedule, Moment};
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Display {
     pub name: String,
     pub schedule: Uuid
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct Playlist {
     pub name: String,
     pub items: Vec<PlaylistItem>
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(tag = "type")]
 pub enum PlaylistItem {
-    #[serde(rename(deserialize = "WEBSITE"))]
+    #[serde(rename = "WEBSITE")]
     Website { name: String, settings: WebsiteData },
-    #[serde(rename(deserialize = "TEXT"))]
+    #[serde(rename = "TEXT")]
     Text { name: String, settings: TextData },
-    #[serde(rename(deserialize = "IMAGE"))]
+    #[serde(rename = "IMAGE")]
     Image { name: String, settings: ImageData }
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct WebsiteData {
     pub url: String,
     pub duration: u64
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct TextData {
     pub text: String,
     pub duration: u64
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ImageData {
     pub src: String,
     pub duration: u64
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct Content {
     pub displays: HashMap<Uuid, Display>,
     pub playlists: HashMap<Uuid, Playlist>,
@@ -56,7 +56,6 @@ pub struct Content {
 }
 
 pub struct Store {
-    // TODO: Does currently not update the file when read state is updated. Updates are not synced
     filename: String,
     sender: Sender<Change>,
     content: RwLock<Content>
@@ -170,6 +169,11 @@ impl Store {
         if let Err(e) = self.sender.send(changes) {
             println!("[Store] No active channels to listen in ({})", e)
         }
+
+        println!("[Store] writing new state to file");
+        if let Err(_) = tokio::fs::write(&self.filename, self.to_string().await).await {
+            println!("[Store] Error writing state to file after update, log updated state instead: \n{}", self.to_string().await);
+        }
     }
 
     /// Updates an existing display to the schedule given.
@@ -203,7 +207,7 @@ impl Store {
 
     /// Returns String of current state
     pub async fn to_string(&self) -> String {
-        format!("{:#?}", self.content.read().await)
+        format!("{}", serde_json::to_string_pretty::<Content>(&*self.content.read().await).unwrap())
     }
 }
 

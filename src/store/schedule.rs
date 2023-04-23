@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use chrono::{DateTime, Local};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use cron::Schedule as CronSchedule;
 
@@ -213,14 +213,14 @@ pub struct Moment {
     pub playlist: Uuid,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 struct ScheduleInput {
     name: String,
     scheduled: Option<Vec<ScheduledPlaylistInput>>,
     playlist: Uuid
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 struct ScheduledPlaylistInput {
     playlist: Uuid,
     start: String,
@@ -229,10 +229,39 @@ struct ScheduledPlaylistInput {
 
 impl<'de> Deserialize<'de> for Schedule {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de> {
+    where D: serde::Deserializer<'de> {
         let input = ScheduleInput::deserialize(deserializer).unwrap();
         Ok(Schedule::new(input.name, input.scheduled.unwrap_or(vec![]), input.playlist))
+    }
+}
+
+impl Serialize for Schedule {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where S: serde::Serializer {
+        let fallback = if let Some(ScheduledItem::Fallback(uuid)) = self.schedules.last() {
+            uuid
+        } else {
+            return Err(serde::ser::Error::custom("No Fallback as last value"))
+        };
+
+        let scheduled = {
+            let vec = self.schedules.iter().filter_map(|s| match s {
+                ScheduledItem::Schedule { start, end, playlist } => Some(ScheduledPlaylistInput {
+                    playlist: *playlist,
+                    start: start.to_string(),
+                    end: end.to_string(),
+                }),
+                ScheduledItem::Fallback(_) => None,
+            }).collect::<Vec<_>>();
+
+            (!vec.is_empty()).then_some(vec)
+        };
+
+        ScheduleInput::serialize(&ScheduleInput {
+            name: self.name.clone(),
+            scheduled,
+            playlist: *fallback,
+        }, serializer) 
     }
 }
 
