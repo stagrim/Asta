@@ -171,9 +171,9 @@ pub async fn client_connection(socket: WebSocket, who: SocketAddr, store: Arc<St
 
 
 async fn heartbeat(sender: Arc<Mutex<SplitSink<WebSocket, Message>>>, mut receiver: SplitStream<WebSocket>, who: SocketAddr) {
-    let mut interval = tokio::time::interval(Duration::from_secs(3));
+    let mut interval = tokio::time::interval(Duration::from_secs(8));
     // Must make sure a pong is received before the next ping is sent out.
-    let time = Duration::from_secs(3);
+    let time = Duration::from_secs(5);
     loop {
         interval.tick().await;
         
@@ -193,16 +193,15 @@ async fn heartbeat(sender: Arc<Mutex<SplitSink<WebSocket, Message>>>, mut receiv
             loop {
                 if let Some(msg) = receiver.next().await {
                     match msg {
-                        Ok(Message::Pong(_)) => break,
+                        Ok(Message::Pong(_)) => break Ok(()),
                         Err(e) => {
                             println!("[{who}] Error receiving messages: {e:?}");
                             return Err(());
                         }
-                        _ => ()
+                        Ok(m) => println!("[{who}] Received irrelevant message: {m:?}")
                     }
                 };
-            };
-            Ok(())
+            }
         });
         match ping.await {
             Ok(Ok(_)) => println!("[{who}] Pong received"),
