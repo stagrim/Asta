@@ -194,9 +194,13 @@ async fn heartbeat(sender: Arc<Mutex<SplitSink<WebSocket, Message>>>, mut receiv
                 if let Some(msg) = receiver.next().await {
                     match msg {
                         Ok(Message::Pong(_)) => break Ok(()),
+                        Ok(Message::Close(_)) => {
+                            println!("[{who}] Received Close message");
+                            break Err(());
+                        },
                         Err(e) => {
                             println!("[{who}] Error receiving messages: {e:?}");
-                            return Err(());
+                            break Err(());
                         }
                         Ok(m) => println!("[{who}] Received irrelevant message: {m:?}")
                     }
@@ -205,7 +209,11 @@ async fn heartbeat(sender: Arc<Mutex<SplitSink<WebSocket, Message>>>, mut receiv
         });
         match ping.await {
             Ok(Ok(_)) => println!("[{who}] Pong received"),
-            _ => {
+            Ok(Err(_)) => {
+                println!("[{who}] Exiting heartbeat loop");
+                return;
+            },
+            Err(_) => {
                 println!("[{who}] No Pong response before timeout, exiting heartbeat loop");
                 return;
             },
