@@ -191,8 +191,8 @@ async fn heartbeat(sender: Arc<Mutex<SplitSink<WebSocket, Message>>>, mut receiv
                 },
             };
             loop {
-                if let Some(msg) = receiver.next().await {
-                    match msg {
+                match receiver.next().await {
+                    Some(msg) => match msg {
                         Ok(Message::Pong(_)) => break Ok(()),
                         Ok(Message::Close(_)) => {
                             println!("[{who}] Received Close message");
@@ -203,7 +203,8 @@ async fn heartbeat(sender: Arc<Mutex<SplitSink<WebSocket, Message>>>, mut receiv
                             break Err(());
                         }
                         Ok(m) => println!("[{who}] Received irrelevant message: {m:?}")
-                    }
+                    },
+                    None => println!("[{who}] Error: receiver is empty")
                 };
             }
         });
