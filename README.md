@@ -116,3 +116,26 @@ sudo mkdir -p /etc/firefox/policies/ && echo "{
   }
 }" | sudo tee /etc/firefox/policies/policies.json
 ```
+
+### Example Start Script
+```bash
+#!/bin/bash
+
+# Starts a container called watchtower which will keep Casta updated when running
+docker run -d --name watchtower \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  containrrr/watchtower \
+  casta
+
+# Starts Casta
+docker run --env-file /home/pi/casta.env \
+  --name casta -p 3000:3000 -d \
+  imagerepo.dsek.se/casta:latest
+
+# Starts chromium which will display Casta
+chromium-browser --kiosk \
+  --autoplay-policy=no-user-gesture-required \
+  --enable-features=OverlayScrollbar,OverlayScrollbarFlashAfterAnyScrollUpdate,\
+  OverlayScrollbarFlashAfterAnyScrollUpdate,OverlayScrollbarFlashWhenMouseEnter \
+  127.0.0.1:3000
+```
