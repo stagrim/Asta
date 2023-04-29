@@ -123,24 +123,24 @@ sudo mkdir -p /etc/firefox/policies/ && echo "{
 
 docker stop watchtower casta
 
-#Starts a container called watchtower which will keep Casta updated when running
+# Starts a container called watchtower which will keep Casta updated when running
 docker run -d --name watchtower \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v ${HOME}/.docker/config.json:/config.json \
   containrrr/watchtower \
   casta --run-once
 
-#Starts Casta
+# Starts Casta
 docker run --env-file /home/pi/casta.env \
   --name casta -p 3000:3000 -d \
   imagerepo.dsek.se/casta:latest
 
 docker start casta watchtower
 
-#Starts chromium which will display Casta
+# Starts chromium which will display Casta
 chromium-browser --kiosk \
   --autoplay-policy=no-user-gesture-required \
   --enable-features=OverlayScrollbar,OverlayScrollbarFlashAfterAnyScrollUpdate,\
-  OverlayScrollbarFlashAfterAnyScrollUpdate,OverlayScrollbarFlashWhenMouseEnter \
-  127.0.0.1:3000
+OverlayScrollbarFlashAfterAnyScrollUpdate,OverlayScrollbarFlashWhenMouseEnter \
+  127.0.0.1:300
 ```
