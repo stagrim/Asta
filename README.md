@@ -142,5 +142,5 @@ chromium-browser --kiosk \
   --autoplay-policy=no-user-gesture-required \
   --enable-features=OverlayScrollbar,OverlayScrollbarFlashAfterAnyScrollUpdate,\
 OverlayScrollbarFlashAfterAnyScrollUpdate,OverlayScrollbarFlashWhenMouseEnter \
-  127.0.0.1:300
+  127.0.0.1:3000
 ```
