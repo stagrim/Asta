@@ -6,4 +6,5 @@ README.md
 .gitignore
 static/audio-test.html
 fasta/
+frontend/
 img/
