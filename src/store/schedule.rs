@@ -214,17 +214,17 @@ pub struct Moment {
 }
 
 #[derive(Deserialize, Serialize, Debug)]
-struct ScheduleInput {
-    name: String,
-    scheduled: Option<Vec<ScheduledPlaylistInput>>,
-    playlist: Uuid
+pub struct ScheduleInput {
+    pub name: String,
+    pub scheduled: Option<Vec<ScheduledPlaylistInput>>,
+    pub playlist: Uuid
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
-struct ScheduledPlaylistInput {
-    playlist: Uuid,
-    start: String,
-    end: String
+pub struct ScheduledPlaylistInput {
+    pub playlist: Uuid,
+    pub start: String,
+    pub end: String
 }
 
 impl<'de> Deserialize<'de> for Schedule {
@@ -238,14 +238,21 @@ impl<'de> Deserialize<'de> for Schedule {
 impl Serialize for Schedule {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where S: serde::Serializer {
-        let fallback = if let Some(ScheduledItem::Fallback(uuid)) = self.schedules.last() {
+        ScheduleInput::serialize(&self.to_owned().into(), serializer) 
+    }
+}
+
+impl From<Schedule> for ScheduleInput {
+    fn from(value: Schedule) -> Self {
+        let fallback = if let Some(ScheduledItem::Fallback(uuid)) = value.schedules.last() {
             uuid
         } else {
-            return Err(serde::ser::Error::custom("No Fallback as last value"))
+            panic!("No Fallback as last value");
+            // return Err(serde::ser::Error::custom("No Fallback as last value"))
         };
 
         let scheduled = {
-            let vec = self.schedules.iter().filter_map(|s| match s {
+            let vec = value.schedules.iter().filter_map(|s| match s {
                 ScheduledItem::Schedule { start, end, playlist } => Some(ScheduledPlaylistInput {
                     playlist: *playlist,
                     start: start.to_string(),
@@ -257,11 +264,11 @@ impl Serialize for Schedule {
             (!vec.is_empty()).then_some(vec)
         };
 
-        ScheduleInput::serialize(&ScheduleInput {
-            name: self.name.clone(),
+        ScheduleInput {
+            name: value.name.clone(),
             scheduled,
             playlist: *fallback,
-        }, serializer) 
+        }
     }
 }
 

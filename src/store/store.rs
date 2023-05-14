@@ -13,7 +13,7 @@ pub struct Display {
     pub schedule: Uuid
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Playlist {
     pub name: String,
     pub items: Vec<PlaylistItem>
