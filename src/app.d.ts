@@ -33,7 +33,9 @@ export interface Playlist extends Content {
 
 export interface Payload<C extends Content> {
     type: "Display",
-    content: C[],
-	/** Map containing index of Content with corresponding Uuid */
-	index: Map<Uuid, number>
+    content: C[]
+}
+
+export interface State<C extends Content> extends Payload<C> {
+    content: Map<Uuid, C>
 }
