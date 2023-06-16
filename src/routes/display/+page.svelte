@@ -11,7 +11,7 @@
     let chosen_schedule: Uuid = "0"
 </script>
 
-<form class="card my-4" method="POST" action="?/create" use:enhance={({}) => {
+<form class="card m-4" method="POST" action="?/create" use:enhance={({}) => {
     return async ({ result, update }) => {
         console.log(result)
             if (result.type === "success" || result.type === "redirect") {
@@ -40,7 +40,7 @@
             <input required name="name" class="input" type="text" placeholder="Name must be unique" />
         </label>
 
-        <SchedulePicker name="schedule" schedules={[...data.schedule.content.values()]} bind:chosen_schedule />
+        <SchedulePicker name="schedule" schedules={data.schedule.values} bind:chosen_schedule />
 
         <div class="flex w-full justify-center mt-5">
             <!-- Disable button when nothing is changed -->

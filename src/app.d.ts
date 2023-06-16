@@ -37,5 +37,6 @@ export interface Payload<C extends Content> {
 }
 
 export interface State<C extends Content> extends Payload<C> {
-    content: Map<Uuid, C>
+    content: Map<Uuid, C>,
+	values: C[]
 }

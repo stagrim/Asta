@@ -14,7 +14,8 @@ export const load = (async (_) => {
 
         const res: State<Content> = {
             type: payload.type,
-            content: map
+            content: map,
+            values: [...map.values()].sort((a, b) => a.name.localeCompare(b.name))
         }
         // payload.index = new Map()
         // payload.content.sort((a, b) => a.name.localeCompare(b.name))
