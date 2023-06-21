@@ -1,6 +1,7 @@
-use std::{net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, sync::Arc, vec};
 
-use axum::{Router, routing::get, extract::{WebSocketUpgrade, ConnectInfo, State, Path}, response::IntoResponse, Json, ServiceExt};
+use axum::{Router, routing::{get, post, put, delete}, extract::{WebSocketUpgrade, ConnectInfo, State, Path}, response::{IntoResponse}, Json, ServiceExt};
+use axum_macros::debug_handler;
 use hyper::StatusCode;
 use store::store::Store;
 use tokio::sync::oneshot;
@@ -12,9 +13,9 @@ use crate::connection::connection::client_connection;
 mod store;
 mod connection;
 
-impl From<(u8, String)> for response::Error {
+impl From<(u8, String)> for read::Error {
     fn from(value: (u8, String)) -> Self {
-        response::Error { code: value.0, message: value.1 }
+        read::Error { code: value.0, message: value.1 }
     }
 }
 
@@ -32,13 +33,17 @@ async fn main() {
     rx.await.unwrap();
     
     println!("{}", store.to_string().await);
+    
 
     let app = NormalizePath::trim_trailing_slash(
         Router::new()
             .nest("/api", Router::new()
-                .route("/display", get(get_displays))
-                .route("/playlist", get(get_playlists))
-                .route("/schedule", get(get_schedules))
+                .route("/display", get(read_displays))
+                .route("/display", post(create_display))
+                .route("/display/:uuid", put(update_display))
+                .route("/display/:uuid", delete(delete_display))
+                .route("/playlist", get(read_playlists))
+                .route("/schedule", get(read_schedules))
             )
             .route("/", get(ws_handler))
             .with_state(store)
@@ -51,7 +56,7 @@ async fn main() {
         .await.unwrap();
 }
 
-mod response {
+mod read {
     use axum::Json;
     use hyper::StatusCode;
     use serde::Serialize;
@@ -111,14 +116,60 @@ mod response {
     }
     
     #[derive(Serialize)]
+    #[serde(tag = "type")]
     pub struct Error {
         pub code: u8,
         pub message: String
     }
 }
 
-async fn get_displays(State(store): State<Arc<Store>>) -> response::Response {
-    Ok(Json(response::Payload::Display(
+mod create {
+    use serde::Deserialize;
+    use uuid::Uuid;
+
+    pub use crate::read::{Schedule, Playlist, Error, Response};
+
+    #[derive(Deserialize)]
+    pub struct Display {
+        pub name: String,
+        pub schedule: Uuid
+    }
+}
+
+mod update {
+    pub use crate::read::{Response, Payload};
+    pub use crate::create::{Display};
+}
+
+#[debug_handler]
+async fn create_display(State(store): State<Arc<Store>>, Json(display): Json<create::Display>) -> read::Response {
+    println!("[Api] Creating Display with name {} and schedule {}", display.name, display.schedule);
+    let read = store.read().await;
+    if let Some((uuid, _)) = read.displays.iter().find(|(_, d)| d.name == display.name) {
+        println!("[Api] Name is already used by Display {}", uuid);
+        return Err((StatusCode::BAD_REQUEST,
+            Json((1, format!("Avoid using the name {} as it is already used by another display", display.name)).into())
+        ))
+    }
+
+    drop(read);
+    let uuid = Uuid::new_v4();
+    println!("[Api] Generated Uuid {uuid} for new Display");
+    store.create_display(uuid, display.name, display.schedule).await;
+
+    if let Some(d) = store.read().await.displays.get(&uuid) {
+        println!("[Api] Created Display {uuid}");
+        Ok(Json(read::Payload::Display(vec![(uuid, d.clone()).into()])))
+    } else {
+        println!("[Api] No Display with {} could be found while reading after write", uuid);
+        Err((StatusCode::INTERNAL_SERVER_ERROR,
+            Json((2, format!("Something went wrong with the creation")).into())
+        ))
+    }
+}
+
+async fn read_displays(State(store): State<Arc<Store>>) -> read::Response {
+    Ok(Json(read::Payload::Display(
             store
                 .read()
                 .await
@@ -129,8 +180,8 @@ async fn get_displays(State(store): State<Arc<Store>>) -> response::Response {
     )))
 }
 
-async fn get_playlists(State(store): State<Arc<Store>>) -> response::Response {
-    Ok(Json(response::Payload::Playlist(
+async fn read_playlists(State(store): State<Arc<Store>>) -> read::Response {
+    Ok(Json(read::Payload::Playlist(
         store
             .read()
             .await
@@ -141,8 +192,8 @@ async fn get_playlists(State(store): State<Arc<Store>>) -> response::Response {
     )))
 }
 
-async fn get_schedules(State(store): State<Arc<Store>>) -> response::Response {
-    Ok(Json(response::Payload::Schedule(
+async fn read_schedules(State(store): State<Arc<Store>>) -> read::Response {
+    Ok(Json(read::Payload::Schedule(
         store
             .read()
             .await
@@ -153,29 +204,74 @@ async fn get_schedules(State(store): State<Arc<Store>>) -> response::Response {
     )))
 }
 
-async fn set_display_schedule(State(store): State<Arc<Store>>, Path((display, schedule)): Path<(Uuid, Uuid)>) -> Result<String, (StatusCode, Json<response::Error>)> {
+#[debug_handler]
+async fn update_display(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>, Json(display): Json<update::Display>) -> update::Response {
+    println!("[Api] Updating Display {uuid}");
     let read = store.read().await;
-    let schedule_exists = read.schedules.contains_key(&schedule);
-    let display_exists = read.displays.contains_key(&display);
-    let set_to_schedule = read.displays.get(&display).unwrap().schedule != schedule;
-    drop(read);
+    if !read.displays.contains_key(&uuid) {
+        println!("[Api] No display with {uuid} was found");
+        return Err((StatusCode::BAD_REQUEST, Json((1, format!("No Display with the Uuid {uuid} was found")).into())))
+    }
+    if let Some((uuid, _)) = read.displays.iter().find(|(&u, d)| d.name == display.name && u != uuid) {
+        println!("[Api] Name is already used by Display {}", uuid);
+        return Err((StatusCode::BAD_REQUEST, Json((2, format!("Avoid using the name {} as it is already used by another display", display.name)).into())))
+    }
+    drop (read);
 
-    if schedule_exists && display_exists && set_to_schedule {
-        let res = format!("set display {display} to schedule {schedule}");
-        store.update_display_schedule(display, schedule).await;
-        return Ok(res)
+    store.update_display(uuid, display.name, display.schedule).await;
+    
+    if let Some(d) = store.read().await.displays.get(&uuid) {
+        println!("[Api] Updated and read Display {uuid}");
+        Ok(Json(update::Payload::Display(vec![(uuid, d.clone()).into()])))
+    } else {
+        println!("[Api] Could not find Display with {uuid} after update");
+        Err((StatusCode::INTERNAL_SERVER_ERROR, Json((3, format!("Could not find Display with {uuid} after update")).into())))
+    }
+}
+
+#[debug_handler]
+async fn delete_display(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>) -> read::Response {
+    println!("[Api] Deleting Display {uuid}");
+    let res: read::Response;
+    if let Some(d) = store.read().await.displays.get(&uuid) {
+        res = Ok(Json(read::Payload::Display(vec![(uuid, d.clone()).into()])));
+    } else {
+        println!("[Api] No display with {uuid} was found");
+        return Err((StatusCode::BAD_REQUEST,
+            Json((1, format!("No Display with the Uuid {uuid} was found")).into())
+        ))
     }
 
-    Err((StatusCode::BAD_REQUEST, Json({
-        if !schedule_exists {
-            (1, format!("{schedule} is not a defined schedule"))
-        } else if !display_exists {
-            (2, format!("{display} is not a defined display"))
-        } else {
-            (3, format!("Display is already set to specified schedule"))
-        }}.into()
-    )))
+    store.delete_display(uuid).await;
+    println!("[Api] Deleted Display {uuid}");
+    res
 }
+
+//TODO: Add Delete display here
+
+// async fn set_display_schedule(State(store): State<Arc<Store>>, Path((display, schedule)): Path<(Uuid, Uuid)>) -> Result<String, (StatusCode, Json<response::Error>)> {
+//     let read = store.read().await;
+//     let schedule_exists = read.schedules.contains_key(&schedule);
+//     let display_exists = read.displays.contains_key(&display);
+//     let set_to_schedule = read.displays.get(&display).unwrap().schedule != schedule;
+//     drop(read);
+
+//     if schedule_exists && display_exists && set_to_schedule {
+//         let res = format!("set display {display} to schedule {schedule}");
+//         store.update_display_schedule(display, schedule).await;
+//         return Ok(res)
+//     }
+
+//     Err((StatusCode::BAD_REQUEST, Json({
+//         if !schedule_exists {
+//             (1, format!("{schedule} is not a defined schedule"))
+//         } else if !display_exists {
+//             (2, format!("{display} is not a defined display"))
+//         } else {
+//             (3, format!("Display is already set to specified schedule"))
+//         }}.into()
+//     )))
+// }
 
 async fn ws_handler(ws: WebSocketUpgrade, ConnectInfo(addr): ConnectInfo<SocketAddr>, State(store): State<Arc<Store>>) -> impl IntoResponse {
     ws.on_upgrade(move |socket| client_connection(socket, addr, store))

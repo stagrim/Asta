@@ -176,17 +176,49 @@ impl Store {
         }
     }
 
+    /// Creates a new display
+    /// 
+    /// Overrides existing display with same uuid
+    pub async fn create_display(&self, uuid: Uuid, name: String, schedule: Uuid) {
+        self.write(|mut c| {
+            c.displays.insert(uuid, Display { name, schedule });
+            Change::Display(HashSet::from([uuid]))
+        }).await;
+    }
+
+    /// Updates the display with the given Uuid
+    /// 
+    /// Does nothing if no such display is found
+    pub async fn update_display(&self, uuid: Uuid, name: String, schedule: Uuid) {
+        self.write(|mut c| {
+            c.displays
+                .entry(uuid)
+                .and_modify(|d| *d = Display { name, schedule });
+            Change::Display(HashSet::from([uuid]))
+        }).await
+    }
+
+    /// Deletes the display with the given Uuid
+    /// 
+    /// Does nothing if no such display is found
+    pub async fn delete_display(&self, uuid: Uuid) {
+        self.write(|mut c| {
+            c.displays.remove(&uuid);
+            Change::Display(HashSet::from([uuid]))
+        }).await
+    }
+
     /// Updates an existing display to the schedule given.
     /// 
     /// Does not check if the schedule exists or not.
-    pub async fn update_display_schedule(&self, display: Uuid, schedule: Uuid) {
-        self.write(|mut c| {
-            c.displays
-                .entry(display)
-                .and_modify(|d| d.schedule = schedule);
-            Change::Display(HashSet::from([display]))
-        }).await;
-    }
+    // pub async fn update_display_schedule(&self, display: Uuid, schedule: Uuid) {
+    //     self.write(|mut c| {
+    //         c.displays
+    //             .entry(display)
+    //             .and_modify(|d| d.schedule = schedule);
+    //         Change::Display(HashSet::from([display]))
+    //     }).await;
+    // }
 
     /// Get all PlaylistItem(s) from the scheduled playlist in the display's schedule
     pub async fn get_display_playlists(&self, display: &Uuid) -> Option<Vec<PlaylistItem>> {
