@@ -42,7 +42,7 @@ pub struct Schedule {
 }
 
 impl Schedule {
-    fn new(name: String, schedules: Vec<ScheduledPlaylistInput>, fallback: Uuid) -> Self {
+    pub fn new(name: String, schedules: Vec<ScheduledPlaylistInput>, fallback: Uuid) -> Self {
         Schedule {
             name,
             playlist: fallback,

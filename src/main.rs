@@ -1,7 +1,6 @@
 use std::{net::SocketAddr, sync::Arc, vec};
 
 use axum::{Router, routing::{get, post, put, delete}, extract::{WebSocketUpgrade, ConnectInfo, State, Path}, response::{IntoResponse}, Json, ServiceExt};
-use axum_macros::debug_handler;
 use hyper::StatusCode;
 use store::store::Store;
 use tokio::sync::oneshot;
@@ -38,17 +37,24 @@ async fn main() {
     let app = NormalizePath::trim_trailing_slash(
         Router::new()
             .nest("/api", Router::new()
-                .route("/display", get(read_displays))
-                .route("/display", post(create_display))
-                .route("/display/:uuid", put(update_display))
-                .route("/display/:uuid", delete(delete_display))
+                .nest("/display", Router::new()
+                    .route("/", get(read_display))
+                    .route("/", post(create_display))
+                    .route("/:uuid", put(update_display))
+                    .route("/:uuid", delete(delete_display))
+                )
                 .nest("/playlist", Router::new()
                     .route("/", post(create_playlist))
-                    .route("/", get(read_playlists))
+                    .route("/", get(read_playlist))
                     .route("/:uuid", put(update_playlist))
                     .route("/:uuid", delete(delete_playlist))
                 )
-                .route("/schedule", get(read_schedules))
+                .nest("/schedule", Router::new()
+                    .route("/", post(create_schedule))
+                    .route("/", get(read_schedule))
+                    .route("/:uuid", put(update_schedule))
+                    .route("/:uuid", delete(delete_schedule))
+                )
             )
             .route("/", get(ws_handler))
             .with_state(store)
@@ -144,23 +150,36 @@ mod create {
     pub struct Playlist {
         pub name: String
     }
+
+    #[derive(Deserialize)]
+    pub struct Schedule {
+        pub name: String,
+        pub playlist: Uuid,
+    }
 }
 
 mod update {
     use serde::Deserialize;
+    use uuid::Uuid;
 
     pub use crate::read::{Response, Payload};
     pub use crate::create::Display;
-    use crate::store::store;
+    use crate::store::{store, schedule};
 
     #[derive(Deserialize)]
     pub struct Playlist {
         pub name: String,
         pub items: Vec<store::PlaylistItem>,
     }
+
+    #[derive(Deserialize)]
+    pub struct Schedule {
+        pub name: String,
+        pub playlist: Uuid,
+        pub scheduled: Option<Vec<schedule::ScheduledPlaylistInput>>
+    }
 }
 
-#[debug_handler]
 async fn create_display(State(store): State<Arc<Store>>, Json(display): Json<create::Display>) -> read::Response {
     println!("[Api] Creating Display with name {} and schedule {}", display.name, display.schedule);
     let read = store.read().await;
@@ -187,7 +206,6 @@ async fn create_display(State(store): State<Arc<Store>>, Json(display): Json<cre
     }
 }
 
-#[debug_handler]
 async fn create_playlist(State(store): State<Arc<Store>>, Json(playlist): Json<create::Playlist>) -> create::Response {
     println!("[Api] Creating Playlist with name {}", playlist.name);
     let read = store.read().await;
@@ -214,7 +232,33 @@ async fn create_playlist(State(store): State<Arc<Store>>, Json(playlist): Json<c
     }
 }
 
-async fn read_displays(State(store): State<Arc<Store>>) -> read::Response {
+async fn create_schedule(State(store): State<Arc<Store>>, Json(schedule): Json<create::Schedule>) -> create::Response {
+    println!("[Api] Creating Schedule with name {}", schedule.name);
+    let read = store.read().await;
+    if let Some((uuid, _)) = read.schedules.iter().find(|(_, s)| s.name == schedule.name) {
+        println!("[Api] Name is already used by Schedule {}", uuid);
+        return Err((StatusCode::BAD_REQUEST,
+            Json((1, format!("Avoid using the name {} as it is already used by another Schedule", schedule.name)).into())
+        ))
+    }
+
+    drop(read);
+    let uuid = Uuid::new_v4();
+    println!("[Api] Generated Uuid {uuid} for new Schedule");
+    store.create_schedule(uuid, schedule.name, schedule.playlist).await;
+
+    if let Some(s) = store.read().await.schedules.get(&uuid) {
+        println!("[Api] Created Schedule {uuid}");
+        Ok(Json(read::Payload::Schedule(vec![(uuid, s.clone()).into()])))
+    } else {
+        println!("[Api] No Schedule with {uuid} could be found while reading after write");
+        Err((StatusCode::INTERNAL_SERVER_ERROR,
+            Json((2, format!("Something went wrong with the creation")).into())
+        ))
+    }
+}
+
+async fn read_display(State(store): State<Arc<Store>>) -> read::Response {
     Ok(Json(read::Payload::Display(
             store
                 .read()
@@ -226,7 +270,7 @@ async fn read_displays(State(store): State<Arc<Store>>) -> read::Response {
     )))
 }
 
-async fn read_playlists(State(store): State<Arc<Store>>) -> read::Response {
+async fn read_playlist(State(store): State<Arc<Store>>) -> read::Response {
     Ok(Json(read::Payload::Playlist(
         store
             .read()
@@ -238,7 +282,7 @@ async fn read_playlists(State(store): State<Arc<Store>>) -> read::Response {
     )))
 }
 
-async fn read_schedules(State(store): State<Arc<Store>>) -> read::Response {
+async fn read_schedule(State(store): State<Arc<Store>>) -> read::Response {
     Ok(Json(read::Payload::Schedule(
         store
             .read()
@@ -250,7 +294,6 @@ async fn read_schedules(State(store): State<Arc<Store>>) -> read::Response {
     )))
 }
 
-#[debug_handler]
 async fn update_display(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>, Json(display): Json<update::Display>) -> update::Response {
     println!("[Api] Updating Display {uuid}");
     let read = store.read().await;
@@ -275,7 +318,6 @@ async fn update_display(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>,
     }
 }
 
-#[debug_handler]
 async fn update_playlist(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>, Json(playlist): Json<update::Playlist>) -> update::Response {
     println!("[Api] Updating Playlist {uuid}");
     let read = store.read().await;
@@ -300,7 +342,30 @@ async fn update_playlist(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>
     }
 }
 
-#[debug_handler]
+async fn update_schedule(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>, Json(schedule): Json<update::Schedule>) -> update::Response {
+    println!("[Api] Updating Schedule {uuid}");
+    let read = store.read().await;
+    if !read.schedules.contains_key(&uuid) {
+        println!("[Api] No Schedule with {uuid} was found");
+        return Err((StatusCode::BAD_REQUEST, Json((1, format!("No Schedule with the Uuid {uuid} was found")).into())))
+    }
+    if let Some((uuid, _)) = read.schedules.iter().find(|(&u, s)| s.name == schedule.name && u != uuid) {
+        println!("[Api] Name is already used by Schedule {}", uuid);
+        return Err((StatusCode::BAD_REQUEST, Json((2, format!("Avoid using the name {} as it is already used by another Schedule", schedule.name)).into())))
+    }
+    drop(read);
+
+    store.update_schedule(uuid, schedule.name, schedule.playlist, schedule.scheduled.unwrap_or(vec![])).await;
+    
+    if let Some(s) = store.read().await.schedules.get(&uuid) {
+        println!("[Api] Updated and read Schedule {uuid}");
+        Ok(Json(update::Payload::Schedule(vec![(uuid, s.clone()).into()])))
+    } else {
+        println!("[Api] Could not find Schedule with {uuid} after update");
+        Err((StatusCode::INTERNAL_SERVER_ERROR, Json((3, format!("Could not find Schedule with {uuid} after update")).into())))
+    }
+}
+
 async fn delete_display(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>) -> read::Response {
     println!("[Api] Deleting Display {uuid}");
     let res: read::Response;
@@ -318,7 +383,6 @@ async fn delete_display(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>)
     res
 }
 
-#[debug_handler]
 async fn delete_playlist(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>) -> read::Response {
     println!("[Api] Deleting Playlist {uuid}");
     let res;
@@ -336,31 +400,22 @@ async fn delete_playlist(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>
     res
 }
 
-//TODO: Add Delete display here
+async fn delete_schedule(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>) -> read::Response {
+    println!("[Api] Deleting Schedule {uuid}");
+    let res;
+    if let Some(s) = store.read().await.schedules.get(&uuid) {
+        res = Ok(Json(read::Payload::Schedule(vec![(uuid, s.clone()).into()])));
+    } else {
+        println!("[Api] No Schedule with {uuid} was found");
+        return Err((StatusCode::BAD_REQUEST,
+            Json((1, format!("No Schedule with the Uuid {uuid} was found")).into())
+        ))
+    }
 
-// async fn set_display_schedule(State(store): State<Arc<Store>>, Path((display, schedule)): Path<(Uuid, Uuid)>) -> Result<String, (StatusCode, Json<response::Error>)> {
-//     let read = store.read().await;
-//     let schedule_exists = read.schedules.contains_key(&schedule);
-//     let display_exists = read.displays.contains_key(&display);
-//     let set_to_schedule = read.displays.get(&display).unwrap().schedule != schedule;
-//     drop(read);
-
-//     if schedule_exists && display_exists && set_to_schedule {
-//         let res = format!("set display {display} to schedule {schedule}");
-//         store.update_display_schedule(display, schedule).await;
-//         return Ok(res)
-//     }
-
-//     Err((StatusCode::BAD_REQUEST, Json({
-//         if !schedule_exists {
-//             (1, format!("{schedule} is not a defined schedule"))
-//         } else if !display_exists {
-//             (2, format!("{display} is not a defined display"))
-//         } else {
-//             (3, format!("Display is already set to specified schedule"))
-//         }}.into()
-//     )))
-// }
+    store.delete_schedule(uuid).await;
+    println!("[Api] Deleted Schedule {uuid}");
+    res
+}
 
 async fn ws_handler(ws: WebSocketUpgrade, ConnectInfo(addr): ConnectInfo<SocketAddr>, State(store): State<Arc<Store>>) -> impl IntoResponse {
     ws.on_upgrade(move |socket| client_connection(socket, addr, store))

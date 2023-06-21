@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use tokio::{fs, sync::{broadcast::{self, Sender, Receiver}, RwLock, RwLockReadGuard, RwLockWriteGuard, oneshot}, time::sleep};
 use uuid::Uuid;
 
-use super::schedule::{Schedule, Moment};
+use super::schedule::{Schedule, Moment, self};
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Display {
@@ -196,6 +196,16 @@ impl Store {
         }).await;
     }
 
+    /// Creates a new Schedule
+    /// 
+    /// Overrides existing Schedule with same uuid
+    pub async fn create_schedule(&self, uuid: Uuid, name: String, playlist: Uuid) {
+        self.write(|mut c| {
+            c.schedules.insert(uuid, Schedule::new(name, vec![], playlist));
+            Change::Schedule(HashSet::from([uuid]))
+        }).await;
+    }
+
     /// Updates the display with the given Uuid
     /// 
     /// Does nothing if no such display is found
@@ -215,8 +225,20 @@ impl Store {
         self.write(|mut c| {
             c.playlists
                 .entry(uuid)
-                .and_modify(|d| *d = Playlist { name, items });
+                .and_modify(|p| *p = Playlist { name, items });
             Change::Playlist(HashSet::from([uuid]))
+        }).await
+    }
+
+    /// Updates the Schedule with the given Uuid
+    /// 
+    /// Does nothing if no such Schedule is found
+    pub async fn update_schedule(&self, uuid: Uuid, name: String, playlist: Uuid, schedules: Vec<schedule::ScheduledPlaylistInput>) {
+        self.write(|mut c| {
+            c.schedules
+                .entry(uuid)
+                .and_modify(|s| *s = Schedule::new(name, schedules, playlist));
+            Change::Schedule(HashSet::from([uuid]))
         }).await
     }
 
@@ -240,17 +262,15 @@ impl Store {
         }).await
     }
 
-    /// Updates an existing display to the schedule given.
+    /// Deletes the Schedule with the given Uuid
     /// 
-    /// Does not check if the schedule exists or not.
-    // pub async fn update_display_schedule(&self, display: Uuid, schedule: Uuid) {
-    //     self.write(|mut c| {
-    //         c.displays
-    //             .entry(display)
-    //             .and_modify(|d| d.schedule = schedule);
-    //         Change::Display(HashSet::from([display]))
-    //     }).await;
-    // }
+    /// Does nothing if no such Schedule is found
+    pub async fn delete_schedule(&self, uuid: Uuid) {
+        self.write(|mut c| {
+            c.schedules.remove(&uuid);
+            Change::Schedule(HashSet::from([uuid]))
+        }).await
+    }
 
     /// Get all PlaylistItem(s) from the scheduled playlist in the display's schedule
     pub async fn get_display_playlists(&self, display: &Uuid) -> Option<Vec<PlaylistItem>> {
