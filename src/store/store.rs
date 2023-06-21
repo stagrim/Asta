@@ -186,6 +186,16 @@ impl Store {
         }).await;
     }
 
+    /// Creates a new playlist
+    /// 
+    /// Overrides existing playlist with same uuid
+    pub async fn create_playlist(&self, uuid: Uuid, name: String) {
+        self.write(|mut c| {
+            c.playlists.insert(uuid, Playlist { name, items: vec![] });
+            Change::Playlist(HashSet::from([uuid]))
+        }).await;
+    }
+
     /// Updates the display with the given Uuid
     /// 
     /// Does nothing if no such display is found
@@ -198,6 +208,18 @@ impl Store {
         }).await
     }
 
+    /// Updates the playlist with the given Uuid
+    /// 
+    /// Does nothing if no such playlist is found
+    pub async fn update_playlist(&self, uuid: Uuid, name: String, items: Vec<PlaylistItem>) {
+        self.write(|mut c| {
+            c.playlists
+                .entry(uuid)
+                .and_modify(|d| *d = Playlist { name, items });
+            Change::Playlist(HashSet::from([uuid]))
+        }).await
+    }
+
     /// Deletes the display with the given Uuid
     /// 
     /// Does nothing if no such display is found
@@ -205,6 +227,16 @@ impl Store {
         self.write(|mut c| {
             c.displays.remove(&uuid);
             Change::Display(HashSet::from([uuid]))
+        }).await
+    }
+
+    /// Deletes the Playlist with the given Uuid
+    /// 
+    /// Does nothing if no such Playlist is found
+    pub async fn delete_playlist(&self, uuid: Uuid) {
+        self.write(|mut c| {
+            c.playlists.remove(&uuid);
+            Change::Playlist(HashSet::from([uuid]))
         }).await
     }
 

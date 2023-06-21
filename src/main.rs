@@ -42,7 +42,12 @@ async fn main() {
                 .route("/display", post(create_display))
                 .route("/display/:uuid", put(update_display))
                 .route("/display/:uuid", delete(delete_display))
-                .route("/playlist", get(read_playlists))
+                .nest("/playlist", Router::new()
+                    .route("/", post(create_playlist))
+                    .route("/", get(read_playlists))
+                    .route("/:uuid", put(update_playlist))
+                    .route("/:uuid", delete(delete_playlist))
+                )
                 .route("/schedule", get(read_schedules))
             )
             .route("/", get(ws_handler))
@@ -127,18 +132,32 @@ mod create {
     use serde::Deserialize;
     use uuid::Uuid;
 
-    pub use crate::read::{Schedule, Playlist, Error, Response};
+    pub use crate::read::{Error, Response};
 
     #[derive(Deserialize)]
     pub struct Display {
         pub name: String,
         pub schedule: Uuid
     }
+
+    #[derive(Deserialize)]
+    pub struct Playlist {
+        pub name: String
+    }
 }
 
 mod update {
+    use serde::Deserialize;
+
     pub use crate::read::{Response, Payload};
-    pub use crate::create::{Display};
+    pub use crate::create::Display;
+    use crate::store::store;
+
+    #[derive(Deserialize)]
+    pub struct Playlist {
+        pub name: String,
+        pub items: Vec<store::PlaylistItem>,
+    }
 }
 
 #[debug_handler]
@@ -162,6 +181,33 @@ async fn create_display(State(store): State<Arc<Store>>, Json(display): Json<cre
         Ok(Json(read::Payload::Display(vec![(uuid, d.clone()).into()])))
     } else {
         println!("[Api] No Display with {} could be found while reading after write", uuid);
+        Err((StatusCode::INTERNAL_SERVER_ERROR,
+            Json((2, format!("Something went wrong with the creation")).into())
+        ))
+    }
+}
+
+#[debug_handler]
+async fn create_playlist(State(store): State<Arc<Store>>, Json(playlist): Json<create::Playlist>) -> create::Response {
+    println!("[Api] Creating Playlist with name {}", playlist.name);
+    let read = store.read().await;
+    if let Some((uuid, _)) = read.playlists.iter().find(|(_, p)| p.name == playlist.name) {
+        println!("[Api] Name is already used by Playlist {}", uuid);
+        return Err((StatusCode::BAD_REQUEST,
+            Json((1, format!("Avoid using the name {} as it is already used by another Playlist", playlist.name)).into())
+        ))
+    }
+
+    drop(read);
+    let uuid = Uuid::new_v4();
+    println!("[Api] Generated Uuid {uuid} for new Playlist");
+    store.create_playlist(uuid, playlist.name).await;
+
+    if let Some(p) = store.read().await.playlists.get(&uuid) {
+        println!("[Api] Created Playlist {uuid}");
+        Ok(Json(read::Payload::Playlist(vec![(uuid, p.clone()).into()])))
+    } else {
+        println!("[Api] No Playlist with {uuid} could be found while reading after write");
         Err((StatusCode::INTERNAL_SERVER_ERROR,
             Json((2, format!("Something went wrong with the creation")).into())
         ))
@@ -230,6 +276,31 @@ async fn update_display(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>,
 }
 
 #[debug_handler]
+async fn update_playlist(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>, Json(playlist): Json<update::Playlist>) -> update::Response {
+    println!("[Api] Updating Playlist {uuid}");
+    let read = store.read().await;
+    if !read.playlists.contains_key(&uuid) {
+        println!("[Api] No Playlist with {uuid} was found");
+        return Err((StatusCode::BAD_REQUEST, Json((1, format!("No Playlist with the Uuid {uuid} was found")).into())))
+    }
+    if let Some((uuid, _)) = read.playlists.iter().find(|(&u, p)| p.name == playlist.name && u != uuid) {
+        println!("[Api] Name is already used by Playlist {}", uuid);
+        return Err((StatusCode::BAD_REQUEST, Json((2, format!("Avoid using the name {} as it is already used by another Playlist", playlist.name)).into())))
+    }
+    drop(read);
+
+    store.update_playlist(uuid, playlist.name, playlist.items).await;
+    
+    if let Some(p) = store.read().await.playlists.get(&uuid) {
+        println!("[Api] Updated and read Playlist {uuid}");
+        Ok(Json(update::Payload::Playlist(vec![(uuid, p.clone()).into()])))
+    } else {
+        println!("[Api] Could not find Playlist with {uuid} after update");
+        Err((StatusCode::INTERNAL_SERVER_ERROR, Json((3, format!("Could not find Playlist with {uuid} after update")).into())))
+    }
+}
+
+#[debug_handler]
 async fn delete_display(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>) -> read::Response {
     println!("[Api] Deleting Display {uuid}");
     let res: read::Response;
@@ -244,6 +315,24 @@ async fn delete_display(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>)
 
     store.delete_display(uuid).await;
     println!("[Api] Deleted Display {uuid}");
+    res
+}
+
+#[debug_handler]
+async fn delete_playlist(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>) -> read::Response {
+    println!("[Api] Deleting Playlist {uuid}");
+    let res;
+    if let Some(d) = store.read().await.playlists.get(&uuid) {
+        res = Ok(Json(read::Payload::Playlist(vec![(uuid, d.clone()).into()])));
+    } else {
+        println!("[Api] No Playlist with {uuid} was found");
+        return Err((StatusCode::BAD_REQUEST,
+            Json((1, format!("No Playlist with the Uuid {uuid} was found")).into())
+        ))
+    }
+
+    store.delete_playlist(uuid).await;
+    println!("[Api] Deleted Playlist {uuid}");
     res
 }
 
