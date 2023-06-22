@@ -12,9 +12,9 @@ use crate::connection::connection::client_connection;
 mod store;
 mod connection;
 
-impl From<(u8, String)> for read::Error {
+impl From<(u8, String)> for read::Payload {
     fn from(value: (u8, String)) -> Self {
-        read::Error { code: value.0, message: value.1 }
+        read::Payload::Error { code: value.0, message: value.1 }
     }
 }
 
@@ -71,24 +71,33 @@ mod read {
     use axum::Json;
     use hyper::StatusCode;
     use serde::Serialize;
+    use ts_rs::TS;
     use uuid::Uuid;
 
     use crate::store::{store, schedule};
 
-    pub type Response = Result<Json<Payload>, (StatusCode, Json<Error>)>;
+    pub type Response = Result<Json<Payload>, (StatusCode, Json<Payload>)>;
 
-    #[derive(Serialize)]
+    #[derive(Serialize, TS)]
     #[serde(tag = "type", content = "content")]
+    #[ts(export, export_to = "api_bindings/read/")]
     pub enum Payload {
         Display(Vec<Display>),
         Playlist(Vec<Playlist>),
         Schedule(Vec<Schedule>),
+        Error {
+            code: u8,
+            message: String
+        }
     }
 
-    #[derive(Serialize)]
+    #[derive(Serialize, TS)]
+    #[ts(export, export_to = "api_bindings/read/")]
     pub struct Display {
+        #[ts(type = "string")]
         pub uuid: Uuid,
         pub name: String,
+        #[ts(type = "string")]
         pub schedule: Uuid
     }
 
@@ -98,8 +107,10 @@ mod read {
         }
     }
 
-    #[derive(Serialize)]
+    #[derive(Serialize, TS)]
+    #[ts(export, export_to = "api_bindings/read/")]
     pub struct Playlist {
+        #[ts(type = "string")]
         pub uuid: Uuid,
         pub name: String,
         pub items: Vec<store::PlaylistItem>,
@@ -111,10 +122,13 @@ mod read {
         }
     }
 
-    #[derive(Serialize)]
+    #[derive(Serialize, TS)]
+    #[ts(export, export_to = "api_bindings/read/")]
     pub struct Schedule {
+        #[ts(type = "string")]
         pub uuid: Uuid,
         pub name: String,
+        #[ts(type = "string")]
         pub playlist: Uuid,
         pub scheduled: Option<Vec<schedule::ScheduledPlaylistInput>>
     }
@@ -125,57 +139,65 @@ mod read {
             Self { uuid, name: s.name, playlist: s.playlist, scheduled: s.scheduled }
         }
     }
-    
-    #[derive(Serialize)]
-    #[serde(tag = "type")]
-    pub struct Error {
-        pub code: u8,
-        pub message: String
-    }
 }
 
 mod create {
     use serde::Deserialize;
+    use ts_rs::TS;
     use uuid::Uuid;
 
-    pub use crate::read::{Error, Response};
+    pub use crate::read::Response;
 
-    #[derive(Deserialize)]
+    #[derive(Deserialize, TS)]
+    #[ts(export, export_to = "api_bindings/create/", rename = "CreateDisplay")]
     pub struct Display {
         pub name: String,
+        #[ts(type = "string")]
         pub schedule: Uuid
     }
 
-    #[derive(Deserialize)]
+    #[derive(Deserialize, TS)]
+    #[ts(export, export_to = "api_bindings/create/", rename = "CreatePlaylist")]
     pub struct Playlist {
         pub name: String
     }
 
-    #[derive(Deserialize)]
+    #[derive(Deserialize, TS)]
+    #[ts(export, export_to = "api_bindings/create/", rename = "CreateSchedule")]
     pub struct Schedule {
         pub name: String,
+        #[ts(type = "string")]
         pub playlist: Uuid,
     }
 }
 
 mod update {
     use serde::Deserialize;
+    use ts_rs::TS;
     use uuid::Uuid;
 
     pub use crate::read::{Response, Payload};
     pub use crate::create::Display;
     use crate::store::{store, schedule};
 
-    #[derive(Deserialize)]
+    #[derive(TS)]
+    #[ts(export, export_to = "api_bindings/update/", rename = "UpdateDisplay")]
+    struct Display_(Display);
+
+    #[derive(Deserialize, TS)]
+    #[ts(export, export_to = "api_bindings/update/", rename = "UpdatePlaylist")]
     pub struct Playlist {
         pub name: String,
         pub items: Vec<store::PlaylistItem>,
     }
 
-    #[derive(Deserialize)]
+    #[derive(Deserialize, TS)]
+    #[ts(export, export_to = "api_bindings/update/", rename = "UpdateSchedule")]
     pub struct Schedule {
         pub name: String,
+        #[ts(type = "string")]
         pub playlist: Uuid,
+        #[ts(optional)]
         pub scheduled: Option<Vec<schedule::ScheduledPlaylistInput>>
     }
 }

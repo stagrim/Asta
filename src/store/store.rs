@@ -3,6 +3,7 @@ use std::{collections::{HashMap, HashSet}, time::Duration};
 use chrono::Local;
 use serde::{Deserialize, Serialize};
 use tokio::{fs, sync::{broadcast::{self, Sender, Receiver}, RwLock, RwLockReadGuard, RwLockWriteGuard, oneshot}, time::sleep};
+use ts_rs::TS;
 use uuid::Uuid;
 
 use super::schedule::{Schedule, Moment, self};
@@ -19,8 +20,9 @@ pub struct Playlist {
     pub items: Vec<PlaylistItem>
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, TS)]
 #[serde(tag = "type")]
+#[ts(export, export_to = "api_bindings/update/")]
 pub enum PlaylistItem {
     #[serde(rename = "WEBSITE")]
     Website { name: String, settings: WebsiteData },
@@ -30,19 +32,22 @@ pub enum PlaylistItem {
     Image { name: String, settings: ImageData }
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, TS)]
+#[ts(export, export_to = "api_bindings/update/")]
 pub struct WebsiteData {
     pub url: String,
     pub duration: u64
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, TS)]
+#[ts(export, export_to = "api_bindings/update/")]
 pub struct TextData {
     pub text: String,
     pub duration: u64
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, TS)]
+#[ts(export, export_to = "api_bindings/update/")]
 pub struct ImageData {
     pub src: String,
     pub duration: u64

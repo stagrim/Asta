@@ -2,6 +2,7 @@ use std::str::FromStr;
 
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 use uuid::Uuid;
 use cron::Schedule as CronSchedule;
 
@@ -220,8 +221,10 @@ pub struct ScheduleInput {
     pub playlist: Uuid
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, TS)]
+#[ts(export, export_to = "api_bindings/update/")]
 pub struct ScheduledPlaylistInput {
+    #[ts(type = "string")]
     pub playlist: Uuid,
     pub start: String,
     pub end: String

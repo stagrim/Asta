@@ -8,6 +8,8 @@ Sasta consists of an API to get and update current state, a WebSocket connection
 
 `cargo build --release`
 
+Generate API bindings for typescript with `cargo test`
+
 # Run
 
 `cargo run --release`
