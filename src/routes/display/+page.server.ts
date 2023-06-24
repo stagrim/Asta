@@ -24,16 +24,18 @@ export const actions = {
         })
 
         const text = await res.text()
+        let payload: Payload
         try {
-            const payload: Payload = JSON.parse(text)
-            if (payload.type == "Display") {
-                console.log(payload)
-                throw redirect(303, `/display/${payload.content[0].uuid}`);
-            } else if (payload.type == "Error") {
-                return fail(400, { message: payload.content.message })
-            }
+            payload = JSON.parse(text)
         } catch {
             return fail(400, { message: text })
+        }
+        
+        if (payload.type == "Display") {
+            console.log(payload)
+            throw redirect(303, `/display/${payload.content[0].uuid}`);
+        } else if (payload.type == "Error") {
+            return fail(400, { message: payload.content.message })
         }
     }
 } satisfies Actions;
