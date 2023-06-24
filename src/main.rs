@@ -18,6 +18,8 @@ impl From<(u8, String)> for read::Payload {
     }
 }
 
+// TODO: Race conditions possible in like all API routes
+
 #[tokio::main]
 async fn main() {
     let store = Arc::new(Store::new().await);
