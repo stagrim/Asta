@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { applyAction, enhance } from "$app/forms";
 	import { invalidateAll } from "$app/navigation";
-	import type { Uuid } from "../../app";
+	import { form_action } from "$lib/form_action";
 	import SchedulePicker from "../../lib/SchedulePicker.svelte";
 	import type { ActionData, PageData } from "./$types";
 	import { toastStore } from '@skeletonlabs/skeleton';
@@ -11,28 +11,7 @@
     let chosen_schedule: Uuid = "0"
 </script>
 
-<form class="card m-4" method="POST" action="?/create" use:enhance={({}) => {
-    return async ({ result, update }) => {
-        console.log(result)
-            if (result.type === "success" || result.type === "redirect") {
-                toastStore.trigger({
-                    message: 'Display added',
-                    background: 'variant-filled-success',
-                    timeout: 2000
-                })
-
-                await invalidateAll()
-                await applyAction(result)
-
-            } else if (result.type === "failure") {
-                toastStore.trigger({
-                    message: result.data.message,
-                    background: 'variant-filled-error',
-                    autohide: false
-                })
-            }
-    }
-}}>
+<form class="card m-4" method="POST" action="?/create" use:enhance={() => { return form_action }}>
     <section class="p-4">
 
         <label class="label mb-5">
@@ -40,7 +19,7 @@
             <input required name="name" class="input" type="text" placeholder="Name must be unique" />
         </label>
 
-        <SchedulePicker name="schedule" schedules={data.schedule.values} bind:chosen_schedule />
+        <SchedulePicker name="schedule" schedules={data.schedule.content} bind:chosen_schedule />
 
         <div class="flex w-full justify-center mt-5">
             <!-- Disable button when nothing is changed -->

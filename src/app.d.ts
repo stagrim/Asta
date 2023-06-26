@@ -1,4 +1,9 @@
 // See https://kit.svelte.dev/docs/types#app
+
+import type { Display } from "./api_bindings/read/Display"
+import type { Playlist } from "./api_bindings/read/Playlist"
+import type { Schedule } from "./api_bindings/read/Schedule"
+
 // for information about these interfaces
 declare global {
 	namespace App {
@@ -12,31 +17,7 @@ declare global {
 	}
 }
 
-export type Uuid = String
-
-export interface Content {
-	uuid: Uuid,
-	name: string,
-}
-
-export interface Display extends Content {
-	schedule: Uuid
-}
-
-export interface Schedule extends Content {
-	playlist: Uuid
-}
-
-export interface Playlist extends Content {
-	playlist: Uuid
-}
-
-export interface Payload<C extends Content> {
-    type: "Display",
-    content: C[]
-}
-
-export interface State<C extends Content> extends Payload<C> {
-    content: Map<Uuid, C>,
-	values: C[]
-}
+export type State =
+{ type: "Display", content: Map<string, Display> } |
+{ type: "Playlist", content: Map<string, Playlist> } |
+{ type: "Schedule", content: Map<string, Schedule> }

@@ -1,41 +1,15 @@
 import { SERVER_URL } from "$env/static/private"
-import { fail, type Actions, redirect } from "@sveltejs/kit"
+import type { Actions } from "@sveltejs/kit"
 import type { CreateDisplay } from "../../api_bindings/create/CreateDisplay"
 import type { Payload } from "../../api_bindings/read/Payload"
+import { create } from "$lib/server/actions"
 
 export const actions = {
     create: async ({ request }) => {
-        const data = await request.formData();
-        
-        const name = data.get("name")
-        const schedule = data.get("schedule")
-        if (!name || !schedule) {
-            return fail(400, { message: "Fields were empty" })
-        }
         const body: CreateDisplay = {
-            name: name.toString(),
-            schedule: schedule.toString()
+            name: "",
+            schedule: ""
         }
-
-        const res = await fetch(`${SERVER_URL}/api/display`, {
-            method: "POST",
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(body)
-        })
-
-        const text = await res.text()
-        let payload: Payload
-        try {
-            payload = JSON.parse(text)
-        } catch {
-            return fail(400, { message: text })
-        }
-        
-        if (payload.type == "Display") {
-            console.log(payload)
-            throw redirect(303, `/display/${payload.content[0].uuid}`);
-        } else if (payload.type == "Error") {
-            return fail(400, { message: payload.content.message })
-        }
+        return await create(body, "Display", await request.formData())
     }
 } satisfies Actions;

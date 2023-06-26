@@ -1,12 +1,16 @@
 <script lang="ts">
 	import { page } from "$app/stores";
 	import { Accordion, AccordionItem, drawerStore } from "@skeletonlabs/skeleton";
+	import type { LayoutData } from "../routes/$types";
 
     const drawerClose = () => drawerStore.close()
 
     export let data: LayoutData
 
-    const create_kind = (kind: string) => ({ values: data[kind].values, type: kind })
+    const create_kind = (kind: string) => ({ 
+        values: [...data[kind].content.values()].sort((a, b) => a.name.localeCompare(b.name)),
+        type: kind
+    })
 
     let kinds
     $: data, kinds = ['display', 'schedule', 'playlist'].map(create_kind)
