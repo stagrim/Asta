@@ -30,7 +30,7 @@ export const create = async (body: { [key: string]: any }, type: type, data: For
     
     if (payload.type == type) {
         console.log(payload)
-        throw redirect(303, `/${type.toLocaleLowerCase()}/${payload.content[0].uuid}`);
+        return { redirect: `/${type.toLocaleLowerCase()}/${payload.content[0].uuid}`, message: `${type} Added` }
     } else if (payload.type == "Error") {
         return fail(400, { message: payload.content.message })
     }
@@ -93,5 +93,5 @@ export const delete_action = async (type: type, uuid?: string) => {
         method: "DELETE",
     })
 
-    throw redirect(303, `/${type.toLocaleLowerCase()}`);
+    return { redirect: `/${type.toLocaleLowerCase()}`, message: `${type} Deleted` }
 }

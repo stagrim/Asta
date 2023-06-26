@@ -11,7 +11,7 @@ export const actions = {
             name: "",
             schedule: ""
         }
-        await update({
+        return await update({
             body,
             data: await request.formData(),
             type: "Display",

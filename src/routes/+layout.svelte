@@ -33,7 +33,9 @@
             </span>
         </button>
     </svelte:fragment>
-	(title)
+	    
+        <h4 class="h4">Asta Admin</h4>
+
 	<svelte:fragment slot="trail">
         <LightSwitch rounded="rounded-full" />
     </svelte:fragment>

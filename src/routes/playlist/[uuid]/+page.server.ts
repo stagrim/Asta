@@ -12,7 +12,7 @@ export const actions = {
             name: "",
             items: []
         }
-        await update({
+        return await update({
             body,
             data: await request.formData(),
             type,
