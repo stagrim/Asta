@@ -1,0 +1,62 @@
+{
+    "displays": {
+        "1dadaee4-03ae-499e-a69b-eb31060a91bf": {
+            "name": "Device0",
+            "schedule": "dee4a531-6f0c-450b-a82a-ec50f38f6d91"
+        }
+    },
+    "playlists": {
+        "ac0b0496-8b53-48c1-94d1-74683c3ae068": {
+            "name": "Dsek",
+            "items": [
+                {
+                    "name": "Dsek website",
+                    "type": "WEBSITE",
+                    "settings": {
+                        "url": "https://www.dsek.se/",
+                        "duration": 10
+                    }
+                },
+                {
+                    "name": "Dsek KM page",
+                    "type": "WEBSITE",
+                    "settings": {
+                        "url": "https://www.dsek.se/committees/km/",
+                        "duration": 10
+                    }
+                }
+            ]
+        },
+        "4e106ea5-bf3a-4bda-9ddd-263e1d94bfc2": {
+            "name": "Esek",
+            "items": [
+                {
+                    "name": "Esek website",
+                    "type": "WEBSITE",
+                    "settings": {
+                        "url": "https://eee.esek.se/",
+                        "duration": 10
+                    }
+                },
+                {
+                    "name": "Esek KM page",
+                    "type": "WEBSITE",
+                    "settings": {
+                        "url": "https://esek.se/about/utskott/KM/",
+                        "duration": 10
+                    }
+                }
+            ]
+        }
+    },
+    "schedules": {
+        "dee4a531-6f0c-450b-a82a-ec50f38f6d91": {
+            "name": "Dsek",
+            "playlist": "ac0b0496-8b53-48c1-94d1-74683c3ae068"
+        },
+        "e4c32957-76b7-4e70-bdba-5f79d49538ab": {
+            "name": "Esek",
+            "playlist": "4e106ea5-bf3a-4bda-9ddd-263e1d94bfc2"
+        }
+    }
+}
