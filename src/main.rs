@@ -329,7 +329,7 @@ async fn update_display(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>,
         println!("[Api] Name is already used by Display {}", uuid);
         return Err((StatusCode::BAD_REQUEST, Json((2, format!("Avoid using the name {} as it is already used by another display", display.name)).into())))
     }
-    drop (read);
+    drop(read);
 
     store.update_display(uuid, display.name, display.schedule).await;
     
@@ -379,7 +379,10 @@ async fn update_schedule(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>
     }
     drop(read);
 
-    store.update_schedule(uuid, schedule.name, schedule.playlist, schedule.scheduled.unwrap_or(vec![])).await;
+    if let Err(e) = store.update_schedule(uuid, schedule.name, schedule.playlist, schedule.scheduled.unwrap_or(vec![])).await {
+        println!("[Api] Schedule update failed with error: {e}");
+        return Err((StatusCode::INTERNAL_SERVER_ERROR, Json((3, format!("{e}")).into())))
+    }
     
     if let Some(s) = store.read().await.schedules.get(&uuid) {
         println!("[Api] Updated and read Schedule {uuid}");

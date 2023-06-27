@@ -206,7 +206,7 @@ impl Store {
     /// Overrides existing Schedule with same uuid
     pub async fn create_schedule(&self, uuid: Uuid, name: String, playlist: Uuid) {
         self.write(|mut c| {
-            c.schedules.insert(uuid, Schedule::new(name, vec![], playlist));
+            c.schedules.insert(uuid, Schedule::new(name, vec![], playlist).unwrap());
             Change::Schedule(HashSet::from([uuid]))
         }).await;
     }
@@ -238,13 +238,18 @@ impl Store {
     /// Updates the Schedule with the given Uuid
     /// 
     /// Does nothing if no such Schedule is found
-    pub async fn update_schedule(&self, uuid: Uuid, name: String, playlist: Uuid, schedules: Vec<schedule::ScheduledPlaylistInput>) {
+    pub async fn update_schedule(&self, uuid: Uuid, name: String, playlist: Uuid, schedules: Vec<schedule::ScheduledPlaylistInput>) -> Result<(), String> {
+        let schedule = match Schedule::new(name, schedules, playlist) {
+            Ok(s) => s,
+            Err(e) => return Err(e),
+        };
         self.write(|mut c| {
             c.schedules
                 .entry(uuid)
-                .and_modify(|s| *s = Schedule::new(name, schedules, playlist));
+                .and_modify(|s| *s = schedule);
             Change::Schedule(HashSet::from([uuid]))
-        }).await
+        }).await;
+        Ok(())
     }
 
     /// Deletes the display with the given Uuid

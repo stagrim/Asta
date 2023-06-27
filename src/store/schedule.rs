@@ -43,18 +43,25 @@ pub struct Schedule {
 }
 
 impl Schedule {
-    pub fn new(name: String, schedules: Vec<ScheduledPlaylistInput>, fallback: Uuid) -> Self {
-        Schedule {
-            name,
-            playlist: fallback,
-            schedules:
-                schedules.iter().map(|s| ScheduledItem::Schedule { 
-                    start: CronSchedule::from_str(&s.start).unwrap(),
-                    end: CronSchedule::from_str(&s.end).unwrap(),
-                    playlist: s.playlist
-                })
-                .chain(vec![ScheduledItem::Fallback(fallback)].into_iter())
-                .collect()
+    pub fn new(name: String, schedules_input: Vec<ScheduledPlaylistInput>, playlist: Uuid) -> Result<Self, String> {
+        let mut schedules = Vec::with_capacity(schedules_input.len());
+
+        for s in schedules_input {
+            schedules.push(ScheduledItem::Schedule {
+                start: Self::str_to_cron(&s.start)?,
+                end: Self::str_to_cron(&s.end)?,
+                playlist: s.playlist
+            })
+        }
+        schedules.push(ScheduledItem::Fallback(playlist));
+        
+        Ok(Schedule { name, playlist, schedules })
+    }
+
+    fn str_to_cron(s: &str) -> Result<CronSchedule, String> {
+        match CronSchedule::from_str(s) {
+            Ok(s) => Ok(s),
+            Err(_) => Err(format!("invalid cron expression '{}'", s)),
         }
     }
 
@@ -233,8 +240,11 @@ pub struct ScheduledPlaylistInput {
 impl<'de> Deserialize<'de> for Schedule {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where D: serde::Deserializer<'de> {
-        let input = ScheduleInput::deserialize(deserializer).unwrap();
-        Ok(Schedule::new(input.name, input.scheduled.unwrap_or(vec![]), input.playlist))
+        let input = ScheduleInput::deserialize(deserializer)?;
+        match Schedule::new(input.name, input.scheduled.unwrap_or(vec![]), input.playlist) {
+            Ok(s) => Ok(s),
+            Err(s) => Err(serde::de::Error::custom(s)),
+        }
     }
 }
 
@@ -316,7 +326,7 @@ mod test {
                 end: "* 0 17 * * * *".to_string(),
             },
         ];
-        let schedule: Schedule = Schedule::new("test".to_string(), schedules, default_uuid);
+        let schedule: Schedule = Schedule::new("test".to_string(), schedules, default_uuid).unwrap();
 
         let first_schedule_start =
             Moment { time: Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap(), playlist: scheduled_uuid };
@@ -363,7 +373,7 @@ mod test {
                 end: "0 0 14 * * * *".to_string(),
             }
         ];
-        let schedule: Schedule = Schedule::new("test".to_string(), schedules, default_uuid);
+        let schedule: Schedule = Schedule::new("test".to_string(), schedules, default_uuid).unwrap();
         
         assert_eq!(
             Moment { time: Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap(), playlist: scheduled_uuid },
@@ -394,7 +404,7 @@ mod test {
                 end: "0 0 15 * * * *".to_string(),
             }
         ];
-        let schedule: Schedule = Schedule::new("test".to_string(), schedules, default_uuid);
+        let schedule: Schedule = Schedule::new("test".to_string(), schedules, default_uuid).unwrap();
         
         assert_eq!(
             Moment { time: Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap(), playlist: scheduled_uuid },
@@ -443,7 +453,7 @@ mod test {
                 end: "0 0 15 18 4 * 2023".to_string(),
             }
         ];
-        let schedule: Schedule = Schedule::new("test".to_string(), schedules, default_uuid);
+        let schedule: Schedule = Schedule::new("test".to_string(), schedules, default_uuid).unwrap();
         
         assert_eq!(
             Moment { time: Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap(), playlist: scheduled_uuid },
@@ -483,7 +493,7 @@ mod test {
                 end: "0 0 14 18 4 * 2023".to_string(),
             }
         ];
-        let schedule: Schedule = Schedule::new("test".to_string(), schedules, default_uuid);
+        let schedule: Schedule = Schedule::new("test".to_string(), schedules, default_uuid).unwrap();
 
         assert_eq!(default_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 9, 59, 59).unwrap()));
         assert_eq!(scheduled_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap()));
@@ -505,7 +515,7 @@ mod test {
                 end: "0 0 14 * * * *".to_string(),
             }
         ];
-        let schedule: Schedule = Schedule::new("test".to_string(), playlist, default_uuid);
+        let schedule: Schedule = Schedule::new("test".to_string(), playlist, default_uuid).unwrap();
 
         assert_eq!(default_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 9, 59, 59).unwrap()));
         assert_eq!(scheduled_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap()));
@@ -533,14 +543,14 @@ mod test {
                 end: "0 0 18 * * * *".to_string(),
             }
         ];
-        let schedule: Schedule = Schedule::new("test".to_string(), playlist.clone(), default_uuid);
+        let schedule: Schedule = Schedule::new("test".to_string(), playlist.clone(), default_uuid).unwrap();
 
         assert_eq!(scheduled_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 13, 59, 59).unwrap()));
         assert_eq!(scheduled2_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap()));
         assert_eq!(scheduled2_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 1).unwrap()));
 
         playlist.reverse();
-        let schedule: Schedule = Schedule::new("test".to_string(), playlist, default_uuid);
+        let schedule: Schedule = Schedule::new("test".to_string(), playlist, default_uuid).unwrap();
 
         assert_eq!(scheduled_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 13, 59, 59).unwrap()));
         assert_eq!(scheduled2_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap()));
