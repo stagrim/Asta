@@ -1,0 +1,10 @@
+target/
+test_json/
+node_modules/
+.env
+README.md
+.gitignore
+static/audio-test.html
+fasta/
+frontend/
+img/

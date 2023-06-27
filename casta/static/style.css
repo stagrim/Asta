@@ -1,0 +1,42 @@
+@font-face {
+    font-family: "Fira Code";
+    src: url("firacode/FiraCode-VariableFont_wght.ttf");
+}
+html, body, div, iframe {
+    margin: 0px;
+    padding: 0px;
+    height: 100%;
+    width: 100%;
+    border: none;
+    background-color: #1e1e1e;
+}
+
+iframe {
+    display: block;
+    width: 100%;
+    border: none;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+img {
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    object-fit: contain;
+}
+
+#text {
+    font-family: "Fira Code";
+    display: table-cell;
+    text-align:center;
+    vertical-align:middle;
+    height: 100vh;
+    width: 100vw;
+    color: #F280A1;
+    font-size: 4rem;
+}
+
+.hidden {
+    display: none;
+}
