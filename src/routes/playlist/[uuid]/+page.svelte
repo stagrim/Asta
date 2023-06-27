@@ -2,7 +2,7 @@
     import { page } from '$app/stores'
 	import { RadioGroup, RadioItem, toastStore, type ToastSettings, modalStore } from '@skeletonlabs/skeleton';
 	import type { PageData } from './$types'
-	import SchedulePicker from '../../../lib/SchedulePicker.svelte';
+	import SchedulePicker from '../../../lib/TypePicker.svelte';
 	import { applyAction, enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
 	import { form_action } from '$lib/form_action';

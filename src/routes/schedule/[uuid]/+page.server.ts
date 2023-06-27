@@ -1,15 +1,16 @@
 import type { Actions } from "@sveltejs/kit"
 import { delete_action, update } from "../../../lib/server/actions"
-import type { UpdatePlaylist } from "../../../api_bindings/update/UpdatePlaylist"
+import type { UpdateSchedule } from "../../../api_bindings/update/UpdateSchedule"
 
-const type = "Playlist"
+const type = "Schedule"
 
 export const actions = {
     delete: async ({ params }) => await delete_action(type, params.uuid),
     update: async ({ params, request }) => {
-        const body: UpdatePlaylist = {
+        const body: UpdateSchedule = {
             name: "",
-            items: []
+            playlist: "",
+            scheduled: []
         }
         return await update({
             body,

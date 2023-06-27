@@ -2,15 +2,22 @@ import { SERVER_URL } from "$env/static/private"
 import { fail, redirect } from "@sveltejs/kit"
 import type { Payload } from "../../api_bindings/read/Payload"
 
-type type = "Display" | "Playlist" | "Schedule"
+export type type = "Display" | "Playlist" | "Schedule"
 
-export const create = async (body: { [key: string]: any }, type: type, data: FormData) => {
+interface Input {
+    body: { [key: string]: any },
+    type: type,
+    data: FormData,
+    uuid?: string
+}
+
+export const create = async ({ body, type, data }: Input) => {
     for (const key of Object.keys(body)) {
         const field = data.get(key)
         if (field) {
             body[key] = field.toString()
         } else {
-            return fail(400, { message: "Fields were empty" })
+            return fail(400, { message: `The field ${key} is empty` })
         }
     }
 
@@ -36,14 +43,7 @@ export const create = async (body: { [key: string]: any }, type: type, data: For
     }
 }
 
-interface Update {
-    body: { [key: string]: any },
-    type: type,
-    data: FormData,
-    uuid?: string
-}
-
-export const update = async ({ body, data, type, uuid }: Update) => {
+export const update = async ({ body, data, type, uuid }: Input) => {
     if (!uuid) return fail(400, { message: `Missing Uuid` })
 
     for (const key of Object.keys(body)) {

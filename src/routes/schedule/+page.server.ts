@@ -1,16 +1,16 @@
 import type { Actions } from "@sveltejs/kit"
-import type { CreateDisplay } from "../../api_bindings/create/CreateDisplay"
 import { create } from "$lib/server/actions"
+import type { CreateSchedule } from "../../api_bindings/create/CreateSchedule"
 
 export const actions = {
     create: async ({ request }) => {
-        const body: CreateDisplay = {
+        const body: CreateSchedule = {
             name: "",
-            schedule: ""
+            playlist: ""
         }
         return await create({
             body,
-            type: "Display",
+            type: "Schedule",
             data: await request.formData()
         })
     }

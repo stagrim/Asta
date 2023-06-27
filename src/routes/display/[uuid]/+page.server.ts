@@ -1,7 +1,5 @@
-import { SERVER_URL } from "$env/static/private"
 import type { Actions } from "@sveltejs/kit"
 import type { UpdateDisplay } from "../../../api_bindings/update/UpdateDisplay"
-import type { Payload } from "../../../api_bindings/read/Payload"
 import { delete_action, update } from "../../../lib/server/actions"
 
 export const actions = {

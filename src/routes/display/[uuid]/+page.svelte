@@ -1,10 +1,9 @@
 <script lang="ts">
     import { page } from '$app/stores'
-	import { RadioGroup, RadioItem, toastStore, type ToastSettings, modalStore } from '@skeletonlabs/skeleton';
+	import { modalStore } from '@skeletonlabs/skeleton';
 	import type { PageData } from './$types'
-	import SchedulePicker from '../../../lib/SchedulePicker.svelte';
-	import { applyAction, enhance } from '$app/forms';
-	import { invalidateAll } from '$app/navigation';
+	import TypePicker from '../../../lib/TypePicker.svelte';
+	import { enhance } from '$app/forms';
 	import { form_action } from '$lib/form_action';
 
     export let data: PageData
@@ -34,7 +33,7 @@
             <input required name="name" class="input" type="text" placeholder="Name must be unique" bind:value={name_value} />
         </label>
 
-        <SchedulePicker name="schedule" bind:chosen_schedule schedules={data.schedule.content} />
+        <TypePicker name="schedule" bind:chosen_type={chosen_schedule} types={data.schedule} />
 
         <div class="flex w-full justify-center gap-4 mt-5">
             <button type="button" class="btn variant-ringed-error" on:click={() =>

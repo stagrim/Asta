@@ -1,10 +1,8 @@
 <script lang="ts">
-	import { applyAction, enhance } from "$app/forms";
-	import { invalidateAll } from "$app/navigation";
+	import { enhance } from "$app/forms";
 	import { form_action } from "$lib/form_action";
-	import SchedulePicker from "../../lib/SchedulePicker.svelte";
-	import type { ActionData, PageData } from "./$types";
-	import { toastStore } from '@skeletonlabs/skeleton';
+	import TypePicker from "../../lib/TypePicker.svelte";
+	import type { PageData } from "./$types";
 
     export let data: PageData
     
@@ -19,7 +17,7 @@
             <input required name="name" class="input" type="text" placeholder="Name must be unique" />
         </label>
 
-        <SchedulePicker name="schedule" schedules={data.schedule.content} bind:chosen_schedule />
+        <TypePicker name="schedule" types={data.schedule} bind:chosen_type={chosen_schedule} />
 
         <div class="flex w-full justify-center mt-5">
             <!-- Disable button when nothing is changed -->
