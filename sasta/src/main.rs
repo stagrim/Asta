@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, sync::Arc, vec};
+use std::{net::SocketAddr, sync::Arc, vec, collections::HashSet};
 
 use axum::{Router, routing::{get, post, put, delete}, extract::{WebSocketUpgrade, ConnectInfo, State, Path}, response::{IntoResponse}, Json, ServiceExt};
 use hyper::StatusCode;
@@ -377,6 +377,16 @@ async fn update_schedule(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>
         println!("[Api] Name is already used by Schedule {}", uuid);
         return Err((StatusCode::BAD_REQUEST, Json((2, format!("Avoid using the name {} as it is already used by another Schedule", schedule.name)).into())))
     }
+
+    if let Some(scheduled) = &schedule.scheduled {
+        let mut uniq = HashSet::new();
+        uniq.insert(schedule.playlist);
+        // Checks if any playlist Uuid is a duplicate
+        if !scheduled.iter().all(|s| uniq.insert(s.playlist)) {
+            println!("[Api] Schedule contains duplicate Playlists");
+            return Err((StatusCode::BAD_REQUEST, Json((2, format!("Must not use the same Playlist more than once in a Schedule to avoid server meltdown")).into())))
+        }
+    }
     drop(read);
 
     if let Err(e) = store.update_schedule(uuid, schedule.name, schedule.playlist, schedule.scheduled.unwrap_or(vec![])).await {
@@ -389,7 +399,7 @@ async fn update_schedule(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>
         Ok(Json(update::Payload::Schedule(vec![(uuid, s.clone()).into()])))
     } else {
         println!("[Api] Could not find Schedule with {uuid} after update");
-        Err((StatusCode::INTERNAL_SERVER_ERROR, Json((3, format!("Could not find Schedule with {uuid} after update")).into())))
+        Err((StatusCode::INTERNAL_SERVER_ERROR, Json((3, format!("Could not find Schedule with {uuid} after update to avoid server meltdown")).into())))
     }
 }
 
