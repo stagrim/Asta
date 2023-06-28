@@ -1,5 +1,5 @@
 [package]
-name = "rasta"
+name = "sasta"
 version = "0.1.0"
 edition = "2021"
 authors = ["Esbjörn Stenberg <me@stagrim.com>"]
