@@ -208,6 +208,10 @@ impl Schedule {
             }
         }
     }
+
+    pub fn has_scheduled_playlists(&self) -> bool {
+        return !self.schedules.is_empty()
+    }
 }
 
 #[derive(Debug, Clone)]

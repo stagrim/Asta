@@ -163,7 +163,7 @@ pub async fn client_connection(socket: WebSocket, who: SocketAddr, store: Arc<St
 
     tokio::select! {
         _ = &mut heartbeat_handle  => client_handle.abort(),
-        _ = &mut client_handle      => heartbeat_handle.abort(),
+        _ = &mut client_handle     => heartbeat_handle.abort(),
     };
 
     println!("[{who}] Disconnected from client!");

@@ -2,7 +2,7 @@ use std::{collections::{HashMap, HashSet}, time::Duration};
 
 use chrono::Local;
 use serde::{Deserialize, Serialize};
-use tokio::{fs, sync::{broadcast::{self, Sender, Receiver}, RwLock, RwLockReadGuard, RwLockWriteGuard, oneshot}, time::sleep};
+use tokio::{fs, sync::{broadcast::{self, Sender, Receiver}, RwLock, RwLockReadGuard, RwLockWriteGuard, oneshot}, time::{sleep_until, Instant}};
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -83,18 +83,20 @@ impl Store {
         serde_json::from_str(&str).unwrap()
     }
 
-    /// Get all PlaylistItem(s) from the scheduled playlist in the display's schedule
-    async fn update_schedule_active_playlist(&self, schedule: Uuid, active_playlist: Uuid) {
+    /// Updates all Schedules' Playlists to the (schedule_uuid, active_playlist_uuid) pairs
+    async fn update_schedule_active_playlist(&self, vec: Vec<(Uuid, Uuid)>) {
         // Exit if schedule does not exists or if it is already set to the given playlist 
         // if !self.read().await.schedules.contains_key(&schedule) || self.read().await.schedules.get(&schedule).unwrap().playlist == active_playlist {
         //     return;
         // }
 
         self.write(|mut c| {
-            c.schedules
-                .entry(schedule)
-                .and_modify(|s| s.playlist = active_playlist);
-            Change::Schedule(HashSet::from([schedule]))
+            vec.iter().for_each( |(schedule, playlist)| {
+                c.schedules
+                    .entry(*schedule)
+                    .and_modify(|s| s.playlist = *playlist);
+            });
+            Some(Change::Schedule(HashSet::from_iter(vec.iter().map(|v| v.0))))
         }).await;
     }
 
@@ -103,21 +105,38 @@ impl Store {
     /// Cancels sent token when state has been updated to the active scheduled playlists
     pub async fn schedule_loop(&self, tx: oneshot::Sender<()>) {
         let mut current_moment = Local::now();
+        let mut receiver = self.receiver();
 
         let schedules: Vec<(Uuid, Schedule)> = self.read().await.schedules
             .iter()
             .map(|(schedule_uuid, schedule)| (schedule_uuid.clone(), schedule.clone()))
             .collect();
 
-        for (uuid, schedule) in &schedules {
-            self.update_schedule_active_playlist(uuid.clone(), schedule.current_playlist(&current_moment)).await;
+        // Updates all schedules to their current active scheduled playlist
+        if !schedules.is_empty() {
+            self.write(|mut c| {
+                schedules.iter().for_each(|(uuid, schedule)| {
+                    c.schedules
+                        .entry(*uuid)
+                        .and_modify(|s| s.playlist = schedule.current_playlist(&current_moment));
+                });
+                // Change notice not needed since main thread waits on oneshot notice before continuing
+                None
+            }).await;
+            println!("[Scheduler] Updated Schedules to current active playlist");
         }
 
+        // Notify oneshot channel that schedules have been updated to active playlists
         if let Err(_) = tx.send(()) {
             println!("[Scheduler] Could not notify listener, sender dropped");
         }
 
-        loop {
+        'main: loop {
+            let schedules: Vec<(Uuid, Schedule)> = self.read().await.schedules
+                .iter()
+                .map(|(schedule_uuid, schedule)| (schedule_uuid.clone(), schedule.clone()))
+                .collect();
+            
             let mut moments: Vec<(Uuid, Moment)> = schedules.iter()
                 .filter_map(|(schedule_uuid, schedule)| match schedule.next_schedule(&current_moment) {
                     Some(m) => Some((schedule_uuid.clone(), m)),
@@ -125,11 +144,23 @@ impl Store {
                     
                 })
                 .collect();
-
+            
             if moments.is_empty() {
-                // TODO: listen for changes to schedule and restart process
-                println!("[Scheduler] Well, since updating schedules while running is not implemented yet, schedule thread will exit as no future moments was found. Bye!");
-                break;
+                println!("[Scheduler] No loaded Schedule has any scheduled playlists, waiting on an update to a Schedule...");
+                loop {
+                    match receiver.recv().await {
+                        Ok(Change::Schedule(uuids)) => {
+                            let read = self.read().await;
+                            if uuids.iter().any(|u| read.schedules.get(u).is_some_and(|s| s.has_scheduled_playlists())) {
+                                println!("[Scheduler] An updated Schedule has scheduled playlists, rerunning loop");
+                                break;
+                            }
+                        },
+                        Err(e) => println!("[Scheduler] RecvError: {e}"),
+                        _ => (),
+                    }
+                }
+                continue
             }
 
             
@@ -139,18 +170,35 @@ impl Store {
             moments = moments.into_iter().filter(|(_, m)| m.time == closest_time).collect();
 
             let sleep = match (closest_time - current_moment).to_std() {
-                Ok(d) => sleep(d),
-                Err(_) => sleep(Duration::from_secs(0)),
+                Ok(d) => Instant::now() + d,
+                Err(_) => Instant::now() + Duration::from_secs(0),
             };
 
             println!("[Scheduler] Sleeping until {} to change active playlists", closest_time.to_string());
 
-            sleep.await;
-
-            for (uuid, moment) in moments {
-                println!("[Scheduler] Updated schedule {uuid} active playlist");
-                self.update_schedule_active_playlist(uuid.clone(), moment.playlist).await;
+            loop {
+                tokio::select! {
+                    _ = sleep_until(sleep) => break,
+                    change = receiver.recv() => {
+                        match change {
+                            Ok(Change::Schedule(_)) => {
+                                println!("[Scheduler] Schedules updated, rerunning loop");
+                                continue 'main
+                            },
+                            Err(e) => println!("[Scheduler] RecvError: {e}"),
+                            _ => println!("[Scheduler] Non relevant change received, continue waiting"),
+                        }
+                    },
+                }
             }
+            println!("[Scheduler] Sleep done, updating active playlists");
+            
+            self.update_schedule_active_playlist(
+                moments.iter()
+                    .map(|(u, m)| (*u, m.playlist))
+                    .inspect(|(uuid, _)| println!("[Scheduler] Updating Schedule {uuid} active playlist"))
+                    .collect::<Vec<_>>()
+            ).await;
             current_moment = closest_time;
         }
     }
@@ -167,12 +215,14 @@ impl Store {
     /// Runs closure with lock write guard handle given as argument
     /// and sends a message signalling a state change once it is done
     async fn write<F>(&self, fun: F)
-    where F: FnOnce(RwLockWriteGuard<Content>) -> Change {
+    where F: FnOnce(RwLockWriteGuard<Content>) -> Option<Change> {
         let c = self.content.write().await;
         let changes = fun(c);
         println!("[Store] Sending changes after write: {changes:?}");
-        if let Err(e) = self.sender.send(changes) {
-            println!("[Store] No active channels to listen in ({})", e)
+        if let Some(c) = changes {
+            if let Err(e) = self.sender.send(c) {
+                println!("[Store] No active channels to listen in ({})", e)
+            }
         }
 
         println!("[Store] writing new state to file");
@@ -187,7 +237,7 @@ impl Store {
     pub async fn create_display(&self, uuid: Uuid, name: String, schedule: Uuid) {
         self.write(|mut c| {
             c.displays.insert(uuid, Display { name, schedule });
-            Change::Display(HashSet::from([uuid]))
+            Some(Change::Display(HashSet::from([uuid])))
         }).await;
     }
 
@@ -197,7 +247,7 @@ impl Store {
     pub async fn create_playlist(&self, uuid: Uuid, name: String) {
         self.write(|mut c| {
             c.playlists.insert(uuid, Playlist { name, items: vec![] });
-            Change::Playlist(HashSet::from([uuid]))
+            Some(Change::Playlist(HashSet::from([uuid])))
         }).await;
     }
 
@@ -207,7 +257,7 @@ impl Store {
     pub async fn create_schedule(&self, uuid: Uuid, name: String, playlist: Uuid) {
         self.write(|mut c| {
             c.schedules.insert(uuid, Schedule::new(name, vec![], playlist).unwrap());
-            Change::Schedule(HashSet::from([uuid]))
+            Some(Change::Schedule(HashSet::from([uuid])))
         }).await;
     }
 
@@ -219,7 +269,7 @@ impl Store {
             c.displays
                 .entry(uuid)
                 .and_modify(|d| *d = Display { name, schedule });
-            Change::Display(HashSet::from([uuid]))
+            Some(Change::Display(HashSet::from([uuid])))
         }).await
     }
 
@@ -231,7 +281,7 @@ impl Store {
             c.playlists
                 .entry(uuid)
                 .and_modify(|p| *p = Playlist { name, items });
-            Change::Playlist(HashSet::from([uuid]))
+            Some(Change::Playlist(HashSet::from([uuid])))
         }).await
     }
 
@@ -247,7 +297,7 @@ impl Store {
             c.schedules
                 .entry(uuid)
                 .and_modify(|s| *s = schedule);
-            Change::Schedule(HashSet::from([uuid]))
+            Some(Change::Schedule(HashSet::from([uuid])))
         }).await;
         Ok(())
     }
@@ -258,7 +308,7 @@ impl Store {
     pub async fn delete_display(&self, uuid: Uuid) {
         self.write(|mut c| {
             c.displays.remove(&uuid);
-            Change::Display(HashSet::from([uuid]))
+            Some(Change::Display(HashSet::from([uuid])))
         }).await
     }
 
@@ -268,7 +318,7 @@ impl Store {
     pub async fn delete_playlist(&self, uuid: Uuid) {
         self.write(|mut c| {
             c.playlists.remove(&uuid);
-            Change::Playlist(HashSet::from([uuid]))
+            Some(Change::Playlist(HashSet::from([uuid])))
         }).await
     }
 
@@ -278,7 +328,7 @@ impl Store {
     pub async fn delete_schedule(&self, uuid: Uuid) {
         self.write(|mut c| {
             c.schedules.remove(&uuid);
-            Change::Schedule(HashSet::from([uuid]))
+            Some(Change::Schedule(HashSet::from([uuid])))
         }).await
     }
 
