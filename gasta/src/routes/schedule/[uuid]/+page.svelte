@@ -1,4 +1,10 @@
 <script lang="ts">
+    import { Icon } from 'svelte-awesome';
+	import plus from 'svelte-awesome/icons/plus';
+	import arrowDown from 'svelte-awesome/icons/arrowDown';
+	import arrowUp from 'svelte-awesome/icons/arrowUp';
+	import trash from 'svelte-awesome/icons/trash';
+
     import { page } from '$app/stores'
 	import { RadioGroup, RadioItem, toastStore, type ToastSettings, modalStore } from '@skeletonlabs/skeleton';
 	import type { PageData } from './$types'
@@ -46,7 +52,13 @@
 
             <TypePicker types={data.playlist} name="playlist" bind:chosen_type={schedule.playlist} />
 
-            <h3 class="h3 mb-3 mt-5">Scheduled</h3>
+            <div class="flex items-center justify-between w-full my-5">
+                <h3 class="h3">Scheduled</h3>
+    
+                <button type="button" class="btn-icon btn-icon-sm variant-soft-primary ml-2" on:click={add_item}>
+                    <Icon data={plus} scale=0.75 />
+                </button>
+            </div>
             
             {#each scheduled_playlists as scheduled_playlist, i}
                 <div class="card mb-4">
@@ -54,23 +66,19 @@
                         <div class="flex w-full justify-center gap-4">
                             {#if i > 0}
                                 <button type="button" class="btn-icon btn-icon-sm variant-outline-primary"
-                                on:click={() => swap_item(i, i - 1)}
-                                >&#8593;</button>
+                                on:click={() => swap_item(i, i - 1)}>
+                                    <Icon data="{arrowUp}" scale=0.75 />
+                                </button>
                             {/if}
                             <button type="button" class="btn-icon btn-icon-sm variant-filled-error"
-                            on:click={() =>
-                                modalStore.trigger({
-                                    type: 'confirm',
-                                    title: `Delete Scheduled Item?`,
-                                    body: `Are your sure you want to delete the Scheduled Item?`,
-                                    response: (r) => { if (r) { scheduled_playlists.splice(i, 1); scheduled_playlists = scheduled_playlists } },
-                                })
-                            }
-                            >&#128465;</button>
+                            on:click={() => { scheduled_playlists.splice(i, 1); scheduled_playlists = scheduled_playlists }}>
+                                <Icon data="{trash}" />
+                            </button>
                             {#if i < scheduled_playlists.length - 1 }
                                 <button type="button" class="btn-icon btn-icon-sm variant-outline-primary" 
-                                on:click={() => swap_item(i, i + 1)}
-                                >&#8595;</button>
+                                on:click={() => swap_item(i, i + 1)}>
+                                    <Icon data="{arrowDown}" scale=0.75 />
+                                </button>
                             {/if}
                         </div>
                     </header>
@@ -93,7 +101,7 @@
             {/each}
 
             <div class="mb-2 flex justify-center">
-                <button type="button" class="btn-icon variant-filled-primary ml-2" on:click={add_item}>+</button>
+                
             </div>
 
             <div class="flex w-full justify-center gap-4 mt-5">

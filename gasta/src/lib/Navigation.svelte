@@ -1,4 +1,11 @@
 <script lang="ts">
+	import { Icon } from "svelte-awesome";
+    import tv from 'svelte-awesome/icons/tv';
+    import calendar from 'svelte-awesome/icons/calendar';
+	import listUl from "svelte-awesome/icons/listUl";
+    import plus from 'svelte-awesome/icons/plus';
+
+
 	import { page } from "$app/stores";
 	import { Accordion, AccordionItem, drawerStore } from "@skeletonlabs/skeleton";
 	import type { LayoutData } from "../routes/$types";
@@ -25,7 +32,8 @@
             <AccordionItem open={$page.url.pathname.startsWith(`/${kind.type}`)}>
                 <svelte:fragment slot="lead"></svelte:fragment>
                 <svelte:fragment slot="summary">
-                    <h3 class="h3">
+                    <h3 class="h3 flex items-center gap-2">
+                        <Icon data={ kind.type == 'display' ? tv : (kind.type == 'schedule' ? calendar : listUl ) } />
                         {capitalized}s
                     </h3>
                 </svelte:fragment>
@@ -40,12 +48,14 @@
                             </li>
                         {/each}
                 
-                        <li>
+                        <!-- <li> -->
                             <a href={`/${kind.type}/`} on:click={drawerClose} class={`/${kind.type}` === $page.url.pathname ? 'variant-glass-primary' : ''}>
-                                <span class="badge-icon p-4 variant-soft-primary">+</span>
-                                <span class="flex-auto py-1 whitespace-pre-wrap italic">Create {capitalized}</span>
+                                <span class="btn-icon btn-icon-sm variant-soft-primary">
+                                    <Icon data={plus} scale=0.75 />
+                                </span>
+                                <span class="flex-auto py-1 whitespace-pre-wrap">Add {capitalized}</span>
                             </a>
-                        </li>
+                        <!-- </li> -->
                     </ul>
                 </svelte:fragment>
             </AccordionItem>
