@@ -11,6 +11,10 @@
 
 <form class="card m-4" method="POST" action="?/create" use:enhance={() => { return form_action }}>
     <section class="p-4">
+        <label class="label mb-5">
+            <span>Uuid</span>
+            <input name="uuid" class="input" type="text" placeholder="Uuid for display (optional)" />
+        </label>
 
         <label class="label mb-5">
             <span>Name</span>
