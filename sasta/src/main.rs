@@ -153,6 +153,8 @@ mod create {
     #[derive(Deserialize, TS)]
     #[ts(export, export_to = "api_bindings/create/", rename = "CreateDisplay")]
     pub struct Display {
+        #[ts(type = "string", optional)]
+        pub uuid: Option<Uuid>,
         pub name: String,
         #[ts(type = "string")]
         pub schedule: Uuid
@@ -179,12 +181,15 @@ mod update {
     use uuid::Uuid;
 
     pub use crate::read::{Response, Payload};
-    pub use crate::create::Display;
     use crate::store::{store, schedule};
 
-    #[derive(TS)]
+    #[derive(Deserialize, TS)]
     #[ts(export, export_to = "api_bindings/update/", rename = "UpdateDisplay")]
-    struct Display_(Display);
+    pub struct Display {
+        pub name: String,
+        #[ts(type = "string")]
+        pub schedule: Uuid
+    }
 
     #[derive(Deserialize, TS)]
     #[ts(export, export_to = "api_bindings/update/", rename = "UpdatePlaylist")]
@@ -205,7 +210,7 @@ mod update {
 }
 
 async fn create_display(State(store): State<Arc<Store>>, Json(display): Json<create::Display>) -> read::Response {
-    println!("[Api] Creating Display with name {} and schedule {}", display.name, display.schedule);
+    println!("[Api] Creating Display with name {}, schedule {} and Uuid {:?}", display.name, display.schedule, display.uuid);
     let read = store.read().await;
     if let Some((uuid, _)) = read.displays.iter().find(|(_, d)| d.name == display.name) {
         println!("[Api] Name is already used by Display {}", uuid);
@@ -214,9 +219,22 @@ async fn create_display(State(store): State<Arc<Store>>, Json(display): Json<cre
         ))
     }
 
+    if let Some(uuid) = display.uuid {
+        if read.displays.contains_key(&uuid) {
+            println!("[Api] Uuid is already used by another Display");
+            return Err((StatusCode::BAD_REQUEST,
+                Json((2, format!("Avoid using the Uuid {} as it is already used by another display", display.name)).into())
+            ))
+        }
+    }
     drop(read);
-    let uuid = Uuid::new_v4();
-    println!("[Api] Generated Uuid {uuid} for new Display");
+
+    let uuid = match display.uuid {
+        Some(u) => u,
+        None => Uuid::new_v4()
+    };
+    println!("[Api] Using Uuid {uuid} for new Display");
+
     store.create_display(uuid, display.name, display.schedule).await;
 
     if let Some(d) = store.read().await.displays.get(&uuid) {
@@ -225,7 +243,7 @@ async fn create_display(State(store): State<Arc<Store>>, Json(display): Json<cre
     } else {
         println!("[Api] No Display with {} could be found while reading after write", uuid);
         Err((StatusCode::INTERNAL_SERVER_ERROR,
-            Json((2, format!("Something went wrong with the creation")).into())
+            Json((3, format!("Something went wrong with the creation")).into())
         ))
     }
 }
