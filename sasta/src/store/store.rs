@@ -77,15 +77,15 @@ impl Store {
     }
 
     async fn read_file(filename: String) -> Content {
-        let mut file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .open(&filename)
-            .await.unwrap();
+        // let mut file = OpenOptions::new()
+        //     .read(true)
+        //     .write(true)
+        //     .create(true)
+        //     .open(&filename)
+        //     .await.unwrap();
         
-        let mut str = String::new();
-        file.read_to_string(&mut str).await
+        // let mut str = String::new();
+        let str = tokio::fs::read_to_string(filename).await
             .expect("[Store] Could not read json file");
 
         match serde_json::from_str(&str) {
