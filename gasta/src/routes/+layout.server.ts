@@ -1,4 +1,4 @@
-import { SERVER_URL } from '$env/static/private';
+import { env } from '$env/dynamic/private';
 import type { Payload } from '../api_bindings/read/Payload'
 import type { State } from '../app'
 import type { LayoutServerLoad } from './$types';
@@ -7,7 +7,7 @@ import type { LayoutServerLoad } from './$types';
 
 export const load = (async (_) => {
     const get = async (api_route: string) => {
-        const payload: Payload = await fetch(`${SERVER_URL}/api/${api_route}`)
+        const payload: Payload = await fetch(`${env.SERVER_URL}/api/${api_route}`)
             .then(d => d.json())
 
         if (payload.type == "Error") {

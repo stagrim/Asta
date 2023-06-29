@@ -1,4 +1,4 @@
-import { SERVER_URL } from "$env/static/private"
+import { env } from "$env/dynamic/private"
 import { fail, redirect } from "@sveltejs/kit"
 import type { Payload } from "../../api_bindings/read/Payload"
 
@@ -21,7 +21,7 @@ export const create = async ({ body, type, data }: Input) => {
         }
     }
 
-    const res = await fetch(`${SERVER_URL}/api/${type.toLocaleLowerCase()}`, {
+    const res = await fetch(`${env.SERVER_URL}/api/${type.toLocaleLowerCase()}`, {
         method: "POST",
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(body)
@@ -61,7 +61,7 @@ export const update = async ({ body, data, type, uuid }: Input) => {
 
     console.log(JSON.stringify(body))
 
-    const res = await fetch(`${SERVER_URL}/api/${type.toLocaleLowerCase()}/${uuid}`, {
+    const res = await fetch(`${env.SERVER_URL}/api/${type.toLocaleLowerCase()}/${uuid}`, {
         method: "PUT",
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(body)
@@ -89,7 +89,7 @@ export const update = async ({ body, data, type, uuid }: Input) => {
 export const delete_action = async (type: type, uuid?: string) => {
     if (!uuid) return fail(400, { message: `Missing Uuid` })
 
-    const _ = await fetch(`${SERVER_URL}/api/${type.toLocaleLowerCase()}/${uuid}`, {
+    const _ = await fetch(`${env.SERVER_URL}/api/${type.toLocaleLowerCase()}/${uuid}`, {
         method: "DELETE",
     })
 

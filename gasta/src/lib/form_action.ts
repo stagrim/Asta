@@ -25,6 +25,12 @@ export const form_action: (_: any) => Promise<void> = async ({ result }) => {
     } else if (result.type === "failure") {
         toastStore.trigger({
             message: result.data.message,
+            background: 'variant-filled-warning',
+            autohide: false
+        })
+    } else {
+        toastStore.trigger({
+            message: result.message ?? "Something went wrong with the Request",
             background: 'variant-filled-error',
             autohide: false
         })
