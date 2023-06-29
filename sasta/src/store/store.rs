@@ -2,7 +2,7 @@ use std::{collections::{HashMap, HashSet}, time::Duration};
 
 use chrono::Local;
 use serde::{Deserialize, Serialize};
-use tokio::{fs, sync::{broadcast::{self, Sender, Receiver}, RwLock, RwLockReadGuard, RwLockWriteGuard, oneshot}, time::{sleep_until, Instant}};
+use tokio::{fs::OpenOptions, sync::{broadcast::{self, Sender, Receiver}, RwLock, RwLockReadGuard, RwLockWriteGuard, oneshot}, time::{sleep_until, Instant}, io::AsyncReadExt};
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -77,10 +77,28 @@ impl Store {
     }
 
     async fn read_file(filename: String) -> Content {
-        let str = fs::read_to_string(filename).await
+        let mut file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(&filename)
+            .await.unwrap();
+        
+        let mut str = String::new();
+        file.read_to_string(&mut str).await
             .expect("[Store] Could not read json file");
 
-        serde_json::from_str(&str).unwrap()
+        match serde_json::from_str(&str) {
+            Ok(c) => c,
+            Err(_) => {
+                println!("[Store] could not parse file content, starting with a blank state");
+                Content {
+                    displays: HashMap::new(),
+                    playlists: HashMap::new(),
+                    schedules: HashMap::new(),
+                }
+            },
+        }
     }
 
     /// Updates all Schedules' Playlists to the (schedule_uuid, active_playlist_uuid) pairs
