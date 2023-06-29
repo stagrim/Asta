@@ -4,7 +4,7 @@ ENV PKG_CONFIG_ALLOW_CROSS=1 \
     CC_armv7_unknown_Linux_gnueabihf=arm-linux-gnueabihf-gcc \
     CXX_armv7_unknown_linux_gnueabihf=arm-linux-gnueabihf-g++
 
-WORKDIR /usr/src/rasta
+WORKDIR /usr/src/sasta
 COPY . .
 
 ARG TARGETARCH
@@ -18,7 +18,7 @@ RUN if [ "$TARGETARCH" = "arm" ] && [ "$TARGETVARIANT" = "v7" ];\
         apt install -y g++-arm-linux-gnueabihf libc6-dev-armhf-cross; \
         rustup target add armv7-unknown-linux-gnueabihf; \
         cargo build --target armv7-unknown-linux-gnueabihf --release; \
-        mv target/armv7-unknown-linux-gnueabihf/release/rasta target/release/rasta;\
+        mv target/armv7-unknown-linux-gnueabihf/release/sasta target/release/sasta;\
     else \
         cargo build --release; \
     fi
@@ -27,6 +27,6 @@ RUN if [ "$TARGETARCH" = "arm" ] && [ "$TARGETVARIANT" = "v7" ];\
 # FROM gcr.io/distroless/cc-debian10
 FROM debian:stable-slim
 
-COPY --from=build /usr/src/rasta/target/release/rasta /
+COPY --from=build /usr/src/sasta/target/release/sasta /
 
-CMD ["/rasta"]
+CMD ["/sasta"]
