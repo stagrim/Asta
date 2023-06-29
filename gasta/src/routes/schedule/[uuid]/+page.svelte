@@ -21,25 +21,25 @@
     export let data: PageData;
 
     $: uuid = $page.params.uuid
-    $: schedule = data.schedule.content.get(uuid)
+    const get_schedule = (uuid) => structuredClone(data.schedule.content.get(uuid))
+    $: schedule = get_schedule(uuid)
 
     let delete_button: HTMLButtonElement
 
-    let scheduled_playlists: ScheduledPlaylistInput[]
-    const get_scheduled_copy = _ => structuredClone(schedule.scheduled) ?? []
-    $: scheduled_playlists = get_scheduled_copy(uuid)
+    // let scheduled_playlists: ScheduledPlaylistInput[]
+    // $: schedule.scheduled = schedule.scheduled ?? []
         
-    const add_item = () => scheduled_playlists = [...scheduled_playlists, {}]
+    const add_item = () => schedule.scheduled = [...(schedule.scheduled ?? []), {}]
 
     const swap_item = (a: number, b: number) => {
-        const tmp = scheduled_playlists[a]
-        scheduled_playlists[a] = scheduled_playlists[b]
-        scheduled_playlists[b] = tmp
+        const tmp = schedule.scheduled[a]
+        schedule.scheduled[a] = schedule.scheduled[b]
+        schedule.scheduled[b] = tmp
     }
 </script>
 
 <form class="card m-4" method="POST" use:enhance={({ formData }) => {
-    formData.append("scheduled", JSON.stringify(scheduled_playlists))
+    formData.append("scheduled", JSON.stringify(schedule.scheduled))
     return form_action
 }}>
     <section class="p-4">
@@ -60,7 +60,8 @@
                 </button>
             </div>
             
-            {#each scheduled_playlists as scheduled_playlist, i}
+            {#if schedule.scheduled}
+            {#each schedule.scheduled as scheduled_playlist, i}
                 <div class="card mb-4">
                     <header class="card-header">
                         <div class="flex w-full justify-center gap-4">
@@ -71,10 +72,10 @@
                                 </button>
                             {/if}
                             <button type="button" class="btn-icon btn-icon-sm variant-filled-error"
-                            on:click={() => { scheduled_playlists.splice(i, 1); scheduled_playlists = scheduled_playlists }}>
+                            on:click={() => { schedule.scheduled.splice(i, 1); schedule.scheduled = schedule.scheduled }}>
                                 <Icon data="{trash}" />
                             </button>
-                            {#if i < scheduled_playlists.length - 1 }
+                            {#if i < schedule.scheduled.length - 1 }
                                 <button type="button" class="btn-icon btn-icon-sm variant-outline-primary" 
                                 on:click={() => swap_item(i, i + 1)}>
                                     <Icon data="{arrowDown}" scale=0.75 />
@@ -99,7 +100,8 @@
                 
                 </div>
             {/each}
-
+            {/if}
+            
             <div class="mb-2 flex justify-center">
                 
             </div>

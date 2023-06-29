@@ -20,33 +20,30 @@
     export let data: PageData;
 
     $: uuid = $page.params.uuid
-    $: playlist = data.playlist.content.get(uuid)
+    const get_playlist = (uuid) => structuredClone(data.playlist.content.get(uuid))
+    $: playlist = get_playlist(uuid)
 
     let delete_button: HTMLButtonElement
-
-    let playlist_items: PlaylistItem[]
-    const get_items_copy = _ => structuredClone(playlist.items)
-    $: playlist_items = get_items_copy(uuid)
         
-    $: playlist_items, console.log(JSON.stringify(playlist_items ?? []))
+    // $: playlist.items, console.log(JSON.stringify(playlist?.items ?? []))
 
     let add_value: "WEBSITE" | "IMAGE" | "TEXT"
     const add_item = () => 
-        playlist_items = [...playlist_items, { 
+        playlist.items = [...playlist.items, { 
             type: add_value,
-            name: generate({ exactly: 1, wordsPerString: 2, separator: "-" }),
+            name: generate({ exactly: 1, wordsPerString: 2, separator: "-" })[0],
             settings: { duration: 60 } 
         }]
 
     const swap_item = (a: number, b: number) => {
-        const tmp = playlist_items[a]
-        playlist_items[a] = playlist_items[b]
-        playlist_items[b] = tmp
+        const tmp = playlist.items[a]
+        playlist.items[a] = playlist.items[b]
+        playlist.items[b] = tmp
     }
 </script>
 
 <form class="card m-4" method="POST" use:enhance={({ formData }) => {
-    formData.append("items", JSON.stringify(playlist_items))
+    formData.append("items", JSON.stringify(playlist.items))
     return form_action
 }}>
     <section class="p-4">
@@ -76,8 +73,8 @@
                 <!-- </label> -->
             </div>
             
-            
-            {#each playlist_items as item, i}
+            {#if playlist.items}
+            {#each playlist.items as item, i}
                 <div class="card mb-4">
                     <header class="card-header">
                         <div class="flex w-full justify-center gap-4">
@@ -88,10 +85,10 @@
                                 </button>
                             {/if}
                             <button type="button" class="btn-icon btn-icon-sm variant-filled-error"
-                            on:click={() => { playlist_items.splice(i, 1); playlist_items = playlist_items }}>
+                            on:click={() => { playlist.items.splice(i, 1); playlist.items = playlist.items }}>
                                 <Icon data={trash} scale=0.75 />
                             </button>
-                            {#if i < playlist_items.length - 1 }
+                            {#if i < playlist.items.length - 1 }
                                 <button type="button" class="btn-icon btn-icon-sm variant-outline-primary" 
                                 on:click={() => swap_item(i, i + 1)}>
                                     <Icon data={arrowDown} scale=0.75 />
@@ -133,6 +130,7 @@
                 
                 </div>
             {/each}
+            {/if}
 
             <div class="flex w-full justify-center gap-4 mt-5">
                 <button type="button" class="btn variant-ringed-error" on:click={() =>

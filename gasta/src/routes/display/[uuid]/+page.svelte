@@ -9,38 +9,32 @@
     export let data: PageData
 
     $: uuid = $page.params.uuid
-    let display_schedule
-    $: display_schedule = data.display.content.get(uuid)?.schedule
-    let display_name
-    $: display_name = data.display.content.get(uuid)?.name
-
-    let chosen_schedule: Uuid
-    const get_schedule_name = (uuid) => data.display.content.get(uuid).schedule
-    // $: chosen_schedule = display_schedule
-    $: chosen_schedule = get_schedule_name(uuid)
-
-    let name_value: string
-    $: name_value = display_name
+    const get_display = (uuid) => structuredClone(data.display.content.get(uuid))
+    $: display = get_display(uuid)
 
     let delete_button: HTMLButtonElement
-
 </script>
 
 <form class="card m-4" method="POST" use:enhance={() => form_action}>
     <section class="p-4">
         <label class="label mb-5">
-            <span>Name</span>
-            <input required name="name" class="input" type="text" placeholder="Name must be unique" bind:value={name_value} />
+            <span>Uuid</span>
+            <input class="input" type="text" placeholder="Name must be unique" disabled value={display.uuid} />
         </label>
 
-        <TypePicker name="schedule" bind:chosen_type={chosen_schedule} types={data.schedule} />
+        <label class="label mb-5">
+            <span>Name</span>
+            <input required name="name" class="input" type="text" placeholder="Name must be unique" bind:value={display.name} />
+        </label>
+
+        <TypePicker name="schedule" bind:chosen_type={display.schedule} types={data.schedule} />
 
         <div class="flex w-full justify-center gap-4 mt-5">
             <button type="button" class="btn variant-ringed-error" on:click={() =>
                 modalStore.trigger({
                     type: 'confirm',
-                    title: `Delete '${display_name}'?`,
-                    body: `Are your sure you want to delete Display '${display_name}'?`,
+                    title: `Delete '${display.name}'?`,
+                    body: `Are your sure you want to delete Display '${display.name}'?`,
                     response: (r) => r ? delete_button.click() : '',
                 })
             }>Delete</button>
