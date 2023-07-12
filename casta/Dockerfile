@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM rust:1.67.1-slim as build
+FROM --platform=$BUILDPLATFORM rust:slim as build
 ENV PKG_CONFIG_ALLOW_CROSS=1 \
     CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER=arm-linux-gnueabihf-gcc \
     CC_armv7_unknown_Linux_gnueabihf=arm-linux-gnueabihf-gcc \
