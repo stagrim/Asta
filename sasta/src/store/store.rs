@@ -1,4 +1,4 @@
-use std::{collections::{HashMap, HashSet}, time::Duration};
+use std::collections::{HashMap, HashSet};
 
 use chrono::Local;
 use serde::{Deserialize, Serialize};
@@ -150,6 +150,7 @@ impl Store {
         }
 
         'main: loop {
+            let instant = Instant::now();
             let schedules: Vec<(Uuid, Schedule)> = self.read().await.schedules
                 .iter()
                 .map(|(schedule_uuid, schedule)| (schedule_uuid.clone(), schedule.clone()))
@@ -167,15 +168,15 @@ impl Store {
                 println!("[Scheduler] No loaded Schedule has any scheduled playlists, waiting on an update to a Schedule...");
                 loop {
                     match receiver.recv().await {
-                        Ok(Change::Schedule(uuids)) => {
+                        Ok(Change::ScheduleInput(uuids)) => {
                             let read = self.read().await;
                             if uuids.iter().any(|u| read.schedules.get(u).is_some_and(|s| s.has_scheduled_playlists())) {
                                 println!("[Scheduler] An updated Schedule has scheduled playlists, rerunning loop");
-                                break;
+                                break
                             }
                         },
                         Err(e) => println!("[Scheduler] RecvError: {e}"),
-                        _ => (),
+                        _ => println!("[Scheduler] Non relevant change received, continue waiting"),
                     }
                 }
                 continue
@@ -187,20 +188,32 @@ impl Store {
 
             moments = moments.into_iter().filter(|(_, m)| m.time == closest_time).collect();
 
-            let sleep = match (closest_time - current_moment).to_std() {
-                Ok(d) => Instant::now() + d,
-                Err(_) => Instant::now() + Duration::from_secs(0),
+            let sleep = match (closest_time - Local::now()).to_std() {
+                Ok(d) => instant + d,
+                Err(_) => instant,
             };
 
-            println!("[Scheduler] Sleeping until {} to change active playlists", closest_time.to_string());
+            println!("[Scheduler] Sleeping for {:?} until {} to change active playlists", sleep.duration_since(instant), closest_time.to_string());
 
             loop {
                 tokio::select! {
-                    _ = sleep_until(sleep) => break,
+                    _ = sleep_until(sleep) => {
+                        println!("[Scheduler] Breaking");
+                        break
+                    },
                     change = receiver.recv() => {
                         match change {
-                            Ok(Change::Schedule(_)) => {
+                            //TODO: When updating a schedule, the new schedule is overridden in the API, and since the 'set current block' lies before the loop, they are never reverted to the present version
+                            Ok(Change::ScheduleInput(uuids)) => {
                                 println!("[Scheduler] Schedules updated, rerunning loop");
+                                self.write(|mut c| {
+                                    uuids.iter().for_each(|uuid| {
+                                        c.schedules
+                                            .entry(*uuid)
+                                            .and_modify(|s| s.playlist = s.current_playlist(&current_moment));
+                                    });
+                                    Some(Change::Schedule(uuids))
+                                }).await;
                                 continue 'main
                             },
                             Err(e) => println!("[Scheduler] RecvError: {e}"),
@@ -315,7 +328,7 @@ impl Store {
             c.schedules
                 .entry(uuid)
                 .and_modify(|s| *s = schedule);
-            Some(Change::Schedule(HashSet::from([uuid])))
+            Some(Change::ScheduleInput(HashSet::from([uuid])))
         }).await;
         Ok(())
     }
@@ -377,5 +390,10 @@ impl Store {
 pub enum Change {
     Display(HashSet<Uuid>),
     Playlist(HashSet<Uuid>),
+    /// Notifies a change in the given schedules from, the Api
+    /// The correct scheduled playlist may not be set at this time
+    ScheduleInput(HashSet<Uuid>),
+    /// Sent by the scheduled_loop once it has processed the Schedule
+    /// and made sure the correct playlist is set
     Schedule(HashSet<Uuid>),
 }
