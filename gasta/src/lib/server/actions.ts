@@ -11,6 +11,35 @@ interface Input {
     uuid?: string
 }
 
+const return_handling = async (
+    { res: response, type: type, ret }: {
+        res: Response,
+        type: type,
+        ret: (uuid: string) => {
+            message: string,
+            redirect?: string,
+        }
+    }
+) => {
+    const text = await response.text()
+    let payload: Payload
+    try {
+        payload = JSON.parse(text)
+        console.log(payload)
+    } catch {
+        console.log(text)
+        return fail(400, { message: text })
+    }
+    
+    if (payload.type == type) {
+            return ret(payload.content[0].uuid)
+    } else if (payload.type == "Error") {
+        return fail(400, { message: payload.content.message })
+    } else {
+        return fail(400, { message: text })
+    }
+}
+
 export const create = async ({ body, type, data }: Input) => {
     for (const key of Object.keys(body)) {
         const field = data.get(key)
@@ -27,22 +56,11 @@ export const create = async ({ body, type, data }: Input) => {
         body: JSON.stringify(body)
     })
 
-    const text = await res.text()
-    let payload: Payload
-    try {
-        payload = JSON.parse(text)
-    } catch {
-        return fail(400, { message: text })
-    }
-    
-    if (payload.type == type) {
-        console.log(payload)
-        return { redirect: `/${type.toLocaleLowerCase()}/${payload.content[0].uuid}`, message: `${type} Added` }
-    } else if (payload.type == "Error") {
-        return fail(400, { message: payload.content.message })
-    } else {
-        return fail(400, { message: text })
-    }
+    return await return_handling({
+        res,
+        type,
+        ret: uuid => ({ redirect: `/${type.toLocaleLowerCase()}/${uuid}`, message: `${type} Added` })
+    })
 }
 
 export const update = async ({ body, data, type, uuid }: Input) => {
@@ -69,23 +87,11 @@ export const update = async ({ body, data, type, uuid }: Input) => {
         body: JSON.stringify(body)
     })
 
-    const text = await res.text()
-    let payload: Payload
-    try {
-        payload = JSON.parse(text)
-        console.log(payload)
-    } catch {
-        console.log(text)
-        return fail(400, { message: text })
-    }
-    
-    if (payload.type == type) {
-        return { message: "Display updated" }
-    } else if (payload.type == "Error") {
-        return fail(400, { message: payload.content.message })
-    } else {
-        return fail(400, { message: text })
-    }
+    return await return_handling({
+        res,
+        type,
+        ret: _ => ({ message: "Display updated" })
+    })
 }
 
 export const delete_action = async (type: type, uuid?: string) => {
@@ -95,22 +101,10 @@ export const delete_action = async (type: type, uuid?: string) => {
         method: "DELETE",
     })
 
-    const text = await res.text()
-    let payload: Payload
-    try {
-        payload = JSON.parse(text)
-        console.log(payload)
-    } catch {
-        console.log(text)
-        return fail(400, { message: text })
-    }
-    
-    if (payload.type == type) {
-            return { redirect: `/${type.toLocaleLowerCase()}`, message: `${type} Deleted` }
-    } else if (payload.type == "Error") {
-        return fail(400, { message: payload.content.message })
-    } else {
-        return fail(400, { message: text })
-    }
+    return await return_handling({
+        res,
+        type,
+        ret: _ => ({ redirect: `/${type.toLocaleLowerCase()}`, message: `${type} Deleted` })
+    })
 
 }
