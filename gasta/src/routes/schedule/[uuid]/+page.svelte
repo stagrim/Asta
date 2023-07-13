@@ -111,7 +111,7 @@
                     modalStore.trigger({
                         type: 'confirm',
                         title: `Delete '${schedule.name}'?`,
-                        body: `Are your sure you want to delete Display '${schedule.name}'?`,
+                        body: `Are your sure you want to delete Schedule '${schedule.name}'?`,
                         response: (r) => r ? delete_button.click() : '',
                     })
                 }>Delete</button>

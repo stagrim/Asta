@@ -137,7 +137,7 @@
                     modalStore.trigger({
                         type: 'confirm',
                         title: `Delete '${playlist.name}'?`,
-                        body: `Are your sure you want to delete Display '${playlist.name}'?`,
+                        body: `Are your sure you want to delete Playlist '${playlist.name}'?`,
                         response: (r) => r ? delete_button.click() : '',
                     })
                 }>Delete</button>
