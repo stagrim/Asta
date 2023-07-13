@@ -1,38 +1,39 @@
-# create-svelte
+# GUI for Asta, aka Gasta
 
-Everything you need to build a Svelte project, powered by [`create-svelte`](https://github.com/sveltejs/kit/tree/master/packages/create-svelte).
+Gasta is a webapp build with SvelteKit to graphically use the Sasta API to Create, Update, Read or Delete Asta Displays, Schedules or Playlists.
 
-## Creating a project
+![Glittering Asta](img/glittering_asta.jpg "glittering Asta")
 
-If you're seeing this, you've probably already done this step. Congrats!
+# Image
 
-```bash
-# create a new project in the current directory
-npm create svelte@latest
+![Gasta Playlist](img/playlist_img.png "Gasta Playlist")
 
-# create a new project in my-app
-npm create svelte@latest my-app
-```
-
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+# Build
 
 ```bash
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
+pnpm i && pnpm run build
 ```
 
-## Building
-
-To create a production version of your app:
+Then run the produced node server with
 
 ```bash
-npm run build
+node build
 ```
 
-You can preview the production build with `npm run preview`.
+The node server will not read .env file, see [SvelteKit Docs](https://kit.svelte.dev/docs/adapter-node#environment-variables)
 
-> To deploy your app, you may need to install an [adapter](https://kit.svelte.dev/docs/adapters) for your target environment.
+# Docker
+
+Example docker compose file:
+
+```docker compose
+gasta:
+    image: <gasta image>
+    ports:
+      - "0.0.0.0:3000:3000"
+    environment:
+    # ORIGIN must be set to 
+    # https://kit.svelte.dev/docs/adapter-node#environment-variables-origin-protocol-header-and-host-header
+      - ORIGIN=<Where Gasta is hosted, example http://192.168.1.30:3000>
+      - SERVER_URL=<Sasta URL>
+```
