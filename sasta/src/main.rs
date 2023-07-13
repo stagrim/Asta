@@ -505,6 +505,8 @@ async fn delete_schedule(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>
         ))
     }
 
+    drop(read);
+
     store.delete_schedule(uuid).await;
     println!("[Api] Deleted Schedule {uuid}");
     res
