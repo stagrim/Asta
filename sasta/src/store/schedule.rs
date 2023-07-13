@@ -209,8 +209,17 @@ impl Schedule {
         }
     }
 
+    /// True if the Schedule has any scheduled playlists
     pub fn has_scheduled_playlists(&self) -> bool {
         return !self.schedules.is_empty()
+    }
+
+    /// Returns Vec of the Uuids of all playlists (fallback + any scheduled) which the schedule contains
+    pub fn all_playlists(&self) -> Vec<&Uuid> {
+        self.schedules.iter().map(|s| match s {
+            ScheduledItem::Schedule { playlist, .. }
+            | ScheduledItem::Fallback(playlist) => playlist,
+        }).collect()
     }
 }
 

@@ -441,14 +441,35 @@ async fn delete_display(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>)
 async fn delete_playlist(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>) -> read::Response {
     println!("[Api] Deleting Playlist {uuid}");
     let res;
-    if let Some(d) = store.read().await.playlists.get(&uuid) {
+    let read = store.read().await;
+
+    let dependant_schedules = read.schedules.iter()
+        .filter_map(|(_, s)| if s.all_playlists().iter().any(|&p| p == &uuid) {
+            Some(s.name.clone())
+        } else {
+            None
+        })
+        .collect::<Vec<_>>();
+    println!("{:?}", dependant_schedules);
+    if dependant_schedules.len() > 0 {
+        println!("test");
+        return Err((StatusCode::BAD_REQUEST,
+            Json((1, format!("Unable to delete playlist since the Schedules ({}) depend on it",
+                dependant_schedules.join(", ")
+            )).into())
+        ))
+    }
+
+    if let Some(d) = read.playlists.get(&uuid) {
         res = Ok(Json(read::Payload::Playlist(vec![(uuid, d.clone()).into()])));
     } else {
         println!("[Api] No Playlist with {uuid} was found");
         return Err((StatusCode::BAD_REQUEST,
-            Json((1, format!("No Playlist with the Uuid {uuid} was found")).into())
+            Json((2, format!("No Playlist with the Uuid {uuid} was found")).into())
         ))
     }
+
+    drop(read);
 
     store.delete_playlist(uuid).await;
     println!("[Api] Deleted Playlist {uuid}");

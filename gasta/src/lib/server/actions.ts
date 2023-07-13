@@ -40,6 +40,8 @@ export const create = async ({ body, type, data }: Input) => {
         return { redirect: `/${type.toLocaleLowerCase()}/${payload.content[0].uuid}`, message: `${type} Added` }
     } else if (payload.type == "Error") {
         return fail(400, { message: payload.content.message })
+    } else {
+        return fail(400, { message: text })
     }
 }
 
@@ -89,9 +91,26 @@ export const update = async ({ body, data, type, uuid }: Input) => {
 export const delete_action = async (type: type, uuid?: string) => {
     if (!uuid) return fail(400, { message: `Missing Uuid` })
 
-    const _ = await fetch(`${env.SERVER_URL}/api/${type.toLocaleLowerCase()}/${uuid}`, {
+    const res = await fetch(`${env.SERVER_URL}/api/${type.toLocaleLowerCase()}/${uuid}`, {
         method: "DELETE",
     })
 
-    return { redirect: `/${type.toLocaleLowerCase()}`, message: `${type} Deleted` }
+    const text = await res.text()
+    let payload: Payload
+    try {
+        payload = JSON.parse(text)
+        console.log(payload)
+    } catch {
+        console.log(text)
+        return fail(400, { message: text })
+    }
+    
+    if (payload.type == type) {
+            return { redirect: `/${type.toLocaleLowerCase()}`, message: `${type} Deleted` }
+    } else if (payload.type == "Error") {
+        return fail(400, { message: payload.content.message })
+    } else {
+        return fail(400, { message: text })
+    }
+
 }
