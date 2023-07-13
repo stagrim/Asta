@@ -423,7 +423,7 @@ async fn update_schedule(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>
 
 async fn delete_display(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>) -> read::Response {
     println!("[Api] Deleting Display {uuid}");
-    let res: read::Response;
+    let res;
     if let Some(d) = store.read().await.displays.get(&uuid) {
         res = Ok(Json(read::Payload::Display(vec![(uuid, d.clone()).into()])));
     } else {
@@ -444,15 +444,14 @@ async fn delete_playlist(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>
     let read = store.read().await;
 
     let dependant_schedules = read.schedules.iter()
-        .filter_map(|(_, s)| if s.all_playlists().iter().any(|&p| p == &uuid) {
-            Some(s.name.clone())
-        } else {
-            None
-        })
-        .collect::<Vec<_>>();
-    println!("{:?}", dependant_schedules);
+        .filter_map(|(_, s)|
+            if s.all_playlists().iter().any(|&p| p == &uuid) {
+                Some(s.name.clone())
+            } else {
+                None
+            }
+        ).collect::<Vec<_>>();
     if dependant_schedules.len() > 0 {
-        println!("test");
         return Err((StatusCode::BAD_REQUEST,
             Json((1, format!("Unable to delete playlist since the Schedules ({}) depend on it",
                 dependant_schedules.join(", ")
@@ -479,12 +478,30 @@ async fn delete_playlist(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>
 async fn delete_schedule(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>) -> read::Response {
     println!("[Api] Deleting Schedule {uuid}");
     let res;
-    if let Some(s) = store.read().await.schedules.get(&uuid) {
+    let read = store.read().await;
+
+    let dependant_displays = read.displays.iter()
+        .filter_map(|(_, d)| 
+            if d.schedule == uuid {
+                Some(d.name.clone())
+            } else {
+                None
+            }
+        ).collect::<Vec<_>>();
+    if dependant_displays.len() > 0 {
+        return Err((StatusCode::BAD_REQUEST,
+            Json((1, format!("Unable to delete playlist since the Displays ({}) depend on it",
+                dependant_displays.join(", ")
+            )).into())
+        ))
+    }
+
+    if let Some(s) = read.schedules.get(&uuid) {
         res = Ok(Json(read::Payload::Schedule(vec![(uuid, s.clone()).into()])));
     } else {
         println!("[Api] No Schedule with {uuid} was found");
         return Err((StatusCode::BAD_REQUEST,
-            Json((1, format!("No Schedule with the Uuid {uuid} was found")).into())
+            Json((2, format!("No Schedule with the Uuid {uuid} was found")).into())
         ))
     }
 
