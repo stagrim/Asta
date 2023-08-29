@@ -18,7 +18,7 @@ impl From<(u8, String)> for read::Payload {
     }
 }
 
-// TODO: Race conditions possible in like all API routes
+// TODO: Race conditions possible in like all API routes. Use Mutex instead?
 
 #[tokio::main]
 async fn main() {
