@@ -12,7 +12,14 @@ declare global {
 		// interface PageData {}
 		// interface Platform {}
 		interface ImportMetaEnv {
-			SERVER_URL: string
+			SERVER_URL: string,
+			LDAP_URL: string,
+			UUID5_NAMESPACE: string,
+		}
+
+		interface Locals {
+			user: string,
+			name: string
 		}
 	}
 }
