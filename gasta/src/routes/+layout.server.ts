@@ -1,11 +1,16 @@
 import { env } from '$env/dynamic/private';
+import { error, fail } from '@sveltejs/kit';
 import type { Payload } from '../api_bindings/read/Payload'
 import type { State } from '../app'
 import type { LayoutServerLoad } from './$types';
 
 
 
-export const load = (async (_) => {
+export const load = (async ({ locals }) => {
+    if (!locals.user) {
+        return { empty: true }
+    }
+
     const get = async (api_route: string) => {
         const payload: Payload = await fetch(`${env.SERVER_URL}/api/${api_route}`)
             .then(d => d.json())
@@ -34,6 +39,7 @@ export const load = (async (_) => {
     return {
         display,
         schedule,
-        playlist
+        playlist,
+        user: locals.user
     }
 }) satisfies LayoutServerLoad

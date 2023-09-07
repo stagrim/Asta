@@ -13,6 +13,7 @@
 		"format": "prettier --plugin-search-dir . --write ."
 	},
 	"devDependencies": {
+		"@types/ldapjs": "^3.0.2",
 		"@fortawesome/free-regular-svg-icons": "^6.4.0",
 		"@fortawesome/free-solid-svg-icons": "^6.4.0",
 		"@skeletonlabs/skeleton": "^1.8.0",
@@ -38,5 +39,9 @@
 		"tslib": "^2.6.0",
 		"typescript": "^5.1.6",
 		"vite": "^4.3.9"
+	},
+	"dependencies": {
+		"ldapjs": "^3.0.5",
+		"js-sha3": "^0.9.1"
 	}
 }
