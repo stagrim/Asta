@@ -1,7 +1,8 @@
 import { env } from "$env/dynamic/private";
-import ldapjs from "ldapjs";
+import ldapjs, { type Client } from "ldapjs";
 const { createClient } = ldapjs;
 import pkg from "js-sha3";
+import { building } from "$app/environment";
 const { sha3_512 } = pkg;
 
 export type Login = {
@@ -75,16 +76,21 @@ export type Authenticate = {
     msg: string
 }
 
-const client = createClient({
-    url: [env.LDAP_URL],
-    timeout: 2000,
-    connectTimeout: 2000,
-    reconnect: true,
-});
+let client: Client
 
-client.on('error', err => {
-    console.debug({msg: 'connection failed, retrying', err});
-});
+if (!building) {
+    client = createClient({
+        url: [env.LDAP_URL],
+        timeout: 2000,
+        connectTimeout: 2000,
+        reconnect: true,
+    });
+    
+    client.on('error', err => {
+        console.debug({msg: 'connection failed, retrying', err});
+    });
+}
+
 
 // (|(*group logic*)(*another group logic*))
 const filter = `(|${['dsek.km', 'dsek.cafe', 'dsek.sex']
