@@ -1,9 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
 use chrono::Local;
+use redis::{aio::Connection, Client, AsyncCommands, JsonAsyncCommands};
 use serde::{Deserialize, Serialize};
-use tokio::{sync::{broadcast::{self, Sender, Receiver}, RwLock, RwLockReadGuard, RwLockWriteGuard, oneshot}, time::{sleep_until, Instant}};
-use tracing::{warn, info, error, trace};
+use tokio::{sync::{broadcast::{self, Sender, Receiver}, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard, oneshot}, time::{sleep_until, Instant}};
+use tracing::{warn, info, error, trace, warn_span, error_span};
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -56,6 +57,7 @@ pub struct ImageData {
     pub duration: u64
 }
 
+// TODO: Replace Content, and use redis as only storage
 #[derive(Deserialize, Serialize, Debug)]
 pub struct Content {
     pub displays: HashMap<Uuid, Display>,
@@ -64,37 +66,30 @@ pub struct Content {
 }
 
 pub struct Store {
-    filename: String,
+    con: Mutex<Connection>,
     sender: Sender<Change>,
     content: RwLock<Content>
 }
 
 impl Store {
     pub async fn new() -> Self {
-        let filename = String::from("content.json");
+        let client = Client::open("redis://127.0.0.1:6379").unwrap();
+        let mut con = client.get_async_connection().await.unwrap();
         let (sender, _) = broadcast::channel(5);
-        let content = RwLock::new(Self::read_file(filename.clone()).await);
+        let content = RwLock::new(Self::read_file(&mut con).await);
 
-        let s = Store { filename, sender, content };
+        let s = Store { con: Mutex::new(con), sender, content };
         s
     }
 
-    async fn read_file(filename: String) -> Content {
-        // let mut file = OpenOptions::new()
-        //     .read(true)
-        //     .write(true)
-        //     .create(true)
-        //     .open(&filename)
-        //     .await.unwrap();
-        
-        // let mut str = String::new();
-        let str = tokio::fs::read_to_string(filename).await
-            .expect("[Store] Could not read json file");
-
-        match serde_json::from_str(&str) {
-            Ok(c) => c,
-            Err(_) => {
-                warn!("[Store] could not parse file content, starting with a blank state");
+    async fn read_file(con: &mut Connection) -> Content {
+        match con.json_get::<_, _, String>("content", ".").await {
+            Ok(str) => {
+                println!("{}", str);
+                serde_json::from_str(&str).unwrap()
+            },
+            Err(e) => {
+                warn_span!("[Store] could not parse file content, starting with a blank state", redis = ?e);
                 Content {
                     displays: HashMap::new(),
                     playlists: HashMap::new(),
@@ -258,10 +253,11 @@ impl Store {
                 warn!("[Store] No active channels to listen in ({})", e)
             }
         }
-
-        info!("[Store] writing new state to file");
-        if let Err(_) = tokio::fs::write(&self.filename, self.to_string().await).await {
-            error!("[Store] Error writing state to file after update, log updated state instead: \n{}", self.to_string().await);
+        info!("[Store] writing new state to db");
+        let mut con = self.con.lock().await;
+        if let Err(error) = con.json_set::<_, _, _, String>("content", ".", &self.to_string().await).await {
+            error_span!("Redis Error", ?error);
+            error_span!("Logging current state instead", ?self.content);
         }
     }
 
