@@ -1,10 +1,12 @@
 use std::{net::SocketAddr, sync::Arc, vec, collections::HashSet};
 
-use axum::{Router, routing::{get, post, put, delete}, extract::{WebSocketUpgrade, ConnectInfo, State, Path}, response::{IntoResponse}, Json, ServiceExt};
+use axum::{Router, routing::{get, post, put, delete}, extract::{WebSocketUpgrade, ConnectInfo, State, Path}, response::IntoResponse, Json, ServiceExt};
 use hyper::StatusCode;
 use store::store::Store;
 use tokio::sync::oneshot;
 use tower_http::normalize_path::NormalizePath;
+use tracing::{Level, error, info, info_span};
+use tracing_subscriber::FmtSubscriber;
 use uuid::Uuid;
 
 use crate::connection::connection::client_connection;
@@ -22,6 +24,11 @@ impl From<(u8, String)> for read::Payload {
 
 #[tokio::main]
 async fn main() {
+    let subscriber = FmtSubscriber::builder()
+        .with_max_level(Level::TRACE)
+        .finish();
+    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
+    
     let store = Arc::new(Store::new().await);
 
     let store_copy = store.clone();
@@ -33,7 +40,7 @@ async fn main() {
     
     rx.await.unwrap();
     
-    println!("{}", store.to_string().await);
+    info!("{}", store.to_string().await);
     
 
     let app = NormalizePath::trim_trailing_slash(
@@ -63,7 +70,7 @@ async fn main() {
     );
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 8040));
-    println!("listening on {}", addr);
+    info!("listening on {}", addr);
     axum::Server::bind(&addr)
         .serve(app.into_make_service_with_connect_info::<SocketAddr>())
         .await.unwrap();
@@ -150,7 +157,7 @@ mod create {
 
     pub use crate::read::Response;
 
-    #[derive(Deserialize, TS)]
+    #[derive(Debug, Deserialize, TS)]
     #[ts(export, export_to = "api_bindings/create/", rename = "CreateDisplay")]
     pub struct Display {
         #[ts(type = "string", optional)]
@@ -209,39 +216,39 @@ mod update {
     }
 }
 
-async fn create_display(State(store): State<Arc<Store>>, Json(display): Json<create::Display>) -> read::Response {
-    println!("[Api] Creating Display with name {}, schedule {} and Uuid {:?}", display.name, display.schedule, display.uuid);
+async fn create_display(State(store): State<Arc<Store>>, Json(disp): Json<create::Display>) -> read::Response {
+    info_span!("[Api] Creating Display", display = ?disp);
     let read = store.read().await;
-    if let Some((uuid, _)) = read.displays.iter().find(|(_, d)| d.name == display.name) {
-        println!("[Api] Name is already used by Display {}", uuid);
+    if let Some((uuid, _)) = read.displays.iter().find(|(_, d)| d.name == disp.name) {
+        error!("[Api] Name is already used by Display {}", uuid);
         return Err((StatusCode::BAD_REQUEST,
-            Json((1, format!("Avoid using the name {} as it is already used by another display", display.name)).into())
+            Json((1, format!("Avoid using the name {} as it is already used by another display", disp.name)).into())
         ))
     }
 
-    if let Some(uuid) = display.uuid {
+    if let Some(uuid) = disp.uuid {
         if read.displays.contains_key(&uuid) {
-            println!("[Api] Uuid is already used by another Display");
+            error!("[Api] Uuid is already used by another Display");
             return Err((StatusCode::BAD_REQUEST,
-                Json((2, format!("Avoid using the Uuid {} as it is already used by another display", display.name)).into())
+                Json((2, format!("Avoid using the Uuid {} as it is already used by another display", disp.name)).into())
             ))
         }
     }
     drop(read);
 
-    let uuid = match display.uuid {
+    let uuid = match disp.uuid {
         Some(u) => u,
         None => Uuid::new_v4()
     };
-    println!("[Api] Using Uuid {uuid} for new Display");
+    info!("[Api] Using Uuid {uuid} for new Display");
 
-    store.create_display(uuid, display.name, display.schedule).await;
+    store.create_display(uuid, disp.name, disp.schedule).await;
 
     if let Some(d) = store.read().await.displays.get(&uuid) {
-        println!("[Api] Created Display {uuid}");
+        info!("[Api] Created Display {uuid}");
         Ok(Json(read::Payload::Display(vec![(uuid, d.clone()).into()])))
     } else {
-        println!("[Api] No Display with {} could be found while reading after write", uuid);
+        error!("[Api] No Display with {} could be found while reading after write", uuid);
         Err((StatusCode::INTERNAL_SERVER_ERROR,
             Json((3, format!("Something went wrong with the creation")).into())
         ))
@@ -249,10 +256,10 @@ async fn create_display(State(store): State<Arc<Store>>, Json(display): Json<cre
 }
 
 async fn create_playlist(State(store): State<Arc<Store>>, Json(playlist): Json<create::Playlist>) -> create::Response {
-    println!("[Api] Creating Playlist with name {}", playlist.name);
+    info!("[Api] Creating Playlist with name {}", playlist.name);
     let read = store.read().await;
     if let Some((uuid, _)) = read.playlists.iter().find(|(_, p)| p.name == playlist.name) {
-        println!("[Api] Name is already used by Playlist {}", uuid);
+        error!("[Api] Name is already used by Playlist {}", uuid);
         return Err((StatusCode::BAD_REQUEST,
             Json((1, format!("Avoid using the name {} as it is already used by another Playlist", playlist.name)).into())
         ))
@@ -260,14 +267,14 @@ async fn create_playlist(State(store): State<Arc<Store>>, Json(playlist): Json<c
 
     drop(read);
     let uuid = Uuid::new_v4();
-    println!("[Api] Generated Uuid {uuid} for new Playlist");
+    info!("[Api] Generated Uuid {uuid} for new Playlist");
     store.create_playlist(uuid, playlist.name).await;
 
     if let Some(p) = store.read().await.playlists.get(&uuid) {
-        println!("[Api] Created Playlist {uuid}");
+        info!("[Api] Created Playlist {uuid}");
         Ok(Json(read::Payload::Playlist(vec![(uuid, p.clone()).into()])))
     } else {
-        println!("[Api] No Playlist with {uuid} could be found while reading after write");
+        error!("[Api] No Playlist with {uuid} could be found while reading after write");
         Err((StatusCode::INTERNAL_SERVER_ERROR,
             Json((2, format!("Something went wrong with the creation")).into())
         ))
@@ -275,10 +282,10 @@ async fn create_playlist(State(store): State<Arc<Store>>, Json(playlist): Json<c
 }
 
 async fn create_schedule(State(store): State<Arc<Store>>, Json(schedule): Json<create::Schedule>) -> create::Response {
-    println!("[Api] Creating Schedule with name {}", schedule.name);
+    info!("[Api] Creating Schedule with name {}", schedule.name);
     let read = store.read().await;
     if let Some((uuid, _)) = read.schedules.iter().find(|(_, s)| s.name == schedule.name) {
-        println!("[Api] Name is already used by Schedule {}", uuid);
+        error!("[Api] Name is already used by Schedule {}", uuid);
         return Err((StatusCode::BAD_REQUEST,
             Json((1, format!("Avoid using the name {} as it is already used by another Schedule", schedule.name)).into())
         ))
@@ -286,14 +293,14 @@ async fn create_schedule(State(store): State<Arc<Store>>, Json(schedule): Json<c
 
     drop(read);
     let uuid = Uuid::new_v4();
-    println!("[Api] Generated Uuid {uuid} for new Schedule");
+    info!("[Api] Generated Uuid {uuid} for new Schedule");
     store.create_schedule(uuid, schedule.name, schedule.playlist).await;
 
     if let Some(s) = store.read().await.schedules.get(&uuid) {
-        println!("[Api] Created Schedule {uuid}");
+        info!("[Api] Created Schedule {uuid}");
         Ok(Json(read::Payload::Schedule(vec![(uuid, s.clone()).into()])))
     } else {
-        println!("[Api] No Schedule with {uuid} could be found while reading after write");
+        error!("[Api] No Schedule with {uuid} could be found while reading after write");
         Err((StatusCode::INTERNAL_SERVER_ERROR,
             Json((2, format!("Something went wrong with the creation")).into())
         ))
@@ -337,14 +344,14 @@ async fn read_schedule(State(store): State<Arc<Store>>) -> read::Response {
 }
 
 async fn update_display(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>, Json(display): Json<update::Display>) -> update::Response {
-    println!("[Api] Updating Display {uuid}");
+    info!("[Api] Updating Display {uuid}");
     let read = store.read().await;
     if !read.displays.contains_key(&uuid) {
-        println!("[Api] No display with {uuid} was found");
+        error!("[Api] No display with {uuid} was found");
         return Err((StatusCode::BAD_REQUEST, Json((1, format!("No Display with the Uuid {uuid} was found")).into())))
     }
     if let Some((uuid, _)) = read.displays.iter().find(|(&u, d)| d.name == display.name && u != uuid) {
-        println!("[Api] Name is already used by Display {}", uuid);
+        error!("[Api] Name is already used by Display {}", uuid);
         return Err((StatusCode::BAD_REQUEST, Json((2, format!("Avoid using the name {} as it is already used by another display", display.name)).into())))
     }
     drop(read);
@@ -352,23 +359,23 @@ async fn update_display(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>,
     store.update_display(uuid, display.name, display.schedule).await;
     
     if let Some(d) = store.read().await.displays.get(&uuid) {
-        println!("[Api] Updated and read Display {uuid}");
+        info!("[Api] Updated and read Display {uuid}");
         Ok(Json(update::Payload::Display(vec![(uuid, d.clone()).into()])))
     } else {
-        println!("[Api] Could not find Display with {uuid} after update");
+        error!("[Api] Could not find Display with {uuid} after update");
         Err((StatusCode::INTERNAL_SERVER_ERROR, Json((3, format!("Could not find Display with {uuid} after update")).into())))
     }
 }
 
 async fn update_playlist(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>, Json(playlist): Json<update::Playlist>) -> update::Response {
-    println!("[Api] Updating Playlist {uuid}");
+    info!("[Api] Updating Playlist {uuid}");
     let read = store.read().await;
     if !read.playlists.contains_key(&uuid) {
-        println!("[Api] No Playlist with {uuid} was found");
+        error!("[Api] No Playlist with {uuid} was found");
         return Err((StatusCode::BAD_REQUEST, Json((1, format!("No Playlist with the Uuid {uuid} was found")).into())))
     }
     if let Some((uuid, _)) = read.playlists.iter().find(|(&u, p)| p.name == playlist.name && u != uuid) {
-        println!("[Api] Name is already used by Playlist {}", uuid);
+        error!("[Api] Name is already used by Playlist {}", uuid);
         return Err((StatusCode::BAD_REQUEST, Json((2, format!("Avoid using the name {} as it is already used by another Playlist", playlist.name)).into())))
     }
     drop(read);
@@ -376,23 +383,23 @@ async fn update_playlist(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>
     store.update_playlist(uuid, playlist.name, playlist.items).await;
     
     if let Some(p) = store.read().await.playlists.get(&uuid) {
-        println!("[Api] Updated and read Playlist {uuid}");
+        info!("[Api] Updated and read Playlist {uuid}");
         Ok(Json(update::Payload::Playlist(vec![(uuid, p.clone()).into()])))
     } else {
-        println!("[Api] Could not find Playlist with {uuid} after update");
+        error!("[Api] Could not find Playlist with {uuid} after update");
         Err((StatusCode::INTERNAL_SERVER_ERROR, Json((3, format!("Could not find Playlist with {uuid} after update")).into())))
     }
 }
 
 async fn update_schedule(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>, Json(schedule): Json<update::Schedule>) -> update::Response {
-    println!("[Api] Updating Schedule {uuid}");
+    info!("[Api] Updating Schedule {uuid}");
     let read = store.read().await;
     if !read.schedules.contains_key(&uuid) {
-        println!("[Api] No Schedule with {uuid} was found");
+        error!("[Api] No Schedule with {uuid} was found");
         return Err((StatusCode::BAD_REQUEST, Json((1, format!("No Schedule with the Uuid {uuid} was found")).into())))
     }
     if let Some((uuid, _)) = read.schedules.iter().find(|(&u, s)| s.name == schedule.name && u != uuid) {
-        println!("[Api] Name is already used by Schedule {}", uuid);
+        error!("[Api] Name is already used by Schedule {}", uuid);
         return Err((StatusCode::BAD_REQUEST, Json((2, format!("Avoid using the name {} as it is already used by another Schedule", schedule.name)).into())))
     }
 
@@ -401,45 +408,45 @@ async fn update_schedule(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>
         uniq.insert(schedule.playlist);
         // Checks if any playlist Uuid is a duplicate
         if !scheduled.iter().all(|s| uniq.insert(s.playlist)) {
-            println!("[Api] Schedule contains duplicate Playlists");
+            error!("[Api] Schedule contains duplicate Playlists");
             return Err((StatusCode::BAD_REQUEST, Json((3, format!("Must not use the same Playlist more than once in a Schedule to avoid server meltdown")).into())))
         }
     }
     drop(read);
 
     if let Err(e) = store.update_schedule(uuid, schedule.name, schedule.playlist, schedule.scheduled.unwrap_or(vec![])).await {
-        println!("[Api] Schedule update failed with error: {e}");
+        error!("[Api] Schedule update failed with error: {e}");
         return Err((StatusCode::INTERNAL_SERVER_ERROR, Json((4, format!("{e}")).into())))
     }
     
     if let Some(s) = store.read().await.schedules.get(&uuid) {
-        println!("[Api] Updated and read Schedule {uuid}");
+        info!("[Api] Updated and read Schedule {uuid}");
         Ok(Json(update::Payload::Schedule(vec![(uuid, s.clone()).into()])))
     } else {
-        println!("[Api] Could not find Schedule with {uuid} after update");
+        error!("[Api] Could not find Schedule with {uuid} after update");
         Err((StatusCode::INTERNAL_SERVER_ERROR, Json((5, format!("Could not find Schedule with {uuid} after update to avoid server meltdown")).into())))
     }
 }
 
 async fn delete_display(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>) -> read::Response {
-    println!("[Api] Deleting Display {uuid}");
+    info!("[Api] Deleting Display {uuid}");
     let res;
     if let Some(d) = store.read().await.displays.get(&uuid) {
         res = Ok(Json(read::Payload::Display(vec![(uuid, d.clone()).into()])));
     } else {
-        println!("[Api] No display with {uuid} was found");
+        error!("[Api] No display with {uuid} was found");
         return Err((StatusCode::BAD_REQUEST,
             Json((1, format!("No Display with the Uuid {uuid} was found")).into())
         ))
     }
 
     store.delete_display(uuid).await;
-    println!("[Api] Deleted Display {uuid}");
+    info!("[Api] Deleted Display {uuid}");
     res
 }
 
 async fn delete_playlist(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>) -> read::Response {
-    println!("[Api] Deleting Playlist {uuid}");
+    info!("[Api] Deleting Playlist {uuid}");
     let res;
     let read = store.read().await;
 
@@ -462,7 +469,7 @@ async fn delete_playlist(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>
     if let Some(d) = read.playlists.get(&uuid) {
         res = Ok(Json(read::Payload::Playlist(vec![(uuid, d.clone()).into()])));
     } else {
-        println!("[Api] No Playlist with {uuid} was found");
+        error!("[Api] No Playlist with {uuid} was found");
         return Err((StatusCode::BAD_REQUEST,
             Json((2, format!("No Playlist with the Uuid {uuid} was found")).into())
         ))
@@ -471,12 +478,12 @@ async fn delete_playlist(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>
     drop(read);
 
     store.delete_playlist(uuid).await;
-    println!("[Api] Deleted Playlist {uuid}");
+    info!("[Api] Deleted Playlist {uuid}");
     res
 }
 
 async fn delete_schedule(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>) -> read::Response {
-    println!("[Api] Deleting Schedule {uuid}");
+    info!("[Api] Deleting Schedule {uuid}");
     let res;
     let read = store.read().await;
 
@@ -499,7 +506,7 @@ async fn delete_schedule(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>
     if let Some(s) = read.schedules.get(&uuid) {
         res = Ok(Json(read::Payload::Schedule(vec![(uuid, s.clone()).into()])));
     } else {
-        println!("[Api] No Schedule with {uuid} was found");
+        error!("[Api] No Schedule with {uuid} was found");
         return Err((StatusCode::BAD_REQUEST,
             Json((2, format!("No Schedule with the Uuid {uuid} was found")).into())
         ))
@@ -508,7 +515,7 @@ async fn delete_schedule(State(store): State<Arc<Store>>, Path(uuid): Path<Uuid>
     drop(read);
 
     store.delete_schedule(uuid).await;
-    println!("[Api] Deleted Schedule {uuid}");
+    info!("[Api] Deleted Schedule {uuid}");
     res
 }
 

@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use chrono::Local;
 use serde::{Deserialize, Serialize};
 use tokio::{sync::{broadcast::{self, Sender, Receiver}, RwLock, RwLockReadGuard, RwLockWriteGuard, oneshot}, time::{sleep_until, Instant}};
+use tracing::{warn, info, error, trace};
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -29,7 +30,9 @@ pub enum PlaylistItem {
     #[serde(rename = "TEXT")]
     Text { name: String, settings: TextData },
     #[serde(rename = "IMAGE")]
-    Image { name: String, settings: ImageData }
+    Image { name: String, settings: ImageData },
+    #[serde(rename = "BACKGROUND_AUDIO")]
+    BackgroundAudio { name: String, settings: ImageData }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, TS)]
@@ -91,7 +94,7 @@ impl Store {
         match serde_json::from_str(&str) {
             Ok(c) => c,
             Err(_) => {
-                println!("[Store] could not parse file content, starting with a blank state");
+                warn!("[Store] could not parse file content, starting with a blank state");
                 Content {
                     displays: HashMap::new(),
                     playlists: HashMap::new(),
@@ -141,12 +144,12 @@ impl Store {
                 // Change notice not needed since main thread waits on oneshot notice before continuing
                 None
             }).await;
-            println!("[Scheduler] Updated Schedules to current active playlist");
+            info!("[Scheduler] Updated Schedules to current active playlist");
         }
 
         // Notify oneshot channel that schedules have been updated to active playlists
         if let Err(_) = tx.send(()) {
-            println!("[Scheduler] Could not notify listener, sender dropped");
+            error!("[Scheduler] Could not notify listener, sender dropped");
         }
 
         'main: loop {
@@ -165,18 +168,18 @@ impl Store {
                 .collect();
             
             if moments.is_empty() {
-                println!("[Scheduler] No loaded Schedule has any scheduled playlists, waiting on an update to a Schedule...");
+                info!("[Scheduler] No loaded Schedule has any scheduled playlists, waiting on an update to a Schedule...");
                 loop {
                     match receiver.recv().await {
                         Ok(Change::ScheduleInput(uuids)) => {
                             let read = self.read().await;
                             if uuids.iter().any(|u| read.schedules.get(u).is_some_and(|s| s.has_scheduled_playlists())) {
-                                println!("[Scheduler] An updated Schedule has scheduled playlists, rerunning loop");
+                                info!("[Scheduler] An updated Schedule has scheduled playlists, rerunning loop");
                                 break
                             }
                         },
-                        Err(e) => println!("[Scheduler] RecvError: {e}"),
-                        _ => println!("[Scheduler] Non relevant change received, continue waiting"),
+                        Err(e) => error!("[Scheduler] RecvError: {e}"),
+                        _ => info!("[Scheduler] Non relevant change received, continue waiting"),
                     }
                 }
                 continue
@@ -193,19 +196,19 @@ impl Store {
                 Err(_) => instant,
             };
 
-            println!("[Scheduler] Sleeping for {:?} until {} to change active playlists", sleep.duration_since(instant), closest_time.to_string());
+            info!("[Scheduler] Sleeping for {:?} until {} to change active playlists", sleep.duration_since(instant), closest_time.to_string());
 
             loop {
                 tokio::select! {
                     _ = sleep_until(sleep) => {
-                        println!("[Scheduler] Breaking");
+                        info!("[Scheduler] Breaking");
                         break
                     },
                     change = receiver.recv() => {
                         match change {
                             //TODO: When updating a schedule, the new schedule is overridden in the API, and since the 'set current block' lies before the loop, they are never reverted to the present version
                             Ok(Change::ScheduleInput(uuids)) => {
-                                println!("[Scheduler] Schedules updated, rerunning loop");
+                                info!("[Scheduler] Schedules updated, rerunning loop");
                                 self.write(|mut c| {
                                     uuids.iter().for_each(|uuid| {
                                         c.schedules
@@ -216,18 +219,18 @@ impl Store {
                                 }).await;
                                 continue 'main
                             },
-                            Err(e) => println!("[Scheduler] RecvError: {e}"),
-                            _ => println!("[Scheduler] Non relevant change received, continue waiting"),
+                            Err(e) => error!("[Scheduler] RecvError: {e}"),
+                            _ => trace!("[Scheduler] Non relevant change received, continue waiting"),
                         }
                     },
                 }
             }
-            println!("[Scheduler] Sleep done, updating active playlists");
+            info!("[Scheduler] Sleep done, updating active playlists");
             
             self.update_schedule_active_playlist(
                 moments.iter()
                     .map(|(u, m)| (*u, m.playlist))
-                    .inspect(|(uuid, _)| println!("[Scheduler] Updating Schedule {uuid} active playlist"))
+                    .inspect(|(uuid, _)| info!("[Scheduler] Updating Schedule {uuid} active playlist"))
                     .collect::<Vec<_>>()
             ).await;
             current_moment = closest_time;
@@ -249,16 +252,16 @@ impl Store {
     where F: FnOnce(RwLockWriteGuard<Content>) -> Option<Change> {
         let c = self.content.write().await;
         let changes = fun(c);
-        println!("[Store] Sending changes after write: {changes:?}");
+        info!("[Store] Sending changes after write: {changes:?}");
         if let Some(c) = changes {
             if let Err(e) = self.sender.send(c) {
-                println!("[Store] No active channels to listen in ({})", e)
+                warn!("[Store] No active channels to listen in ({})", e)
             }
         }
 
-        println!("[Store] writing new state to file");
+        info!("[Store] writing new state to file");
         if let Err(_) = tokio::fs::write(&self.filename, self.to_string().await).await {
-            println!("[Store] Error writing state to file after update, log updated state instead: \n{}", self.to_string().await);
+            error!("[Store] Error writing state to file after update, log updated state instead: \n{}", self.to_string().await);
         }
     }
 
