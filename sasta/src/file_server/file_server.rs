@@ -1,13 +1,15 @@
 use std::{sync::{Mutex, Arc}, path::Path};
 
-use axum::{extract::{State, Multipart}, Json};
+use axum::{extract::{State, Multipart}, Json, response::IntoResponse};
 use axum_macros::debug_handler;
-use hyper::StatusCode;
+use hyper::{StatusCode, Request, Uri, Body};
 use redis::{aio::Connection, Client, AsyncCommands, JsonAsyncCommands};
 use regex::Regex;
 use serde::{Serialize, Deserialize};
 use tokio::{sync::Mutex as AsyncMutex, io::AsyncWriteExt, fs::File as TokioFile};
 use tokio_util::bytes::Bytes;
+use tower::ServiceExt;
+use tower_http::services::ServeFile;
 use tracing::{error_span, info_span, warn_span};
 use uuid::Uuid;
 
@@ -28,6 +30,27 @@ pub enum Payload {
 #[debug_handler]
 pub async fn get_files(State(state): State<AppState>) -> Response<Payload> {
     Ok(Json(Payload::FilePaths(state.file_server.lock().await.get_paths().await)))
+}
+
+#[debug_handler]
+pub async fn get_file(
+    State(state): State<AppState>,
+    uri: Uri
+) -> impl IntoResponse {
+    let file_server = state.file_server.lock().await;
+    let path = file_server.get_file(uri.to_string()).await;
+
+    match path {
+        Some(p) => {
+            let req = Request::builder().uri(uri.clone()).body(Body::empty()).unwrap();
+            let f = ServeFile::new(format!("file_server/{p}"));
+            match f.oneshot(req).await {
+                Ok(res) => Ok(res.map(axum::body::boxed)),
+                Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+            }
+        },
+        None => Err(StatusCode::NOT_FOUND),
+    }
 }
 
 struct AddFiles {
@@ -188,6 +211,43 @@ impl FileServer {
             .collect::<Vec<_>>();
         let file_name = path.pop().unwrap();
 
+        let dir = self.traverse_to_dir(path).await;
+
+        let mut files = dir.files.lock().unwrap();
+        match files.binary_search_by_key(&file_name, |f| &f.name) {
+            Ok(_) =>
+                Err(format!("File {file_path} already exists")),
+            Err(pos) => {
+                files.insert(pos, File {
+                    name: file_name.to_string(),
+                    file_server: format!("{}.{}", Uuid::new_v4(), Path::new(file_name).extension().unwrap().to_str().unwrap()),
+                    //TODO: Add things like path to file on disk (with uuid generated name)
+                });
+
+                Ok(files[pos].clone())
+            },
+        }
+    }
+
+    async fn get_file(&self, file_path: String) -> Option<String> {
+        let mut path = file_path
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>();
+        let file_name = path.pop()?;
+
+        let dir = self.traverse_to_dir(path).await;
+
+        let files = dir.files.lock().unwrap();
+        match files.binary_search_by_key(&file_name, |f| &f.name) {
+            Ok(pos) =>
+                Some(files[pos].file_server.clone()),
+            Err(_) =>
+                None,
+        }
+    }
+
+    async fn traverse_to_dir(&self, path: Vec<&str>) -> Directory {
         let mut dir = self.root.clone();
         for p in path {
             let dir_c = dir.clone();
@@ -207,29 +267,7 @@ impl FileServer {
             };
             dir = d.get(pos).unwrap().clone();
         }
-        let file;
-
-        // Extra block to drop Mutex handle before await call as explained under
-        // the "Holding a MutexGuard across an .await" header here:
-        // https://tokio.rs/tokio/tutorial/shared-state
-        {
-            let mut files = dir.files.lock().unwrap();
-            match files.binary_search_by_key(&file_name, |f| &f.name) {
-                Ok(_) =>
-                    return Err(format!("File {file_path} already exists")),
-                Err(pos) => {
-                    files.insert(pos, File {
-                        name: file_name.to_string(),
-                        file_server: format!("{}.{}", Uuid::new_v4(), Path::new(file_name).extension().unwrap().to_str().unwrap()),
-                        //TODO: Add things like path to file on disk (with uuid generated name)
-                    });
-
-                    file = files[pos].clone();
-                },
-            }
-        }
-
-        Ok(file)
+        dir
     }
 
     async fn write(&mut self) {

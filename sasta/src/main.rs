@@ -10,7 +10,7 @@ use tracing::{Level, error, info, info_span};
 use tracing_subscriber::{FmtSubscriber, fmt::format::FmtSpan};
 use uuid::Uuid;
 
-use crate::{connection::connection::client_connection, file_server::file_server::{get_files, FileServer, add_files}};
+use crate::{connection::connection::client_connection, file_server::file_server::{get_files, FileServer, add_files, get_file}};
 
 mod store;
 mod connection;
@@ -81,6 +81,7 @@ async fn main() {
                 )
             )
             .nest("/files", Router::new()
+                .fallback(get_file)
             )
             .route("/", get(ws_handler))
             .with_state(app_state)
