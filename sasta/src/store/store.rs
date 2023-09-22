@@ -58,7 +58,7 @@ pub struct ImageData {
 }
 
 // TODO: Replace Content, and use redis as only storage
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Content {
     pub displays: HashMap<Uuid, Display>,
     pub playlists: HashMap<Uuid, Playlist>,
@@ -85,7 +85,7 @@ impl Store {
     async fn read_file(con: &mut Connection) -> Content {
         match con.json_get::<_, _, String>("content", ".").await {
             Ok(str) => {
-                println!("{}", str);
+                // println!("{}", str);
                 serde_json::from_str(&str).unwrap()
             },
             Err(e) => {
@@ -101,7 +101,7 @@ impl Store {
 
     /// Updates all Schedules' Playlists to the (schedule_uuid, active_playlist_uuid) pairs
     async fn update_schedule_active_playlist(&self, vec: Vec<(Uuid, Uuid)>) {
-        // Exit if schedule does not exists or if it is already set to the given playlist 
+        // Exit if schedule does not exists or if it is already set to the given playlist
         // if !self.read().await.schedules.contains_key(&schedule) || self.read().await.schedules.get(&schedule).unwrap().playlist == active_playlist {
         //     return;
         // }
@@ -117,7 +117,7 @@ impl Store {
     }
 
     /// Starts scheduling loop updating the active playlists when necessary
-    /// 
+    ///
     /// Cancels sent token when state has been updated to the active scheduled playlists
     pub async fn schedule_loop(&self, tx: oneshot::Sender<()>) {
         let mut current_moment = Local::now();
@@ -153,15 +153,15 @@ impl Store {
                 .iter()
                 .map(|(schedule_uuid, schedule)| (schedule_uuid.clone(), schedule.clone()))
                 .collect();
-            
+
             let mut moments: Vec<(Uuid, Moment)> = schedules.iter()
                 .filter_map(|(schedule_uuid, schedule)| match schedule.next_schedule(&current_moment) {
                     Some(m) => Some((schedule_uuid.clone(), m)),
                     None => None,
-                    
+
                 })
                 .collect();
-            
+
             if moments.is_empty() {
                 info!("[Scheduler] No loaded Schedule has any scheduled playlists, waiting on an update to a Schedule...");
                 loop {
@@ -180,7 +180,7 @@ impl Store {
                 continue
             }
 
-            
+
             let closest_time = moments.iter()
                 .min_by_key(|(_, m)| m.time).unwrap().1.time;
 
@@ -221,7 +221,7 @@ impl Store {
                 }
             }
             info!("[Scheduler] Sleep done, updating active playlists");
-            
+
             self.update_schedule_active_playlist(
                 moments.iter()
                     .map(|(u, m)| (*u, m.playlist))
@@ -255,14 +255,15 @@ impl Store {
         }
         info!("[Store] writing new state to db");
         let mut con = self.con.lock().await;
-        if let Err(error) = con.json_set::<_, _, _, String>("content", ".", &self.to_string().await).await {
+        let content = &self.content.read().await.clone();
+        if let Err(error) = con.json_set::<_, _, _, String>("content", "$", &content).await {
             error_span!("Redis Error", ?error);
-            error_span!("Logging current state instead", ?self.content);
+            // error_span!("Logging current state instead", ?self.content);
         }
     }
 
     /// Creates a new display
-    /// 
+    ///
     /// Overrides existing display with same uuid
     pub async fn create_display(&self, uuid: Uuid, name: String, schedule: Uuid) {
         self.write(|mut c| {
@@ -272,7 +273,7 @@ impl Store {
     }
 
     /// Creates a new playlist
-    /// 
+    ///
     /// Overrides existing playlist with same uuid
     pub async fn create_playlist(&self, uuid: Uuid, name: String) {
         self.write(|mut c| {
@@ -282,7 +283,7 @@ impl Store {
     }
 
     /// Creates a new Schedule
-    /// 
+    ///
     /// Overrides existing Schedule with same uuid
     pub async fn create_schedule(&self, uuid: Uuid, name: String, playlist: Uuid) {
         self.write(|mut c| {
@@ -292,7 +293,7 @@ impl Store {
     }
 
     /// Updates the display with the given Uuid
-    /// 
+    ///
     /// Does nothing if no such display is found
     pub async fn update_display(&self, uuid: Uuid, name: String, schedule: Uuid) {
         self.write(|mut c| {
@@ -304,7 +305,7 @@ impl Store {
     }
 
     /// Updates the playlist with the given Uuid
-    /// 
+    ///
     /// Does nothing if no such playlist is found
     pub async fn update_playlist(&self, uuid: Uuid, name: String, items: Vec<PlaylistItem>) {
         self.write(|mut c| {
@@ -316,7 +317,7 @@ impl Store {
     }
 
     /// Updates the Schedule with the given Uuid
-    /// 
+    ///
     /// Does nothing if no such Schedule is found
     pub async fn update_schedule(&self, uuid: Uuid, name: String, playlist: Uuid, schedules: Vec<schedule::ScheduledPlaylistInput>) -> Result<(), String> {
         let schedule = match Schedule::new(name, schedules, playlist) {
@@ -333,7 +334,7 @@ impl Store {
     }
 
     /// Deletes the display with the given Uuid
-    /// 
+    ///
     /// Does nothing if no such display is found
     pub async fn delete_display(&self, uuid: Uuid) {
         self.write(|mut c| {
@@ -343,7 +344,7 @@ impl Store {
     }
 
     /// Deletes the Playlist with the given Uuid
-    /// 
+    ///
     /// Does nothing if no such Playlist is found
     pub async fn delete_playlist(&self, uuid: Uuid) {
         self.write(|mut c| {
@@ -353,7 +354,7 @@ impl Store {
     }
 
     /// Deletes the Schedule with the given Uuid
-    /// 
+    ///
     /// Does nothing if no such Schedule is found
     pub async fn delete_schedule(&self, uuid: Uuid) {
         self.write(|mut c| {
@@ -370,7 +371,7 @@ impl Store {
     }
 
     /// Get Uuids of schedule and playlist connected to Display of given Uuid
-    /// 
+    ///
     /// Result is a tuple containing both Uuids as `(schedule_uuid, playlist_uuid)`
     pub async fn get_display_uuids(&self, display: &Uuid) -> Option<(Uuid, Uuid)> {
         let r = self.read().await;

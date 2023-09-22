@@ -1,3 +1,4 @@
 target/
 content.json
 redis-data/
+/file_server/
