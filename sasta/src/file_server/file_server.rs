@@ -3,14 +3,14 @@ use std::{sync::{Mutex, Arc}, path::Path};
 use axum::{extract::{State, Multipart}, Json, response::IntoResponse};
 use axum_macros::debug_handler;
 use hyper::{StatusCode, Request, Uri, Body};
-use redis::{aio::Connection, Client, AsyncCommands, JsonAsyncCommands};
+use redis::{aio::Connection, Client, JsonAsyncCommands};
 use regex::Regex;
 use serde::{Serialize, Deserialize};
 use tokio::{sync::Mutex as AsyncMutex, io::AsyncWriteExt, fs::File as TokioFile};
 use tokio_util::bytes::Bytes;
 use tower::ServiceExt;
 use tower_http::services::ServeFile;
-use tracing::{error_span, info_span, warn_span};
+use tracing::{error_span, info_span, warn_span, warn};
 use uuid::Uuid;
 
 use crate::AppState;
@@ -20,16 +20,43 @@ pub type Response<T> = Result<Json<T>, (StatusCode, Json<T>)>;
 #[derive(Serialize)]
 #[serde(tag = "type", content = "content")]
 pub enum Payload {
-    FilePaths(Vec<String>),
+    FilePaths(Vec<TreeView>),
     Error {
         code: u8,
         message: String
     }
 }
 
+#[derive(Serialize, Debug)]
+pub struct TreeView {
+    content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    /// children is Some if content is a dir, None if content is a file
+    children: Option<Vec<TreeView>>
+}
+
+impl From<&File> for TreeView {
+    fn from(value: &File) -> Self {
+        TreeView { content: value.name.clone(), children: None }
+    }
+}
+
+impl From<&Directory> for TreeView {
+    fn from(value: &Directory) -> Self {
+        let mut children = Vec::new();
+        children.append(&mut value.children.lock().unwrap().iter().map(|f| f.into()).collect::<Vec<TreeView>>());
+        children.append(&mut value.files.lock().unwrap().iter().map(|f| f.into()).collect::<Vec<TreeView>>());
+        TreeView {
+            content: value.name.clone(),
+            children: Some(children)
+        }
+    }
+}
+
 #[debug_handler]
-pub async fn get_files(State(state): State<AppState>) -> Response<Payload> {
-    Ok(Json(Payload::FilePaths(state.file_server.lock().await.get_paths().await)))
+pub async fn get_all_paths(State(state): State<AppState>) -> Response<Payload> {
+    let root = state.file_server.lock().await.get_paths().await;
+    Ok(Json(Payload::FilePaths(root.children.unwrap_or(vec![]))))
 }
 
 #[debug_handler]
@@ -46,10 +73,10 @@ pub async fn get_file(
             let f = ServeFile::new(format!("file_server/{p}"));
             match f.oneshot(req).await {
                 Ok(res) => Ok(res.map(axum::body::boxed)),
-                Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+                Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, format!("{e}"))),
             }
         },
-        None => Err(StatusCode::NOT_FOUND),
+        None => Err((StatusCode::NOT_FOUND, format!("{uri} not found"))),
     }
 }
 
@@ -176,22 +203,27 @@ pub struct FileServer {
 impl FileServer {
     pub async fn new() -> Self {
         let client = Client::open("redis://127.0.0.1:6379").unwrap();
-        let con = client.get_async_connection().await.unwrap();
-        let root = Directory {
-            name: "".to_string(),
-            files: Arc::new(Mutex::new(vec![])),
-            children: Arc::new(Mutex::new(vec![]))
+        let mut con = client.get_async_connection().await.unwrap();
+
+        let root = match con.json_get::<_, _, String>("files", ".").await {
+            Ok(str) => {
+                serde_json::from_str(&str).unwrap()
+            },
+            Err(e) => {
+                warn!("Could not parse files content, starting with a blank root directory (Error: {:?})", e);
+                Directory {
+                    name: "".to_string(),
+                    files: Arc::new(Mutex::new(vec![])),
+                    children: Arc::new(Mutex::new(vec![]))
+                }
+            },
         };
 
         Self { con: AsyncMutex::new(con), root }
     }
 
-    pub async fn get_paths(&self) -> Vec<String> {
-        let mut con = self.con.lock().await;
-
-        let _paths: Vec<String> = con.hkeys("files").await.unwrap();
-
-        todo!()
+    pub async fn get_paths(&self) -> TreeView {
+        (&self.root).into()
     }
 
     /// Add file name to directory tree, and create folder if they don't already exists

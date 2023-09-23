@@ -10,7 +10,7 @@ use tracing::{Level, error, info, info_span};
 use tracing_subscriber::{FmtSubscriber, fmt::format::FmtSpan};
 use uuid::Uuid;
 
-use crate::{connection::connection::client_connection, file_server::file_server::{get_files, FileServer, add_files, get_file}};
+use crate::{connection::connection::client_connection, file_server::file_server::{get_all_paths, FileServer, add_files, get_file}};
 
 mod store;
 mod connection;
@@ -76,7 +76,7 @@ async fn main() {
                     .route("/:uuid", delete(delete_schedule))
                 )
                 .nest("/files", Router::new()
-                    .route("/", get(get_files))
+                    .route("/", get(get_all_paths))
                     .route("/", post(add_files))
                 )
             )
