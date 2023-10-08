@@ -63,7 +63,7 @@ pub async fn client_connection(socket: WebSocket, who: SocketAddr, store: Arc<St
     let mut heartbeat_handle = tokio::spawn(heartbeat(client_send.clone(), client_receive, who, client_name.clone()));
 
     let mut client_handle = tokio::spawn(async move {
-        
+
         let mut rx = store.receiver();
         loop {
             let display_option = store.read().await.displays.get(&client_uuid).and_then(|d| Some(d.clone()));
@@ -91,7 +91,7 @@ pub async fn client_connection(socket: WebSocket, who: SocketAddr, store: Arc<St
         };
 
         let client_name = client_name.read().unwrap().clone().unwrap_or("Got a None".to_string());
-    
+
         let msg = Message::Text(serde_json::to_string(&Payload::Name(client_name.clone())).unwrap());
         client_send.lock().await.send(msg).await.unwrap();
 
@@ -107,7 +107,7 @@ pub async fn client_connection(socket: WebSocket, who: SocketAddr, store: Arc<St
                     return
                 },
             };
-        
+
             for item in playlist.into_iter().cycle() {
                 let sleep_duration;
                 let payload = match item {
@@ -127,14 +127,14 @@ pub async fn client_connection(socket: WebSocket, who: SocketAddr, store: Arc<St
                         DisplayPayload::Image { data: WebsitePayload { content: src } }
                     },
                     PlaylistItem::BackgroundAudio { .. } => todo!(),
-                    
+
                 };
-    
+
                 let msg = Message::Text(serde_json::to_string(&Payload::Display(payload)).unwrap());
                 client_send.lock().await.send(msg).await.unwrap();
-                
+
                 let sleep = Instant::now() + Duration::from_secs(sleep_duration);
-                
+
                 loop {
                     info!("[{who} ({client_name})] Sleeping until {:?}", sleep);
                     tokio::select! {
@@ -193,7 +193,7 @@ async fn heartbeat(
     let time = Duration::from_secs(5);
     loop {
         interval.tick().await;
-        
+
         let ping = timeout(time, async {
             let mut socket = sender.lock().await;
             match socket.send(Message::Ping(vec![])).await {

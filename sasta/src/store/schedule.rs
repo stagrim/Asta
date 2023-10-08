@@ -54,7 +54,7 @@ impl Schedule {
             })
         }
         schedules.push(ScheduledItem::Fallback(playlist));
-        
+
         Ok(Schedule { name, playlist, schedules })
     }
 
@@ -87,7 +87,7 @@ impl Schedule {
                 ScheduledItem::Schedule { start, end, playlist } => {
                     let (last_start, last_end) =
                         (Self::previous_time(time, start), Self::previous_time(time, end));
-                    
+
                     if let (Some(last_start), Some(last_end)) = (last_start, last_end) {
                         // If both previous start and end moments were found, return Some if the most recent one was a start action
                         match last_start.cmp(&last_end) {
@@ -114,7 +114,7 @@ impl Schedule {
     // }
 
     /// Returns next scheduled moment if any
-    /// 
+    ///
     /// Does not return scheduled moments at the exact time passed as argument
     pub fn next_schedule(&self, from: &DateTime<Local>) -> Option<Moment> {
         // Vector with closures returning the next scheduled time
@@ -123,7 +123,7 @@ impl Schedule {
                 ScheduledItem::Schedule { start, end, playlist } => {
                     let (mut next_start_iter, mut next_end_iter) =
                         (start.after(from).peekable(), end.after(from).peekable());
-                    
+
                     let current_playlist = self.current_playlist(&from);
 
                     Some(move || {
@@ -228,7 +228,7 @@ impl Schedule {
 pub struct Moment {
     /// Scheduled time of change
     pub time: DateTime<Local>,
-    // /// Uuid of schedule to be updated 
+    // /// Uuid of schedule to be updated
     // schedule: Uuid,
     /// Uuid of playlist which will become active at moment
     pub playlist: Uuid,
@@ -264,7 +264,7 @@ impl<'de> Deserialize<'de> for Schedule {
 impl Serialize for Schedule {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where S: serde::Serializer {
-        ScheduleInput::serialize(&self.to_owned().into(), serializer) 
+        ScheduleInput::serialize(&self.to_owned().into(), serializer)
     }
 }
 
@@ -387,7 +387,7 @@ mod test {
             }
         ];
         let schedule: Schedule = Schedule::new("test".to_string(), schedules, default_uuid).unwrap();
-        
+
         assert_eq!(
             Moment { time: Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap(), playlist: scheduled_uuid },
             schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 9, 59, 59).unwrap()).unwrap()
@@ -418,7 +418,7 @@ mod test {
             }
         ];
         let schedule: Schedule = Schedule::new("test".to_string(), schedules, default_uuid).unwrap();
-        
+
         assert_eq!(
             Moment { time: Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap(), playlist: scheduled_uuid },
             schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 9, 59, 59).unwrap()).unwrap()
@@ -467,7 +467,7 @@ mod test {
             }
         ];
         let schedule: Schedule = Schedule::new("test".to_string(), schedules, default_uuid).unwrap();
-        
+
         assert_eq!(
             Moment { time: Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap(), playlist: scheduled_uuid },
             schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 9, 59, 59).unwrap()).unwrap()

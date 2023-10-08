@@ -8,9 +8,13 @@ use tokio::sync::{oneshot, Mutex};
 use tower_http::normalize_path::NormalizePath;
 use tracing::{Level, error, info, info_span};
 use tracing_subscriber::{FmtSubscriber, fmt::format::FmtSpan};
+use utoipa::OpenApi;
+use utoipa_rapidoc::RapiDoc;
+use utoipa_redoc::{Redoc, Servable};
+use utoipa_swagger_ui::SwaggerUi;
 use uuid::Uuid;
 
-use crate::{connection::connection::client_connection, file_server::file_server::{get_all_paths, FileServer, add_files, get_file}};
+use crate::{connection::connection::client_connection, file_server::file_server::{get_all_paths, FileServer, add_files, get_file}, store::schedule};
 
 mod store;
 mod connection;
@@ -29,6 +33,32 @@ pub struct AppState {
     store: Arc<Store>,
     file_server: Arc<Mutex<FileServer>>,
 }
+
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        read_display,
+        read_schedule,
+        read_playlist,
+        // create_display,
+        // create_schedule,
+        // create_playlist,
+        update_display,
+        // update_schedule,
+        // update_playlist,
+        delete_display,
+        delete_schedule,
+        delete_playlist,
+    ),
+    components(
+        schemas(read::Payload)
+    ),
+    modifiers(),
+    tags(
+        (name = "todo", description = "Todo items management API")
+    )
+)]
+struct ApiDoc;
 
 #[tokio::main]
 async fn main() {
@@ -56,6 +86,13 @@ async fn main() {
 
     let app = NormalizePath::trim_trailing_slash(
         Router::new()
+        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
+        .merge(Redoc::with_url("/redoc", ApiDoc::openapi()))
+            // There is no need to create `RapiDoc::with_openapi` because the OpenApi is served
+            // via SwaggerUi instead we only make rapidoc to point to the existing doc.
+            // .merge(RapiDoc::new("/api-docs/openapi.json").path("/rapidoc"))
+            // Alternative to above
+            .merge(RapiDoc::with_openapi("/api-docs/openapi2.json", ApiDoc::openapi()).path("/rapidoc"))
             .nest("/api", Router::new()
                 .nest("/display", Router::new()
                     .route("/", get(read_display))
@@ -99,13 +136,15 @@ mod read {
     use hyper::StatusCode;
     use serde::Serialize;
     use ts_rs::TS;
+    use utoipa::ToSchema;
     use uuid::Uuid;
 
     use crate::store::{store, schedule};
 
     pub type Response = Result<Json<Payload>, (StatusCode, Json<Payload>)>;
 
-    #[derive(Serialize, TS)]
+    // https://github.com/juhaku/utoipa/issues/727
+    #[derive(Serialize, ToSchema, TS)]
     #[serde(tag = "type", content = "content")]
     #[ts(export, export_to = "api_bindings/read/")]
     pub enum Payload {
@@ -118,7 +157,7 @@ mod read {
         }
     }
 
-    #[derive(Serialize, TS)]
+    #[derive(Serialize, ToSchema, TS)]
     #[ts(export, export_to = "api_bindings/read/")]
     pub struct Display {
         #[ts(type = "string")]
@@ -203,28 +242,32 @@ mod create {
 mod update {
     use serde::Deserialize;
     use ts_rs::TS;
+    use utoipa::ToSchema;
     use uuid::Uuid;
 
     pub use crate::read::{Response, Payload};
     use crate::store::{store, schedule};
 
-    #[derive(Deserialize, TS)]
+    #[derive(Deserialize, ToSchema, TS)]
     #[ts(export, export_to = "api_bindings/update/", rename = "UpdateDisplay")]
+    #[schema(title = "UpdateDisplay")]
     pub struct Display {
         pub name: String,
         #[ts(type = "string")]
         pub schedule: Uuid
     }
 
-    #[derive(Deserialize, TS)]
+    #[derive(Deserialize, ToSchema, TS)]
     #[ts(export, export_to = "api_bindings/update/", rename = "UpdatePlaylist")]
+    #[schema(title = "UpdatePlaylist")]
     pub struct Playlist {
         pub name: String,
         pub items: Vec<store::PlaylistItem>,
     }
 
-    #[derive(Deserialize, TS)]
+    #[derive(Deserialize, ToSchema, TS)]
     #[ts(export, export_to = "api_bindings/update/", rename = "UpdateSchedule")]
+    #[schema(title = "UpdateSchedule")]
     pub struct Schedule {
         pub name: String,
         #[ts(type = "string")]
@@ -329,6 +372,22 @@ async fn create_schedule(State(state): State<AppState>, Json(schedule): Json<cre
     };
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/display",
+    tag = "display",
+    responses(
+        (status = 200, description = "Get all Displays", body = inline(read::Payload),
+            example = json!(
+                read::Payload::Display(vec![
+                        read::Display { uuid: Uuid::new_v4(), name: "name1".into(), schedule: Uuid::new_v4() },
+                        read::Display { uuid: Uuid::new_v4(), name: "name2".into(), schedule: Uuid::new_v4() },
+                        read::Display { uuid: Uuid::new_v4(), name: "name3".into(), schedule: Uuid::new_v4() }
+                ])
+            )
+        ),
+    )
+)]
 async fn read_display(State(state): State<AppState>) -> read::Response {
     return Ok(Json(read::Payload::Display(
             state.store
@@ -341,6 +400,29 @@ async fn read_display(State(state): State<AppState>) -> read::Response {
     )));
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/playlist",
+    tag = "playlist",
+    responses(
+        (status = 200, description = "Get all Playlists", body = inline(read::Payload),
+            example = json!(
+                read::Payload::Playlist(vec![
+                        read::Playlist { uuid: Uuid::new_v4(), name: "name1".into(), items: vec![
+                            store::store::PlaylistItem::Website {
+                                name: "item_name".into(),
+                                settings: store::store::WebsiteData {
+                                    url: "example.com".into(),
+                                    duration: 60u64
+                                }
+                            }
+                        ] },
+                        read::Playlist { uuid: Uuid::new_v4(), name: "name2".into(), items: vec![] }
+                ])
+            )
+        ),
+    )
+)]
 async fn read_playlist(State(state): State<AppState>) -> read::Response {
     return Ok(Json(read::Payload::Playlist(
         state.store
@@ -353,6 +435,27 @@ async fn read_playlist(State(state): State<AppState>) -> read::Response {
     )));
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/schedule",
+    tag = "schedule",
+    responses(
+        (status = 200, description = "Get all Schedules", body = inline(read::Payload),
+            example = json!(
+                read::Payload::Schedule(vec![
+                    read::Schedule { uuid: Uuid::new_v4(), name: "name1".into(), playlist: Uuid::new_v4(), scheduled: Some(vec![
+                        schedule::ScheduledPlaylistInput {
+                            playlist: Uuid::new_v4(),
+                            start: "0 0 10 * * Mon-Fri *".into(),
+                            end: "0 0 14 * * Mon-Fri *".into()
+                        }
+                    ]) },
+                    read::Schedule { uuid: Uuid::new_v4(), name: "name2".into(), playlist: Uuid::new_v4(), scheduled: Some(vec![]) }
+                ])
+            )
+        ),
+    )
+)]
 async fn read_schedule(State(state): State<AppState>) -> read::Response {
     return Ok(Json(read::Payload::Schedule(
         state.store
@@ -365,6 +468,38 @@ async fn read_schedule(State(state): State<AppState>) -> read::Response {
     )));
 }
 
+#[utoipa::path(
+    put,
+    path = "/api/display/{uuid}",
+    tag = "display",
+    request_body(content = inline(update::Display)),
+    responses(
+        (status = 200, description = "Display updated", body = inline(read::Payload),
+            example = json!(
+                read::Payload::Display(vec![
+                        read::Display { uuid: Uuid::new_v4(), name: "name".into(), schedule: Uuid::new_v4() }
+                ])
+            )
+        ),
+        (status = BAD_REQUEST, body = Payload, examples(
+            ("error_1" = (
+                summary = "No Display found with given Uuid",
+                value = json!(
+                    read::Payload::from((1, format!("No Display with the Uuid <uuid> was found")))
+                )
+            )),
+            ("error_2" = (
+                summary = "Name is already used by another Display",
+                value = json!(
+                    read::Payload::from((2, format!("Avoid using the name <name> as it is already used by another display")))
+                )
+            ))
+        )),
+    ),
+    params(
+        ("uuid" = Uuid, Path, description = "Uuid of Display to delete")
+    )
+)]
 async fn update_display(State(state): State<AppState>, Path(uuid): Path<Uuid>, Json(display): Json<update::Display>) -> update::Response {
     info!("[Api] Updating Display {uuid}");
     let store = state.store;
@@ -453,6 +588,29 @@ async fn update_schedule(State(state): State<AppState>, Path(uuid): Path<Uuid>, 
     };
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/display/{uuid}",
+    tag = "display",
+    responses(
+        (status = 200, description = "Display deleted", body = Payload,
+            example = json!(
+                read::Payload::Display(vec![
+                        read::Display { uuid: Uuid::new_v4(), name: "name".into(), schedule: Uuid::new_v4() }
+                ])
+            )
+        ),
+        (status = BAD_REQUEST, body = Payload,
+            description = "No Display exists with given Uuid",
+            example = json!(
+                read::Payload::from((1, format!("No Display with the Uuid <uuid> was found")))
+            )
+        )
+    ),
+    params(
+        ("uuid" = Uuid, Path, description = "Uuid of Display to delete")
+    )
+)]
 async fn delete_display(State(state): State<AppState>, Path(uuid): Path<Uuid>) -> read::Response {
     info!("[Api] Deleting Display {uuid}");
     let store = state.store;
@@ -471,7 +629,38 @@ async fn delete_display(State(state): State<AppState>, Path(uuid): Path<Uuid>) -
     res
 }
 
-async fn delete_playlist(State(state): State<AppState>, Path(uuid): Path<Uuid>) -> read::Response {
+#[utoipa::path(
+    delete,
+    path = "/api/playlist/{uuid}",
+    tag = "playlist",
+    responses(
+        (status = 200, description = "Playlist deleted", body = Payload,
+            example = json!(
+                read::Payload::Playlist(vec![
+                        read::Playlist { uuid: Uuid::new_v4(), name: "name".into(), items: vec![] }
+                ])
+            )
+        ),
+        (status = BAD_REQUEST, body = Payload, examples(
+            ("error_1" = (
+                summary = "Playlist(s) depend on Playlist",
+                value = json!(
+                    read::Payload::from((1, format!("Unable to delete playlist since the Schedules (<schedules>) depend on it")))
+                )
+            )),
+            ("error_2" = (
+                summary = "No playlist exists with given Uuid",
+                value = json!(
+                    read::Payload::from((2, format!("No Playlist with the Uuid <uuid> was found")))
+                )
+            ))
+        ))
+    ),
+    params(
+        ("uuid" = Uuid, Path, description = "Uuid of Playlist to delete")
+    )
+)]
+pub(crate) async fn delete_playlist(State(state): State<AppState>, Path(uuid): Path<Uuid>) -> read::Response {
     info!("[Api] Deleting Playlist {uuid}");
     let res;
     let store = state.store;
@@ -509,6 +698,37 @@ async fn delete_playlist(State(state): State<AppState>, Path(uuid): Path<Uuid>) 
     res
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/schedule/{uuid}",
+    tag = "schedule",
+    responses(
+        (status = 200, description = "Schedule deleted", body = Payload,
+            example = json!(
+                read::Payload::Schedule(vec![
+                        read::Schedule { uuid: Uuid::new_v4(), name: "name".into(), playlist: Uuid::new_v4(), scheduled: None }
+                ])
+            )
+        ),
+        (status = BAD_REQUEST, body = Payload, examples(
+            ("error_1" = (
+                summary = "Display(s) depend on Schedule",
+                value = json!(
+                    read::Payload::from((1, format!("Unable to delete Schedule since the Displays (<displays>) depend on it")))
+                )
+            )),
+            ("error_2" = (
+                summary = "No Schedule exists with given Uuid",
+                value = json!(
+                    read::Payload::from((2, format!("No Schedule with the Uuid <uuid> was found")))
+                )
+            ))
+        ))
+    ),
+    params(
+        ("uuid" = Uuid, Path, description = "Uuid of Schedule to delete")
+    )
+)]
 async fn delete_schedule(State(state): State<AppState>, Path(uuid): Path<Uuid>) -> read::Response {
     info!("[Api] Deleting Schedule {uuid}");
     let res;

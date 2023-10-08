@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use tokio::{sync::{broadcast::{self, Sender, Receiver}, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard, oneshot}, time::{sleep_until, Instant}};
 use tracing::{warn, info, error, trace, warn_span, error_span};
 use ts_rs::TS;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use super::schedule::{Schedule, Moment, self};
@@ -22,7 +23,7 @@ pub struct Playlist {
     pub items: Vec<PlaylistItem>
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, TS)]
+#[derive(Deserialize, Serialize, Debug, Clone, ToSchema, TS)]
 #[serde(tag = "type")]
 #[ts(export, export_to = "api_bindings/update/")]
 pub enum PlaylistItem {
@@ -36,21 +37,21 @@ pub enum PlaylistItem {
     BackgroundAudio { name: String, settings: ImageData }
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, TS)]
+#[derive(Deserialize, Serialize, Debug, Clone, ToSchema, TS)]
 #[ts(export, export_to = "api_bindings/update/")]
 pub struct WebsiteData {
     pub url: String,
     pub duration: u64
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, TS)]
+#[derive(Deserialize, Serialize, Debug, Clone, ToSchema, TS)]
 #[ts(export, export_to = "api_bindings/update/")]
 pub struct TextData {
     pub text: String,
     pub duration: u64
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, TS)]
+#[derive(Deserialize, Serialize, Debug, Clone, ToSchema, TS)]
 #[ts(export, export_to = "api_bindings/update/")]
 pub struct ImageData {
     pub src: String,
