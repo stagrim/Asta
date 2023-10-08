@@ -7,8 +7,10 @@
 
 
 	import { page } from "$app/stores";
-	import { Accordion, AccordionItem, drawerStore } from "@skeletonlabs/skeleton";
+	import { Accordion, AccordionItem, getDrawerStore } from "@skeletonlabs/skeleton";
 	import type { LayoutData } from "../routes/$types";
+
+    const drawerStore = getDrawerStore()
 
     const drawerClose = () => drawerStore.close()
 

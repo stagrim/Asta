@@ -6,7 +6,7 @@
 	import trash from 'svelte-awesome/icons/trash';
 
     import { page } from '$app/stores'
-	import { RadioGroup, RadioItem, toastStore, type ToastSettings, modalStore } from '@skeletonlabs/skeleton';
+	import { RadioGroup, RadioItem, getToastStore, type ToastSettings, getModalStore } from '@skeletonlabs/skeleton';
 	import type { PageData } from './$types'
 	import SchedulePicker from '../../../lib/TypePicker.svelte';
 	import { applyAction, enhance } from '$app/forms';
@@ -14,14 +14,17 @@
 	import { form_action } from '$lib/form_action';
 	import type { PlaylistItem } from '../../../api_bindings/update/PlaylistItem';
 	import type { Playlist } from '../../../api_bindings/read/Playlist';
-	import { append } from 'svelte/internal';
 	import type { ScheduledPlaylistInput } from '../../../api_bindings/update/ScheduledPlaylistInput';
 	import TypePicker from '../../../lib/TypePicker.svelte';
+	import type { Schedule } from '../../../api_bindings/read/Schedule';
 
     export let data: PageData;
 
+    const toastStore = getToastStore()
+    const modalStore = getModalStore()
+
     $: uuid = $page.params.uuid
-    const get_schedule = (uuid) => structuredClone(data.schedule.content.get(uuid))
+    const get_schedule = (uuid: string) => structuredClone(data.schedule.content.get(uuid)!) as Schedule
     $: schedule = get_schedule(uuid)
 
     let delete_button: HTMLButtonElement
@@ -32,9 +35,9 @@
     const add_item = () => schedule.scheduled = [...(schedule.scheduled ?? []), {}]
 
     const swap_item = (a: number, b: number) => {
-        const tmp = schedule.scheduled[a]
-        schedule.scheduled[a] = schedule.scheduled[b]
-        schedule.scheduled[b] = tmp
+        const tmp = schedule.scheduled![a]
+        schedule.scheduled![a] = schedule.scheduled![b]
+        schedule.scheduled![b] = tmp
     }
 </script>
 

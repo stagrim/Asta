@@ -4,35 +4,33 @@
 	import arrowDown from 'svelte-awesome/icons/arrowDown';
 	import arrowUp from 'svelte-awesome/icons/arrowUp';
 	import trash from 'svelte-awesome/icons/trash';
-    
+
     import { generate } from "random-words";
     import { page } from '$app/stores'
-	import { RadioGroup, RadioItem, toastStore, type ToastSettings, modalStore } from '@skeletonlabs/skeleton';
+	import { getToastStore, getModalStore } from '@skeletonlabs/skeleton';
 	import type { PageData } from './$types'
-	import SchedulePicker from '../../../lib/TypePicker.svelte';
-	import { applyAction, enhance } from '$app/forms';
-	import { invalidateAll } from '$app/navigation';
 	import { form_action } from '$lib/form_action';
-	import type { PlaylistItem } from '../../../api_bindings/update/PlaylistItem';
-	import type { Playlist } from '../../../api_bindings/read/Playlist';
-	import { append } from 'svelte/internal';
+	import { enhance } from '$app/forms';
 
     export let data: PageData;
 
+    const toastStore = getToastStore()
+    const modalStore = getModalStore()
+
     $: uuid = $page.params.uuid
-    const get_playlist = (uuid) => structuredClone(data.playlist.content.get(uuid))
+    const get_playlist = (uuid: string) => structuredClone(data.playlist.content.get(uuid)!)
     $: playlist = get_playlist(uuid)
 
     let delete_button: HTMLButtonElement
-        
+
     // $: playlist.items, console.log(JSON.stringify(playlist?.items ?? []))
 
     let add_value: "WEBSITE" | "IMAGE" | "TEXT"
-    const add_item = () => 
-        playlist.items = [...playlist.items, { 
+    const add_item = () =>
+        playlist.items = [...playlist.items, {
             type: add_value,
             name: generate({ exactly: 1, wordsPerString: 2, separator: "-" })[0],
-            settings: { duration: 60 } 
+            settings: { duration: 60 }
         }]
 
     const swap_item = (a: number, b: number) => {
@@ -67,12 +65,12 @@
                         <option value="IMAGE">Image</option>
                     </select>
                     <button type="button" class="btn-icon btn-icon-sm variant-soft-primary ml-2" on:click={add_item}>
-                        <Icon data={plus} scale=0.75 />
+                        <Icon data={plus} scale={0.75} />
                     </button>
                 </div>
                 <!-- </label> -->
             </div>
-            
+
             {#if playlist.items}
             {#each playlist.items as item, i}
                 <div class="card mb-4">
@@ -81,17 +79,17 @@
                             {#if i > 0}
                                 <button type="button" class="btn-icon btn-icon-sm variant-outline-primary"
                                 on:click={() => swap_item(i, i - 1)}>
-                                    <Icon data={arrowUp} scale=0.75 />
+                                    <Icon data={arrowUp} scale={0.75} />
                                 </button>
                             {/if}
                             <button type="button" class="btn-icon btn-icon-sm variant-filled-error"
                             on:click={() => { playlist.items.splice(i, 1); playlist.items = playlist.items }}>
-                                <Icon data={trash} scale=0.75 />
+                                <Icon data={trash} scale={0.75} />
                             </button>
                             {#if i < playlist.items.length - 1 }
-                                <button type="button" class="btn-icon btn-icon-sm variant-outline-primary" 
+                                <button type="button" class="btn-icon btn-icon-sm variant-outline-primary"
                                 on:click={() => swap_item(i, i + 1)}>
-                                    <Icon data={arrowDown} scale=0.75 />
+                                    <Icon data={arrowDown} scale={0.75} />
                                 </button>
                             {/if}
                         </div>
@@ -103,13 +101,13 @@
                                 <span>Name</span>
                                 <input required class="input" type="text" placeholder="Name must be unique" bind:value={item.name} />
                             </label>
-    
+
                             <label class="label mb-5">
                                 <span>Durations</span>
                                 <input required class="input" type="number" placeholder="Duration in seconds" bind:value={item.settings.duration} />
                             </label>
                         </div>
-                        
+
                         {#if item.type == "WEBSITE"}
                             <label class="label mb-5">
                                 <span>URL</span>
@@ -127,7 +125,7 @@
                             </label>
                         {/if}
                     </section>
-                
+
                 </div>
             {/each}
             {/if}

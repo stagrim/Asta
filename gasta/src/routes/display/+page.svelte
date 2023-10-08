@@ -5,8 +5,8 @@
 	import type { PageData } from "./$types";
 
     export let data: PageData
-    
-    let chosen_schedule: Uuid = "0"
+
+    let chosen_schedule = "0"
 </script>
 
 <form class="card m-4" method="POST" action="?/create" use:enhance={() => { return form_action }}>

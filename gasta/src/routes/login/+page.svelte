@@ -1,12 +1,14 @@
 <script lang="ts">
 
 	import { enhance } from "$app/forms";
-	import { toastStore } from "@skeletonlabs/skeleton";
+	import { getToastStore } from "@skeletonlabs/skeleton";
 	import type { ActionData, PageData } from "./$types";
 
     export let data: PageData;
 
     export let form: ActionData;
+
+    const toastStore = getToastStore()
 
     $: if (form?.msg) {
         toastStore.trigger({
@@ -37,12 +39,12 @@
                 <span>username</span>
                 <input name="username" class="input" type="text" required />
             </label>
-    
+
             <label class="label mb-5">
                 <span>password</span>
                 <input name="password" class="input" type="password" required />
             </label>
-    
+
             <button class="btn variant-filled-primary" disabled={formLoading}>Log in</button>
         </section>
     </form>

@@ -1,13 +1,11 @@
 <script lang="ts">
-	import type { Playlist } from "../api_bindings/read/Playlist";
-	import type { Schedule } from "../api_bindings/read/Schedule";
 	import type { State } from "../app";
 
 
     export let types: State
 
     /** Bind value to react to user changes */
-    export let chosen_type: string
+    export let chosen_type: string = ""
     $: types_values = [...types.content.values()].sort((a, b) => a.name.localeCompare(b.name))
 
     /** Name property of the select element for form */

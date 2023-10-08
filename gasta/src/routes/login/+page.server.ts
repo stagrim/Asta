@@ -6,7 +6,7 @@ export const load: PageServerLoad = async () => {
     if (process.env.NODE_ENV === "development")
         return { banner: `Development mode in use, admin account with password 'admin' is usable`}
 };
- 
+
 export const actions = {
   login: async ({ request, cookies }) => {
     const data = await request.formData();
@@ -25,7 +25,7 @@ export const actions = {
     }
 
     const res = await login(username, password, user_agent)
-    
+
     if (res.result === "success") {
         cookies.set("session-id", res.session_id, {
           path: "/",

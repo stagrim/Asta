@@ -1,12 +1,14 @@
 <script lang="ts">
     import { page } from '$app/stores'
-	import { modalStore } from '@skeletonlabs/skeleton';
+	import { getModalStore } from '@skeletonlabs/skeleton';
 	import type { PageData } from './$types'
 	import TypePicker from '../../../lib/TypePicker.svelte';
 	import { enhance } from '$app/forms';
 	import { form_action } from '$lib/form_action';
 
     export let data: PageData
+
+    const modalStore = getModalStore()
 
     $: uuid = $page.params.uuid
     const get_display = (uuid) => structuredClone(data.display.content.get(uuid))

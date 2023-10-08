@@ -1,17 +1,15 @@
 <script lang="ts">
-	// Your selected Skeleton theme:
-	import '../theme.css';
-	// This contains the bulk of Skeletons required styles:
-	import '@skeletonlabs/skeleton/styles/skeleton.css';
 	// Finally, your application's global stylesheet (sometimes labeled 'app.css')
 	import '../app.postcss';
-
-    import { AppBar, AppShell, Toast, Drawer, drawerStore, LightSwitch, Modal, Avatar } from '@skeletonlabs/skeleton';
-
+    import { AppBar, AppShell, Toast, Drawer, getDrawerStore, LightSwitch, Modal, Avatar, initializeStores } from '@skeletonlabs/skeleton';
     import type { LayoutData } from './$types';
 	import Navigation from '$lib/Navigation.svelte';
 
     export let data: LayoutData
+
+    initializeStores()
+
+    const drawerStore = getDrawerStore();
 
 	// TODO: Add check for authentication here and update store variable
 </script>
@@ -44,12 +42,12 @@
                     </button>
                 {/if}
             </svelte:fragment>
-                
+
             <!-- <h4 class="h4">Asta Admin</h4> -->
             <a href={ data.user ? "/" : "" } style:cursor={ data.user ? "pointer" : "default" }>
                 <Avatar rounded="rounded-full" src="/asta_icon.jpg" width="w-16" />
             </a>
-        
+
             <svelte:fragment slot="trail">
                 <LightSwitch rounded="rounded-full" />
             </svelte:fragment>
@@ -61,7 +59,7 @@
             <Navigation {data} />
         {/if}
     </svelte:fragment>
-    
+
     <slot />
 </AppShell>
 
