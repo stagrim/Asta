@@ -103,7 +103,7 @@
                             </label>
 
                             <label class="label mb-5">
-                                <span>Durations</span>
+                                <span>Duration (s)</span>
                                 <input required class="input" type="number" placeholder="Duration in seconds" bind:value={item.settings.duration} />
                             </label>
                         </div>
@@ -116,7 +116,7 @@
                         {:else if item.type == "TEXT"}
                             <label class="label mb-5">
                                 <span>Text</span>
-                                <input required class="input" type="text" placeholder="Some text..." bind:value={item.settings.text} />
+                                <textarea required class="input" placeholder="Some text..." bind:value={item.settings.text} />
                             </label>
                         {:else if item.type == "IMAGE"}
                             <label class="label mb-5">

@@ -1,10 +1,8 @@
 <script>
-
 	import { Icon } from "svelte-awesome";
     import firefox from 'svelte-awesome/icons/firefox';
     import chrome from 'svelte-awesome/icons/chrome';
     import safari from 'svelte-awesome/icons/safari';
-
 </script>
 
 <div class="flex justify-center">

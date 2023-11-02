@@ -5,7 +5,7 @@ import { getToastStore } from "@skeletonlabs/skeleton"
 // Set type is only to stop TS from complaining, could not find types for the function in SvelteKit
 export const form_action: (_: any) => Promise<void> = async ({ result }) => {
     const toastStore = getToastStore()
-    
+
     if (result.type === "success") {
         if (result.data?.message) {
             toastStore.trigger({
