@@ -1,0 +1,8 @@
+version: "3.2"
+services:
+ redis-gasta-dev:
+   restart: "always"
+   image: "redis:alpine"
+   command: redis-server --save ""
+   ports:
+    - "6381:6379"

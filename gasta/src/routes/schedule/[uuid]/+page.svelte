@@ -31,7 +31,7 @@
 
     // let scheduled_playlists: ScheduledPlaylistInput[]
     // $: schedule.scheduled = schedule.scheduled ?? []
-        
+
     const add_item = () => schedule.scheduled = [...(schedule.scheduled ?? []), {}]
 
     const swap_item = (a: number, b: number) => {
@@ -57,12 +57,12 @@
 
             <div class="flex items-center justify-between w-full my-5">
                 <h3 class="h3">Scheduled</h3>
-    
+
                 <button type="button" class="btn-icon btn-icon-sm variant-soft-primary ml-2" on:click={add_item}>
                     <Icon data={plus} scale=0.75 />
                 </button>
             </div>
-            
+
             {#if schedule.scheduled}
             {#each schedule.scheduled as scheduled_playlist, i}
                 <div class="card mb-4">
@@ -79,7 +79,7 @@
                                 <Icon data="{trash}" />
                             </button>
                             {#if i < schedule.scheduled.length - 1 }
-                                <button type="button" class="btn-icon btn-icon-sm variant-outline-primary" 
+                                <button type="button" class="btn-icon btn-icon-sm variant-outline-primary"
                                 on:click={() => swap_item(i, i + 1)}>
                                     <Icon data="{arrowDown}" scale=0.75 />
                                 </button>
@@ -89,7 +89,7 @@
 
                     <section class="p-4">
                         <TypePicker types={data.playlist} bind:chosen_type={scheduled_playlist.playlist} />
-                        
+
                         <label class="label mb-5">
                             <span>Start</span>
                             <input required class="input" type="text" placeholder="ss mm HH dd mm weekday YYYY" bind:value={scheduled_playlist.start} />
@@ -100,13 +100,13 @@
                             <input required class="input" type="text" placeholder="" bind:value={scheduled_playlist.end} />
                         </label>
                     </section>
-                
+
                 </div>
             {/each}
             {/if}
-            
+
             <div class="mb-2 flex justify-center">
-                
+
             </div>
 
             <div class="flex w-full justify-center gap-4 mt-5">

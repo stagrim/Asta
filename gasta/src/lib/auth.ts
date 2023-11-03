@@ -2,52 +2,81 @@ import { env } from "$env/dynamic/private";
 import ldapjs, { type Client } from "ldapjs";
 const { createClient } = ldapjs;
 import pkg from "js-sha3";
-import { building } from "$app/environment";
+import { building, dev } from "$app/environment";
+import type { CookieSerializeOptions } from 'cookie';
+import { Redis } from "ioredis";
+import { REDIS_URL } from "$env/static/private";
 const { sha3_512 } = pkg;
 
 export type Login = {
     result: "success",
-    session_id: string
+    session_id: string,
+    cookie: CookieSerializeOptions
 } | {
     result: "failure",
     msg: string
 }
 
 export interface Session {
-    session_id: string,
+    // session_id: string,
+    name: string
     username: string,
     user_agent: string,
-    expires: string,
-    name: string
+    // expires: string,
 }
 
 // TODO: Set setInterval to remove old sessions from map
 
-const users: Map<string, Session> = new Map()
+const session_valid_time = 60 * 60 * 24 * 7 // Valid for a week
+
+let redis: Redis;
+let ldap: Client;
+
+if (!building) {
+    ldap = createClient({
+        url: [env.LDAP_URL],
+        timeout: 2000,
+        connectTimeout: 2000,
+        reconnect: true,
+    });
+
+    ldap.on('error', err => {
+        console.debug({msg: 'connection failed, retrying', err});
+    });
+
+    redis = new Redis(REDIS_URL);
+}
 
 export const login = async (username: string, password: string, user_agent: string): Promise<Login> => {
     let res: Login
     let auth: Authenticate = await authenticate(username, password)
-    
+
     if (auth.result === "success" || (process.env.NODE_ENV === "development" && username === "admin" && password === "admin")) {
         const message = `${user_agent}${Math.random()}${Date.now()}`
+        const session_id = sha3_512(`${env.UUID5_NAMESPACE}${username}${message}`);
         let session: Session = {
-            session_id: sha3_512(`${env.UUID5_NAMESPACE}${username}${message}`),
             user_agent,
             username,
-            expires: "someday",
             name: auth.result === "success" ? auth.name : "Rosa Pantern"
         };
-        if (users.has(session.session_id)) {
+        if (await redis.exists(session_id)) {
             res = {
                 result: "failure",
                 msg: "Session id is already in use??? (contact person responsible)"
             }
         } else {
-            users.set(session.session_id, session)
+            redis.set(session_id, JSON.stringify(session));
+            redis.expire(session_id, session_valid_time);
             res = {
                 result: "success",
-                session_id: session.session_id
+                session_id,
+                cookie: {
+                    path: "/",
+                    httpOnly: true,
+                    secure: !dev,
+                    sameSite: 'strict',
+                    maxAge: session_valid_time
+                }
             }
         }
     } else {
@@ -56,17 +85,30 @@ export const login = async (username: string, password: string, user_agent: stri
     return res
 }
 
-export const valid_session = (session_id: string, user_agent: string): boolean =>
-    users.has(session_id) && users.get(session_id)?.user_agent === user_agent
+export const valid_session = async (session_id: string, user_agent: string): Promise<boolean> => {
+    const str = await redis.get(session_id);
+    if (!str) return false;
+    const session: Session = JSON.parse(str);
+    return session.user_agent == user_agent;
+}
 
-export const session_username = (session_id: string): string =>
-users.get(session_id)?.username ?? ""
+export const session_username = async (session_id: string): Promise<string> => {
+    const str = await redis.get(session_id);
+    if (!str) return "";
+    const session: Session = JSON.parse(str);
+    return session.username;
+}
 
-export const session_display_name = (session_id: string): string =>
-    users.get(session_id)?.name ?? ""
+export const session_display_name = async (session_id: string): Promise<string> => {
+    const str = await redis.get(session_id);
+    if (!str) return "";
+    const session: Session = JSON.parse(str);
+    return session.name;
+}
 
-export const invalidate_session = (session_id: string) =>
-    users.delete(session_id)
+
+export const invalidate_session = async (session_id: string) =>
+    await redis.del(session_id)
 
 export type Authenticate = {
     result: "success",
@@ -74,21 +116,6 @@ export type Authenticate = {
 } | {
     result: "failure",
     msg: string
-}
-
-let client: Client
-
-if (!building) {
-    client = createClient({
-        url: [env.LDAP_URL],
-        timeout: 2000,
-        connectTimeout: 2000,
-        reconnect: true,
-    });
-    
-    client.on('error', err => {
-        console.debug({msg: 'connection failed, retrying', err});
-    });
 }
 
 
@@ -104,38 +131,48 @@ const authenticate = async (username: string, password: string): Promise<Authent
             resolve({
                 result: "failure",
                 msg: `Ye ain't smart enough to remember yer stil-id, harr harr!`
-            }) 
+            })
         }
 
         let res: string[] = []
 
-        client.bind(`uid=${username},cn=users,cn=accounts,dc=dsek,dc=se`, password, (err, _) => {
+        ldap.bind(`uid=${username},cn=users,cn=accounts,dc=dsek,dc=se`, password, (err, _) => {
             if (err) {
-                console.log({err});
-                client.unbind();
-                resolve({
-                    result: "failure",
-                    msg: `Ye 'ave forgotten yer username or yer password`
-                })
+                console.log({err: err.name});
+                ldap.unbind();
+                if (err.name === "ConnectionError") {
+                    resolve({
+                        result: "failure",
+                        msg: `Aye be tryin' to reach the LDAP server, but it be as elusive as buried treasure on a deserted island!`
+                    })
+                } else if (err.name === "InvalidCredentialsError") {
+                    resolve({
+                        result: "failure",
+                        msg: `Ye 'ave forgotten yer username or yer password`
+                    })
+                } else {
+                    resolve({
+                        result: "failure",
+                        msg: `Arrr, ye scallywag! We've hit a rough sea on the LDAP voyage - ${err.name}, the treasure map to that directory be lost to the depths of Davy Jones' locker!`
+                    })
+                }
             } else {
-                client.search(`uid=${username},cn=users,cn=accounts,dc=dsek,dc=se`, {  }, (searchError, searchResponse) => {
+                ldap.search(`uid=${username},cn=users,cn=accounts,dc=dsek,dc=se`, {  }, (searchError, searchResponse) => {
                     if (searchError) {
                         console.error('LDAP search error:', searchError);
-                        client.unbind();
+                        ldap.unbind();
                         resolve({
                             result: "failure",
-                            msg: `LDAP error1: ${searchError.message}`
+                            msg: `LDAP error: ${searchError.message}`
                         })
                     }
-                
                     searchResponse.on('searchEntry', (entry) => {
                         // The entry object contains information about the group
                         const display_name = entry.attributes.find(a => a.type === "givenName")?.values[0] ?? ""
                         res.push(display_name)
                     });
-                
                     searchResponse.on('end', () => {
-                        client.unbind();
+                        ldap.unbind();
                         if (res.length > 0) {
                             resolve({
                                 result: "success",
@@ -153,12 +190,11 @@ const authenticate = async (username: string, password: string): Promise<Authent
                         console.log(err)
                         resolve({
                             result: "failure",
-                            msg: `LDAP error2: ${err.message}`
+                            msg: `LDAP error: ${err.message}`
                         })
                     });
                 });
             }
-                
         });
     })
 }

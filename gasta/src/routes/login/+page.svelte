@@ -1,17 +1,14 @@
 <script lang="ts">
-
 	import { enhance } from "$app/forms";
-	import { getToastStore } from "@skeletonlabs/skeleton";
 	import type { ActionData, PageData } from "./$types";
+	import { toastStore } from "$lib/stores";
 
     export let data: PageData;
 
     export let form: ActionData;
 
-    const toastStore = getToastStore()
-
     $: if (form?.msg) {
-        toastStore.trigger({
+        $toastStore.trigger({
             message: form.msg,
             background: 'variant-filled-error',
             autohide: true,
@@ -30,14 +27,14 @@
     <form class="card m-4 max-w-4xl" method="POST" action="?/login" use:enhance={() => {
         formLoading = true;
         return async ({ update }) => {
+            await update();
             formLoading = false;
-            update();
         };
     }}>
         <section class="p-4">
             <label class="label mb-5">
                 <span>username</span>
-                <input name="username" class="input" type="text" required />
+                <input name="username" class="input" type="text" value={ form?.username ?? "" } required />
             </label>
 
             <label class="label mb-5">

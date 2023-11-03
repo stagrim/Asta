@@ -15,6 +15,7 @@ declare global {
 			SERVER_URL: string,
 			LDAP_URL: string,
 			UUID5_NAMESPACE: string,
+			REDIS_URL: string,
 		}
 
 		interface Locals {

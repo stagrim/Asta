@@ -4,13 +4,14 @@
     import { AppBar, AppShell, Toast, Drawer, getDrawerStore, Modal, Avatar, initializeStores, getToastStore } from '@skeletonlabs/skeleton';
     import type { LayoutData } from './$types';
 	import Navigation from '$lib/Navigation.svelte';
+	import { toastStore } from '$lib/stores';
 
     export let data: LayoutData;
 
     initializeStores();
 
     const drawerStore = getDrawerStore();
-    const toastStore = getToastStore();
+    $toastStore = getToastStore();
 </script>
 
 <Toast />
@@ -44,7 +45,7 @@
             </svelte:fragment>
 
             <!-- <h4 class="h4">Asta Admin</h4> -->
-            <a href={ data.user ? "/" : "" } style:cursor={ data.user ? "pointer" : "default" }>
+            <a href={ data.user ? "/" : "" } style:cursor="pointer">
                 <Avatar rounded="rounded-full" src="/asta_icon.jpg" width="w-16" />
             </a>
 
@@ -59,7 +60,7 @@
                     title="Toggle Light Mode"
                     tabindex="0"
                     on:click={() => {
-                        toastStore.trigger({
+                        $toastStore.trigger({
                             message: "Feature not yet implemented",
                             timeout: 2000,
                             background: "variant-filled-warning",
