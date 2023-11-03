@@ -540,6 +540,20 @@ mod test {
     }
 
     #[test]
+    fn test_invalid_date() {
+        let scheduled_uuid = Uuid::parse_str("8626f6e1-df7c-48d9-83c8-d7845b774ecd").unwrap();
+        let default_uuid = Uuid::parse_str("25cd63df-1f10-4c3f-afdb-58156ca47ebd").unwrap();
+        let playlist = vec![
+            ScheduledPlaylistInput {
+                playlist: scheduled_uuid,
+                start: "0 * 10 32 10 * *".to_string(),
+                end: "0 0 14 32 10 * *".to_string(),
+            }
+        ];
+        assert!(Schedule::new("test".into(), playlist, default_uuid).is_err());
+    }
+
+    #[test]
     fn test_current_playlist_smooth_transition() {
         let scheduled_uuid = Uuid::parse_str("8626f6e1-df7c-48d9-83c8-d7845b774ecd").unwrap();
         let scheduled2_uuid = Uuid::parse_str("d125a360-4e41-45d5-b6c7-ea471c542510").unwrap();

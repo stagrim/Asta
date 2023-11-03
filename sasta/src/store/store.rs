@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use chrono::Local;
-use redis::{aio::Connection, Client, AsyncCommands, JsonAsyncCommands};
+use redis::{aio::Connection, Client, JsonAsyncCommands};
 use serde::{Deserialize, Serialize};
 use tokio::{sync::{broadcast::{self, Sender, Receiver}, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard, oneshot}, time::{sleep_until, Instant}};
 use tracing::{warn, info, error, trace, warn_span, error_span};
@@ -35,6 +35,26 @@ pub enum PlaylistItem {
     Image { name: String, settings: ImageData },
     #[serde(rename = "BACKGROUND_AUDIO")]
     BackgroundAudio { name: String, settings: ImageData }
+}
+
+impl PlaylistItem {
+    pub fn duration(&self) -> u64 {
+        match self {
+            PlaylistItem::Website { settings, .. } => settings.duration,
+            PlaylistItem::Text { settings, .. } => settings.duration,
+            PlaylistItem::Image { settings, .. } => settings.duration,
+            PlaylistItem::BackgroundAudio { settings, .. } => settings.duration,
+        }
+    }
+
+    pub fn name(&self) -> &String {
+        match self {
+            PlaylistItem::Website { name, .. } => name,
+            PlaylistItem::Text { name, .. } => name,
+            PlaylistItem::Image { name, .. } => name,
+            PlaylistItem::BackgroundAudio { name, .. } => name,
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, ToSchema, TS)]
