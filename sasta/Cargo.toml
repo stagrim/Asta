@@ -31,3 +31,4 @@ utoipa-swagger-ui = { version = "4.0.0", features = ["axum"] }
 utoipa = { version = "4.0.0", features = ["axum_extras", "uuid"] }
 utoipa-redoc = { version = "1.0.0", features = ["axum"] }
 utoipa-rapidoc = { version = "1.0.0", features = ["axum"] }
+dotenv = "0.15.0"

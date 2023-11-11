@@ -201,8 +201,8 @@ pub struct FileServer {
 }
 
 impl FileServer {
-    pub async fn new() -> Self {
-        let client = Client::open("redis://127.0.0.1:6379").unwrap();
+    pub async fn new(redis_url: &str) -> Self {
+        let client = Client::open(redis_url).unwrap();
         let mut con = client.get_async_connection().await.unwrap();
 
         let root = match con.json_get::<_, _, String>("files", ".").await {

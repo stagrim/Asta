@@ -1,7 +1,8 @@
-use std::{net::SocketAddr, sync::Arc, vec, collections::HashSet};
+use std::{net::SocketAddr, sync::Arc, vec, collections::HashSet, env};
 
 use axum::{Router, routing::{get, post, put, delete}, extract::{WebSocketUpgrade, ConnectInfo, State, Path}, response::IntoResponse, Json, ServiceExt};
 use axum_macros::debug_handler;
+use dotenv::dotenv;
 use hyper::StatusCode;
 use store::store::Store;
 use tokio::sync::{oneshot, Mutex};
@@ -62,14 +63,17 @@ struct ApiDoc;
 
 #[tokio::main]
 async fn main() {
+    dotenv().ok();
+    let redis_url = env::var("REDIS_URL").expect("REDIS_URL variable must be set");
+
     let subscriber = FmtSubscriber::builder()
         .with_span_events(FmtSpan::NEW)
         .with_max_level(Level::TRACE)
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
-    let store = Arc::new(Store::new().await);
-    let file_server = Arc::new(Mutex::new(FileServer::new().await));
+    let store = Arc::new(Store::new(&redis_url).await);
+    let file_server = Arc::new(Mutex::new(FileServer::new(&redis_url).await));
 
     let store_copy = store.clone();
     let (tx, rx) = oneshot::channel::<()>();

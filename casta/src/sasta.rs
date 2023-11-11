@@ -110,7 +110,7 @@ impl Sasta {
                     return None
                 },
             };
-            
+
             let msg = match res {
                 Ok(m) => m,
                 Err(e) => {
