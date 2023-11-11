@@ -5,7 +5,6 @@ import pkg from "js-sha3";
 import { building, dev } from "$app/environment";
 import type { CookieSerializeOptions } from 'cookie';
 import { Redis } from "ioredis";
-import { REDIS_URL } from "$env/static/private";
 const { sha3_512 } = pkg;
 
 export type Login = {
@@ -44,7 +43,7 @@ if (!building) {
         console.debug({msg: 'connection failed, retrying', err});
     });
 
-    redis = new Redis(REDIS_URL);
+    redis = new Redis(env.REDIS_URL);
 }
 
 export const login = async (username: string, password: string, user_agent: string): Promise<Login> => {
