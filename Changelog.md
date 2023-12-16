@@ -1,0 +1,1 @@
+ - A duration of zero now translates to an, effectively, infinite duration

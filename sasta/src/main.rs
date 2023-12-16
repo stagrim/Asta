@@ -541,10 +541,7 @@ async fn update_playlist(State(state): State<AppState>, Path(uuid): Path<Uuid>, 
         error!("[Api] Name is already used by Playlist {}", uuid);
         return Err((StatusCode::BAD_REQUEST, Json((2, format!("Avoid using the name {} as it is already used by another Playlist", playlist.name)).into())))
     }
-    if let Some(item) = playlist.items.iter().find(|&i| i.duration() == 0) {
-        error!("[Api] The Playlist item {} has a duration of 0", item.name());
-        return Err((StatusCode::BAD_REQUEST, Json((3, format!("Zero is not a valid duration for {}", item.name())).into())))
-    }
+
     drop(read);
 
     store.update_playlist(uuid, playlist.name, playlist.items).await;
