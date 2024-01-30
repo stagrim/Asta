@@ -24,7 +24,10 @@
 {/if}
 
 <div class="flex justify-center">
-    <form class="card m-4 max-w-4xl" method="POST" action="?/login" use:enhance={() => {
+    <form class="card m-4 max-w-4xl" method="POST" action="?/login" use:enhance={({ cancel }) => {
+        if (formLoading) {
+            cancel()
+        }
         formLoading = true;
         return async ({ update }) => {
             await update();
