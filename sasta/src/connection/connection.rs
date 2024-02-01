@@ -100,13 +100,18 @@ pub async fn client_connection(socket: WebSocket, who: SocketAddr, store: Arc<St
         // outer loop collects the PlaylistItems(s) before entering the repeating send loop
         'outer_send_loop: loop {
             let (schedule_uuid, playlist_uuid) = store.get_display_uuids(&client_uuid).await.unwrap();
-            let playlist = match store.get_display_playlists(&client_uuid).await {
+            let mut playlist = match store.get_display_playlists(&client_uuid).await {
                 Some(p) => p,
                 None => {
                     error!("[{who} ({client_name})] Error: Display playlist could not be found");
                     return
                 },
             };
+
+            // If playlist is empty, add text stating such to display loop
+            if playlist.is_empty() {
+                playlist.push(PlaylistItem::Text { name: "pending".into(), settings: TextData { text: "No Playlist added".into(), duration: 0 } });
+            }
 
             for item in playlist.into_iter().cycle() {
                 let sleep_duration;
@@ -133,10 +138,21 @@ pub async fn client_connection(socket: WebSocket, who: SocketAddr, store: Arc<St
                 let msg = Message::Text(serde_json::to_string(&Payload::Display(payload)).unwrap());
                 client_send.lock().await.send(msg).await.unwrap();
 
-                let sleep = Instant::now() + Duration::from_secs(sleep_duration);
+                let now = Instant::now();
+                // Sleep for an infinite time if duration of the PlaylistItem is zero.
+                // Maybe not "infinite" in a literal sense, but at least for some billion years,
+                // which I would consider good enough.
+                // A bug that needs to be fixed is that this will stop working in about hundred billion years
+                // and the thread will panic with a overflow error. Note that this will happen for both the
+                // debug and release builds. Truly no one is safe from the catastrophe that will occur...
+                let sleep = now + Duration::from_secs(if sleep_duration == 0 {
+                    u64::MAX / 10 as u64
+                } else {
+                    sleep_duration
+                });
 
                 loop {
-                    info!("[{who} ({client_name})] Sleeping until {:?}", sleep);
+                    info!("[{who} ({client_name})] Sleeping for {} seconds", (sleep - now).as_secs());
                     tokio::select! {
                         _ = sleep_until(sleep) => break,
                         notification = rx.recv() => {
