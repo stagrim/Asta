@@ -5,6 +5,7 @@ node_modules
 /package
 .env
 .env.*
+Greet.md
 !.env.example
 !.env.template
 vite.config.js.timestamp-*

@@ -1,5 +1,10 @@
-import type { PageServerLoad } from "./$types";
+import type { PageServerLoad } from './$types';
+import fs from 'fs';
 
 export const load: PageServerLoad = async ({ locals }) => {
-    return { name: locals.name }
+	let markdown = null;
+	try {
+		markdown = fs.readFileSync('Greet.md').toString();
+	} catch {}
+	return { name: locals.name, markdown };
 };

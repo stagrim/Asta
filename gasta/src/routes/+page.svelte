@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { getModalStore } from '@skeletonlabs/skeleton';
 	import type { PageData } from './$types';
+	import SvelteMarkdown from 'svelte-markdown';
+	import Header from '$lib/markdown_renderers/Header.svelte';
+	import Link from '$lib/markdown_renderers/Link.svelte';
 
 	export let data: PageData;
 	const modalStore = getModalStore();
@@ -40,5 +43,11 @@
 
 			<button class="hidden" formaction="/login?/logout" bind:this={logout_submit_button} />
 		</form>
+	{/if}
+
+	{#if data.markdown}
+		<div class="mt-10 p-4">
+			<SvelteMarkdown source={data.markdown} renderers={{ heading: Header, link: Link }} />
+		</div>
 	{/if}
 </div>

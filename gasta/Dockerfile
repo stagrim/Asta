@@ -1,6 +1,6 @@
 FROM node:lts-slim
 
-WORKDIR /app
+WORKDIR /
 COPY . .
 
 RUN npm i -g pnpm
