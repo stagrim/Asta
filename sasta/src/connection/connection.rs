@@ -1,19 +1,31 @@
-
-use std::{net::SocketAddr, sync::{Arc, self}, time::Duration, fmt::Display};
+use std::{
+    fmt::Display,
+    net::SocketAddr,
+    sync::{self, Arc},
+    time::Duration,
+};
 
 use axum::extract::ws::{Message, WebSocket};
-use futures_util::{SinkExt, stream::{SplitSink, SplitStream}, StreamExt};
+use futures_util::{
+    stream::{SplitSink, SplitStream},
+    SinkExt, StreamExt,
+};
+use maud::html;
 use serde::{Deserialize, Serialize};
-use tokio::{sync::Mutex, time::{timeout, Instant, sleep_until}};
-use tracing::{info, error, warn, trace};
+use tokio::{
+    sync::Mutex,
+    time::{sleep_until, timeout, Instant},
+};
+use tracing::{error, info, trace, warn};
 use uuid::Uuid;
 
-use crate::store::store::{PlaylistItem, Store, Change, TextData, WebsiteData, ImageData};
+use crate::store::store::{Change, ImageData, PlaylistItem, Store, TextData, WebsiteData};
 
 #[derive(Deserialize, Clone)]
 struct HelloRequest {
     uuid: Uuid,
-    hostname: String
+    #[serde(default)]
+    htmx: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -23,7 +35,7 @@ pub enum Payload {
     #[serde(rename(serialize = "name"))]
     Name(String),
     #[serde(rename(serialize = "pending"))]
-    Pending(bool)
+    Pending(bool),
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -34,12 +46,31 @@ pub enum DisplayPayload {
     #[serde(rename(serialize = "TEXT"))]
     Text { data: WebsitePayload },
     #[serde(rename(serialize = "IMAGE"))]
-    Image { data: WebsitePayload }
+    Image { data: WebsitePayload },
+}
+
+trait IntoHtmx {
+    fn into_htmx(&self) -> String;
+}
+
+impl IntoHtmx for DisplayPayload {
+    fn into_htmx(&self) -> String {
+        html! { div hx-swap-oob="innerHTML:#content" {
+        @match self {
+            DisplayPayload::Website { data } => iframe frameborder="0" allow="autoplay; encrypted-media" src=(data.content) allowfullscreen;,
+            DisplayPayload::Text { data } => {
+                div #text { (data.content) }
+            }
+            DisplayPayload::Image { data } => img src=(data.content);,
+        }
+    }}
+        .into_string()
+    }
 }
 
 #[derive(Serialize, Debug, Clone)]
 pub struct WebsitePayload {
-    pub content: String
+    pub content: String,
 }
 
 pub async fn client_connection(socket: WebSocket, who: SocketAddr, store: Arc<Store>) {
@@ -47,95 +78,157 @@ pub async fn client_connection(socket: WebSocket, who: SocketAddr, store: Arc<St
     let client_send = Arc::new(Mutex::new(client_send));
 
     // Wait for a hello response from connected client to get its UUID
-    let HelloRequest { uuid: client_uuid, hostname: client_hostname } = loop {
+    let HelloRequest {
+        uuid: client_uuid,
+        htmx,
+    } = loop {
         if let Some(Ok(Message::Text(msg))) = client_receive.next().await {
             match serde_json::from_str(&msg) {
                 Ok(msg) => break msg,
-                Err(_) => error!("[{who}] {msg:?} was not a HelloRequest")
+                Err(_) => error!("[{who}] {msg:?} was not a HelloRequest"),
             };
         }
     };
 
     let client_name = Arc::new(sync::RwLock::new(None));
 
-    info!("[{who}] Connected with provided Uuid '{client_uuid}' and hostname '{client_hostname}'");
+    info!("[{who}] Connected with provided Uuid '{client_uuid}' and htmx set to '{htmx}'");
 
-    let mut heartbeat_handle = tokio::spawn(heartbeat(client_send.clone(), client_receive, who, client_name.clone()));
+    let mut heartbeat_handle = tokio::spawn(heartbeat(
+        client_send.clone(),
+        client_receive,
+        who,
+        client_name.clone(),
+    ));
 
     let mut client_handle = tokio::spawn(async move {
-
         let mut rx = store.receiver();
         loop {
-            let display_option = store.read().await.displays.get(&client_uuid).and_then(|d| Some(d.clone()));
+            let display_option = store
+                .read()
+                .await
+                .displays
+                .get(&client_uuid)
+                .and_then(|d| Some(d.clone()));
             match display_option {
                 Some(d) => {
                     let mut w = client_name.write().unwrap();
                     *w = Some(d.name);
                     break;
-                },
+                }
                 None => {
-                    warn!("[{who}] No screen defined with UUID {:?}, waiting for Display update", client_uuid);
-                    let msg = Message::Text(serde_json::to_string(&Payload::Pending(true)).unwrap());
+                    warn!(
+                        "[{who}] No screen defined with UUID {:?}, waiting for Display update",
+                        client_uuid
+                    );
+                    let msg = if htmx {
+                        Message::Text(
+                            DisplayPayload::Text {
+                                data: WebsitePayload {
+                                    content: format!(
+                                        "Pending connection to Sasta with uuid {}",
+                                        &client_uuid
+                                    ),
+                                },
+                            }
+                            .into_htmx(),
+                        )
+                    } else {
+                        Message::Text(serde_json::to_string(&Payload::Pending(true)).unwrap())
+                    };
                     client_send.lock().await.send(msg).await.unwrap();
 
                     // Wait until display is updated change, then try again
                     loop {
                         match rx.recv().await.unwrap() {
                             Change::Display(m) if m.contains(&client_uuid) => break,
-                            _ => ()
+                            _ => (),
                         };
                     }
                     continue;
-                },
+                }
             }
-        };
+        }
 
-        let client_name = client_name.read().unwrap().clone().unwrap_or("Got a None".to_string());
+        let client_name = client_name
+            .read()
+            .unwrap()
+            .clone()
+            .unwrap_or("Got a None".to_string());
 
-        let msg = Message::Text(serde_json::to_string(&Payload::Name(client_name.clone())).unwrap());
+        let msg =
+            Message::Text(serde_json::to_string(&Payload::Name(client_name.clone())).unwrap());
         client_send.lock().await.send(msg).await.unwrap();
 
         info!("[{who}] was given the name {client_name}");
 
         // outer loop collects the PlaylistItems(s) before entering the repeating send loop
         'outer_send_loop: loop {
-            let (schedule_uuid, playlist_uuid) = store.get_display_uuids(&client_uuid).await.unwrap();
+            let (schedule_uuid, playlist_uuid) =
+                store.get_display_uuids(&client_uuid).await.unwrap();
             let mut playlist = match store.get_display_playlists(&client_uuid).await {
                 Some(p) => p,
                 None => {
                     error!("[{who} ({client_name})] Error: Display playlist could not be found");
-                    return
-                },
+                    return;
+                }
             };
 
             // If playlist is empty, add text stating such to display loop
             if playlist.is_empty() {
-                playlist.push(PlaylistItem::Text { name: "pending".into(), settings: TextData { text: "No Playlist added".into(), duration: 0 } });
+                playlist.push(PlaylistItem::Text {
+                    name: "pending".into(),
+                    settings: TextData {
+                        text: "No Playlist added".into(),
+                        duration: 0,
+                    },
+                });
             }
 
             for item in playlist.into_iter().cycle() {
                 let sleep_duration;
                 let payload = match item {
-                    PlaylistItem::Website { name, settings: WebsiteData { url, duration } } => {
-                        info!("[{who} ({client_name})] Sending Website '{name}' with url '{}'", url);
+                    PlaylistItem::Website {
+                        name,
+                        settings: WebsiteData { url, duration },
+                    } => {
+                        info!(
+                            "[{who} ({client_name})] Sending Website '{name}' with url '{}'",
+                            url
+                        );
                         sleep_duration = duration;
-                        DisplayPayload::Website { data: WebsitePayload { content: url } }
-                    },
-                    PlaylistItem::Text { name, settings: TextData { text, duration } } => {
+                        DisplayPayload::Website {
+                            data: WebsitePayload { content: url },
+                        }
+                    }
+                    PlaylistItem::Text {
+                        name,
+                        settings: TextData { text, duration },
+                    } => {
                         info!("[{who} ({client_name})] Sending Text '{name}' with text '{text}'");
                         sleep_duration = duration;
-                        DisplayPayload::Text { data: WebsitePayload { content: text } }
-                    },
-                    PlaylistItem::Image { name, settings: ImageData { src, duration } } => {
+                        DisplayPayload::Text {
+                            data: WebsitePayload { content: text },
+                        }
+                    }
+                    PlaylistItem::Image {
+                        name,
+                        settings: ImageData { src, duration },
+                    } => {
                         info!("[{who} ({client_name})] Sending Image '{name}' with src '{src}'");
                         sleep_duration = duration;
-                        DisplayPayload::Image { data: WebsitePayload { content: src } }
-                    },
+                        DisplayPayload::Image {
+                            data: WebsitePayload { content: src },
+                        }
+                    }
                     PlaylistItem::BackgroundAudio { .. } => todo!(),
-
                 };
 
-                let msg = Message::Text(serde_json::to_string(&Payload::Display(payload)).unwrap());
+                let msg = if htmx {
+                    Message::Text(payload.into_htmx())
+                } else {
+                    Message::Text(serde_json::to_string(&Payload::Display(payload)).unwrap())
+                };
                 client_send.lock().await.send(msg).await.unwrap();
 
                 let now = Instant::now();
@@ -145,14 +238,18 @@ pub async fn client_connection(socket: WebSocket, who: SocketAddr, store: Arc<St
                 // A bug that needs to be fixed is that this will stop working in about hundred billion years
                 // and the thread will panic with a overflow error. Note that this will happen for both the
                 // debug and release builds. Truly no one is safe from the catastrophe that will occur...
-                let sleep = now + Duration::from_secs(if sleep_duration == 0 {
-                    u64::MAX / 10 as u64
-                } else {
-                    sleep_duration
-                });
+                let sleep = now
+                    + Duration::from_secs(if sleep_duration == 0 {
+                        u64::MAX / 10 as u64
+                    } else {
+                        sleep_duration
+                    });
 
                 loop {
-                    info!("[{who} ({client_name})] Sleeping for {} seconds", (sleep - now).as_secs());
+                    info!(
+                        "[{who} ({client_name})] Sleeping for {} seconds",
+                        (sleep - now).as_secs()
+                    );
                     tokio::select! {
                         _ = sleep_until(sleep) => break,
                         notification = rx.recv() => {
@@ -196,12 +293,11 @@ pub async fn client_connection(socket: WebSocket, who: SocketAddr, store: Arc<St
     info!("[{who}] Disconnected from client!");
 }
 
-
 async fn heartbeat(
     sender: Arc<Mutex<SplitSink<WebSocket, Message>>>,
     mut receiver: SplitStream<WebSocket>,
     who: SocketAddr,
-    client_name: Arc<sync::RwLock<Option<String>>>
+    client_name: Arc<sync::RwLock<Option<String>>>,
 ) {
     let who = Who { who, client_name };
     let mut interval = tokio::time::interval(Duration::from_secs(8));
@@ -221,7 +317,7 @@ async fn heartbeat(
                         Err(_) => warn!("[{who}] Could not close socket, maybe already closed"),
                     }
                     return Err(());
-                },
+                }
             };
             loop {
                 match receiver.next().await {
@@ -230,14 +326,14 @@ async fn heartbeat(
                         Ok(Message::Close(_)) => {
                             info!("{who} Received Close message");
                             break Err(());
-                        },
+                        }
                         Err(e) => {
                             error!("{who} Error receiving messages: {e:?}");
                             break Err(());
                         }
-                        Ok(m) => warn!("{who} Received irrelevant message: {m:?}")
+                        Ok(m) => warn!("{who} Received irrelevant message: {m:?}"),
                     },
-                    None => error!("{who} Error: receiver is empty")
+                    None => error!("{who} Error: receiver is empty"),
                 };
             }
         });
@@ -246,32 +342,30 @@ async fn heartbeat(
             Ok(Err(_)) => {
                 warn!("{who} Exiting heartbeat loop");
                 return;
-            },
+            }
             Err(_) => {
                 warn!("{who} No Pong response before timeout, exiting heartbeat loop");
                 return;
-            },
+            }
         };
-    };
+    }
 }
 
 #[derive(Clone)]
 struct Who {
     who: SocketAddr,
-    client_name: Arc<sync::RwLock<Option<String>>>
+    client_name: Arc<sync::RwLock<Option<String>>>,
 }
 
 impl Display for Who {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "[{}", self.who)?;
         match self.client_name.read() {
-            Ok(read) =>
-                match read.as_ref() {
-                    Some(c) => write!(f, ", {c}")?,
-                    None => (),
-                },
-            Err(e) =>
-                error!("Can't get read handle: {}", e)
+            Ok(read) => match read.as_ref() {
+                Some(c) => write!(f, ", {c}")?,
+                None => (),
+            },
+            Err(e) => error!("Can't get read handle: {}", e),
         }
         write!(f, "]")?;
         Ok(())

@@ -1,16 +1,17 @@
 use std::{collections::HashSet, env, net::SocketAddr, sync::Arc, vec};
 
 use axum::{
-    extract::{ConnectInfo, Path, Request, State, WebSocketUpgrade},
+    extract::{ConnectInfo, Path, State, WebSocketUpgrade},
     response::IntoResponse,
     routing::{delete, get, post, put},
-    Json, Router, ServiceExt,
+    Json, Router,
 };
 use axum_macros::debug_handler;
 use dotenv::dotenv;
 use hyper::StatusCode;
 use store::store::Store;
 use tokio::sync::{oneshot, Mutex};
+use tower_http::services::ServeDir;
 use tracing::{error, info, info_span, Level};
 use tracing_subscriber::{fmt::format::FmtSpan, FmtSubscriber};
 use utoipa::OpenApi;
@@ -20,11 +21,13 @@ use utoipa_swagger_ui::SwaggerUi;
 use uuid::Uuid;
 
 use crate::{
+    casta::casta::casta_index,
     connection::connection::client_connection,
     file_server::file_server::{add_files, get_all_paths, get_file, FileServer},
     store::schedule,
 };
 
+mod casta;
 mod connection;
 mod file_server;
 mod store;
@@ -143,15 +146,21 @@ async fn main() {
         )
         .nest("/files", Router::new().fallback(get_file))
         .route("/", get(ws_handler))
+        .route("/ws", get(ws_handler))
+        .route("/display/:uuid", get(casta_index))
+        .nest_service("/assets", ServeDir::new("assets"))
         .with_state(app_state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 8040));
     info!("listening on {}", addr);
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
 
-    axum::serve(listener, ServiceExt::<Request>::into_make_service(app))
-        .await
-        .unwrap();
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await
+    .unwrap();
 }
 
 mod read {

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <link rel="stylesheet" href="/assets/style.css" />
+        <link rel="prefetch" as="image" href="/assets/disconnected.png" />
+        <script src="https://unpkg.com/htmx.org@1.9.2"></script>
+        <script src="https://unpkg.com/htmx.org/dist/ext/ws.js"></script>
+        <script>
+            document.addEventListener("htmx:wsOpen", (e) => {
+                htmx.addClass(htmx.find("#disconnected"), "hidden")
+                const ws = e.detail.socketWrapper
+                const test = {
+                    uuid: "{{ uuid }}",
+                    hostname: "htmx-client",
+                    htmx: true,
+                }
+                ws.send(JSON.stringify(test))
+            })
+            ;[("htmx:wsClose", "htmx:wsError")].forEach((event) => {
+                document.addEventListener(event, (_) => {
+                    htmx.removeClass(htmx.find("#disconnected"), "hidden")
+                })
+            })
+
+            htmx.config.wsReconnectDelay = (_) => {
+                return 5000
+            }
+        </script>
+        <title>Casta</title>
+    </head>
+    <body>
+        <img src="/assets/disconnected.png" id="disconnected" />
+        <div hx-ext="ws" ws-connect="/ws" id="content"></div>
+    </body>
+</html>
