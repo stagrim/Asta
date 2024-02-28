@@ -3,8 +3,8 @@ import path from 'path';
 
 export async function GET({ params }) {
 	const { file } = params;
-	// TODO: Must prevent the '..' path
-	const filePath = path.resolve('./files/', file);
+	const normalized_file = path.normalize(file).replace(/^(\.\.(\/|\\|$))+/, '');
+	const filePath = path.join('./files/', normalized_file);
 
 	try {
 		const data = await fs.readFile(filePath);

@@ -23,6 +23,7 @@
 	import type { ScheduledPlaylistInput } from '../../../api_bindings/update/ScheduledPlaylistInput';
 	import TypePicker from '../../../lib/TypePicker.svelte';
 	import type { Schedule } from '../../../api_bindings/read/Schedule';
+	import { flip } from 'svelte/animate';
 
 	export let data: PageData;
 
@@ -85,8 +86,8 @@
 			</div>
 
 			{#if schedule.scheduled}
-				{#each schedule.scheduled as scheduled_playlist, i}
-					<div class="card mb-4">
+				{#each schedule.scheduled as scheduled_playlist, i (scheduled_playlist.playlist)}
+					<div class="card mb-4" animate:flip={{ duration: 300 }}>
 						<header class="card-header">
 							<div class="flex w-full justify-center gap-4">
 								{#if i > 0}

@@ -11,6 +11,7 @@
 	import type { PageData } from './$types';
 	import { form_action } from '$lib/form_action';
 	import { enhance } from '$app/forms';
+	import { flip } from 'svelte/animate';
 
 	export let data: PageData;
 
@@ -88,8 +89,8 @@
 			</div>
 
 			{#if playlist.items}
-				{#each playlist.items as item, i}
-					<div class="card mb-4">
+				{#each playlist.items as item, i (item.name)}
+					<div class="card mb-4" animate:flip={{ duration: 300 }}>
 						<header class="card-header">
 							<div class="flex w-full justify-center gap-4">
 								{#if i > 0}
