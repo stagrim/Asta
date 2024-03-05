@@ -1,4 +1,4 @@
-use std::{collections::HashSet, env, net::SocketAddr, sync::Arc, vec};
+use std::{collections::HashSet, env, net::SocketAddr, str::FromStr, sync::Arc, vec};
 
 use axum::{
     extract::{ConnectInfo, Path, State, WebSocketUpgrade},
@@ -79,6 +79,7 @@ struct ApiDoc;
 async fn main() {
     dotenv().ok();
     let redis_url = env::var("REDIS_URL").expect("REDIS_URL variable must be set");
+    let sasta_address = env::var("ADDRESS").unwrap_or("127.0.0.1:8080".into());
 
     let subscriber = FmtSubscriber::builder()
         .with_span_events(FmtSpan::NEW)
@@ -148,10 +149,11 @@ async fn main() {
         .route("/", get(ws_handler))
         .route("/ws", get(ws_handler))
         .route("/display/:uuid", get(casta_index))
+        .route("/casta/:uuid", get(casta_index))
         .nest_service("/assets", ServeDir::new("assets"))
         .with_state(app_state);
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 8040));
+    let addr = SocketAddr::from_str(&sasta_address).expect("Wrong address format");
     info!("listening on {}", addr);
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
 

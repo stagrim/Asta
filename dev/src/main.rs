@@ -27,6 +27,7 @@ fn main() {
     let mut env_file = File::create("../sasta/.env").unwrap();
     writedoc! {env_file, "
         REDIS_URL=redis://127.0.0.1:{sasta_db_port}
+        ADDRESS=0.0.0.0:{sasta_port}
     "}
     .unwrap();
 
@@ -50,6 +51,7 @@ fn get_available_ports(n: usize) -> Vec<u16> {
 }
 
 fn port_is_available(port: u16) -> bool {
+    // Only checks for tcp connections, check for any kind of answer
     match TcpListener::bind(("127.0.0.1", port)) {
         Ok(_) => true,
         Err(_) => false,
