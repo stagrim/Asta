@@ -6,6 +6,7 @@ node_modules
 .env
 .env.*
 Greet.md
+/files/
 !.env.example
 !.env.template
 vite.config.js.timestamp-*

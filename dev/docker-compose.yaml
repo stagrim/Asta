@@ -1,0 +1,21 @@
+# For Development
+version: "3.8"
+services:
+    redis-gasta-dev:
+        restart: "always"
+        image: "redis:alpine"
+        command: redis-server --save ""
+        ports:
+            - "${GASTA_DB_PORT}:6379"
+    sasta-db-dev:
+        image: redis/redis-stack-server:latest
+        restart: always
+        # use REDIS_ARGS for redis-stack-server instead of command arguments
+        environment:
+            # Saving should be done automatically
+            - REDIS_ARGS= --appendonly yes
+            - REDISTIMESERIES_ARGS="RETENTION_POLICY=20"
+        volumes:
+            - ./redis-data:/data
+        ports:
+            - ${SASTA_DB_PORT-DB-PORT}:6379
