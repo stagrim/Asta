@@ -154,7 +154,7 @@ async fn main() {
         .with_state(app_state);
 
     let addr = SocketAddr::from_str(&sasta_address).expect("Wrong address format");
-    info!("listening on {}", addr);
+    info!("listening on http://{}", addr);
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
 
     axum::serve(

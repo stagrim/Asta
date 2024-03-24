@@ -1,41 +1,24 @@
-use askama::Template;
-use axum::{
-    extract::Path,
-    response::{Html, IntoResponse, Response},
-};
-use hyper::StatusCode;
+use axum::extract::Path;
+use maud::{html, Markup, PreEscaped, DOCTYPE};
 use uuid::Uuid;
 
-pub async fn casta_index(Path(uuid): Path<Uuid>) -> impl IntoResponse {
-    let template = CastaTemplate { uuid };
-    HtmlTemplate(template)
-}
-
-#[derive(Template)]
-#[template(path = "casta.html")]
-struct CastaTemplate {
-    uuid: Uuid,
-}
-
-/// A wrapper type that we'll use to encapsulate HTML parsed by askama into valid HTML for axum to serve.
-struct HtmlTemplate<T>(T);
-
-/// Allows us to convert Askama HTML templates into valid HTML for axum to serve in the response.
-impl<T> IntoResponse for HtmlTemplate<T>
-where
-    T: Template,
-{
-    fn into_response(self) -> Response {
-        // Attempt to render the template with askama
-        match self.0.render() {
-            // If we're able to successfully parse and aggregate the template, serve it
-            Ok(html) => Html(html).into_response(),
-            // If we're not, return an error or some bit of fallback HTML
-            Err(err) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to render template. Error: {}", err),
-            )
-                .into_response(),
+pub async fn casta_index(Path(uuid): Path<Uuid>) -> Markup {
+    html! {
+        (DOCTYPE)
+        html lang="en" {
+            head {
+                meta charset="UTF-8";
+                meta name="viewport" content="width=device-width, initial-scale=1.0";
+                link rel="stylesheet" href="/assets/style.css";
+                script src="https://unpkg.com/htmx.org@1.9.2" {}
+                script src="https://unpkg.com/htmx.org/dist/ext/ws.js" {}
+                script { (PreEscaped("let uuid = \"")) (uuid) (PreEscaped("\"")) }
+                script src="/assets/script.js" {}
+            }
+            body {
+                img #disconnected src="/assets/disconnected.png";
+                div #content hx-ext="ws" ws-connect="/ws";
+            }
         }
     }
 }
