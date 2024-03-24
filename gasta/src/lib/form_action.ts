@@ -11,7 +11,8 @@ export const form_action: (_: any) => Promise<void> = async ({ result }) => {
 			get(toastStore).trigger({
 				message: result.data.message,
 				background: 'variant-filled-success',
-				timeout: 2000
+				timeout: 2000,
+				hideDismiss: true
 			});
 		}
 
