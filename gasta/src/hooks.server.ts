@@ -1,7 +1,7 @@
 import { env } from '$env/dynamic/private';
 import { building } from '$app/environment';
 import { redirect, type Handle } from '@sveltejs/kit';
-import { session_display_name, session_username, valid_session } from '$lib/auth';
+import { session_display_name, session_username, valid_session } from '$lib/server/auth';
 
 if (env.SERVER_URL) {
 	console.log(`Listening for Server on ${env.SERVER_URL}`);
@@ -57,6 +57,17 @@ export const handle: Handle = async ({ event, resolve }) => {
 		if (valid) {
 			throw redirect(303, '/');
 		}
+	}
+
+	if (event.request.method === 'POST') {
+		const clone = event.request.clone();
+		const entries = Array.from((await clone.formData()).entries());
+		console.log({
+			type: 'POST request',
+			name: await session_username(event.cookies.get('session-id')!),
+			url: clone.url,
+			body: entries
+		});
 	}
 
 	return resolve(event);
