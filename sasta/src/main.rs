@@ -88,7 +88,9 @@ async fn main() {
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
     minify();
+    info!("JS and CSS minified");
     let htmx_hash = compute_hash();
+    info!("Computed Hash for Casta Htmx");
 
     let store = Arc::new(Store::new(&redis_url).await);
     let file_server = Arc::new(Mutex::new(FileServer::new(&redis_url).await));

@@ -11,7 +11,7 @@ use axum::{
 };
 use axum_macros::debug_handler;
 use hyper::{Request, StatusCode, Uri};
-use redis::{aio::Connection, Client, JsonAsyncCommands};
+use redis::{aio::MultiplexedConnection, Client, JsonAsyncCommands};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use tokio::{fs::File as TokioFile, io::AsyncWriteExt, sync::Mutex as AsyncMutex};
@@ -233,14 +233,14 @@ impl Serialize for Directory {
 }
 
 pub struct FileServer {
-    con: AsyncMutex<Connection>,
+    con: AsyncMutex<MultiplexedConnection>,
     root: Directory,
 }
 
 impl FileServer {
     pub async fn new(redis_url: &str) -> Self {
         let client = Client::open(redis_url).unwrap();
-        let mut con = client.get_async_connection().await.unwrap();
+        let mut con = client.get_multiplexed_tokio_connection().await.unwrap();
 
         let root = match con.json_get::<_, _, String>("files", ".").await {
             Ok(str) => serde_json::from_str(&str).unwrap(),

@@ -171,10 +171,7 @@ pub async fn client_connection(
                         name,
                         settings: WebsiteData { url, duration },
                     } => {
-                        info!(
-                            "[{who} ({client_name})] Sending Website '{name}' with url '{}'",
-                            url
-                        );
+                        info!("[{who} ({client_name})] Sending Website '{name}'");
                         sleep_duration = duration;
                         DisplayPayload::Website(WebsitePayload { content: url })
                     }
@@ -182,7 +179,7 @@ pub async fn client_connection(
                         name,
                         settings: TextData { text, duration },
                     } => {
-                        info!("[{who} ({client_name})] Sending Text '{name}' with text '{text}'");
+                        info!("[{who} ({client_name})] Sending Text '{name}'");
                         sleep_duration = duration;
                         DisplayPayload::Text(WebsitePayload { content: text })
                     }
@@ -190,7 +187,7 @@ pub async fn client_connection(
                         name,
                         settings: ImageData { src, duration },
                     } => {
-                        info!("[{who} ({client_name})] Sending Image '{name}' with src '{src}'");
+                        info!("[{who} ({client_name})] Sending Image '{name}'");
                         sleep_duration = duration;
                         DisplayPayload::Image(WebsitePayload { content: src })
                     }

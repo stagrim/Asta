@@ -13,7 +13,6 @@ use lightningcss::{
 use maud::{html, Markup, PreEscaped, DOCTYPE};
 use minify_js::{Session, TopLevelMode};
 use sha2::Sha256;
-use tracing::info;
 use uuid::Uuid;
 
 pub async fn casta_index(Path(uuid): Path<Uuid>) -> Markup {
@@ -74,6 +73,4 @@ pub fn minify() {
     stylesheet.minify(MinifyOptions::default()).unwrap();
     let css_min = stylesheet.to_css(PrinterOptions::default()).unwrap();
     fs::write("./assets/style.min.css", css_min.code).unwrap();
-
-    info!("JS and CSS minified");
 }

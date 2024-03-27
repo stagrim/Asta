@@ -1,26 +1,32 @@
 use std::collections::{HashMap, HashSet};
 
 use chrono::Local;
-use redis::{aio::Connection, Client, JsonAsyncCommands};
+use redis::{aio::MultiplexedConnection, Client, JsonAsyncCommands};
 use serde::{Deserialize, Serialize};
-use tokio::{sync::{broadcast::{self, Sender, Receiver}, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard, oneshot}, time::{sleep_until, Instant}};
-use tracing::{warn, info, error, trace, warn_span, error_span};
+use tokio::{
+    sync::{
+        broadcast::{self, Receiver, Sender},
+        oneshot, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard,
+    },
+    time::{sleep_until, Instant},
+};
+use tracing::{error, error_span, info, trace, warn, warn_span};
 use ts_rs::TS;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use super::schedule::{Schedule, Moment, self};
+use super::schedule::{self, Moment, Schedule};
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Display {
     pub name: String,
-    pub schedule: Uuid
+    pub schedule: Uuid,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Playlist {
     pub name: String,
-    pub items: Vec<PlaylistItem>
+    pub items: Vec<PlaylistItem>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, ToSchema, TS)]
@@ -34,48 +40,28 @@ pub enum PlaylistItem {
     #[serde(rename = "IMAGE")]
     Image { name: String, settings: ImageData },
     #[serde(rename = "BACKGROUND_AUDIO")]
-    BackgroundAudio { name: String, settings: ImageData }
-}
-
-impl PlaylistItem {
-    pub fn duration(&self) -> u64 {
-        match self {
-            PlaylistItem::Website { settings, .. } => settings.duration,
-            PlaylistItem::Text { settings, .. } => settings.duration,
-            PlaylistItem::Image { settings, .. } => settings.duration,
-            PlaylistItem::BackgroundAudio { settings, .. } => settings.duration,
-        }
-    }
-
-    pub fn name(&self) -> &String {
-        match self {
-            PlaylistItem::Website { name, .. } => name,
-            PlaylistItem::Text { name, .. } => name,
-            PlaylistItem::Image { name, .. } => name,
-            PlaylistItem::BackgroundAudio { name, .. } => name,
-        }
-    }
+    BackgroundAudio { name: String, settings: ImageData },
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, ToSchema, TS)]
 #[ts(export, export_to = "api_bindings/update/")]
 pub struct WebsiteData {
     pub url: String,
-    pub duration: u64
+    pub duration: u64,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, ToSchema, TS)]
 #[ts(export, export_to = "api_bindings/update/")]
 pub struct TextData {
     pub text: String,
-    pub duration: u64
+    pub duration: u64,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, ToSchema, TS)]
 #[ts(export, export_to = "api_bindings/update/")]
 pub struct ImageData {
     pub src: String,
-    pub duration: u64
+    pub duration: u64,
 }
 
 // TODO: Replace Content, and use redis as only storage
@@ -87,28 +73,32 @@ pub struct Content {
 }
 
 pub struct Store {
-    con: Mutex<Connection>,
+    con: Mutex<MultiplexedConnection>,
     sender: Sender<Change>,
-    content: RwLock<Content>
+    content: RwLock<Content>,
 }
 
 impl Store {
     pub async fn new(redis_url: &str) -> Self {
         let client = Client::open(redis_url).unwrap();
-        let mut con = client.get_async_connection().await.unwrap();
+        let mut con = client.get_multiplexed_tokio_connection().await.unwrap();
         let (sender, _) = broadcast::channel(5);
         let content = RwLock::new(Self::read_file(&mut con).await);
 
-        let s = Store { con: Mutex::new(con), sender, content };
+        let s = Store {
+            con: Mutex::new(con),
+            sender,
+            content,
+        };
         s
     }
 
-    async fn read_file(con: &mut Connection) -> Content {
+    async fn read_file(con: &mut MultiplexedConnection) -> Content {
         match con.json_get::<_, _, String>("content", ".").await {
             Ok(str) => {
                 // println!("{}", str);
                 serde_json::from_str(&str).unwrap()
-            },
+            }
             Err(e) => {
                 warn_span!("[Store] could not parse file content, starting with a blank state", redis = ?e);
                 Content {
@@ -116,7 +106,7 @@ impl Store {
                     playlists: HashMap::new(),
                     schedules: HashMap::new(),
                 }
-            },
+            }
         }
     }
 
@@ -128,13 +118,16 @@ impl Store {
         // }
 
         self.write(|mut c| {
-            vec.iter().for_each( |(schedule, playlist)| {
+            vec.iter().for_each(|(schedule, playlist)| {
                 c.schedules
                     .entry(*schedule)
                     .and_modify(|s| s.playlist = *playlist);
             });
-            Some(Change::Schedule(HashSet::from_iter(vec.iter().map(|v| v.0))))
-        }).await;
+            Some(Change::Schedule(HashSet::from_iter(
+                vec.iter().map(|v| v.0),
+            )))
+        })
+        .await;
     }
 
     /// Starts scheduling loop updating the active playlists when necessary
@@ -144,7 +137,10 @@ impl Store {
         let mut current_moment = Local::now();
         let mut receiver = self.receiver();
 
-        let schedules: Vec<(Uuid, Schedule)> = self.read().await.schedules
+        let schedules: Vec<(Uuid, Schedule)> = self
+            .read()
+            .await
+            .schedules
             .iter()
             .map(|(schedule_uuid, schedule)| (schedule_uuid.clone(), schedule.clone()))
             .collect();
@@ -159,7 +155,8 @@ impl Store {
                 });
                 // Change notice not needed since main thread waits on oneshot notice before continuing
                 None
-            }).await;
+            })
+            .await;
             info!("[Scheduler] Updated Schedules to current active playlist");
         }
 
@@ -170,16 +167,21 @@ impl Store {
 
         'main: loop {
             let instant = Instant::now();
-            let schedules: Vec<(Uuid, Schedule)> = self.read().await.schedules
+            let schedules: Vec<(Uuid, Schedule)> = self
+                .read()
+                .await
+                .schedules
                 .iter()
                 .map(|(schedule_uuid, schedule)| (schedule_uuid.clone(), schedule.clone()))
                 .collect();
 
-            let mut moments: Vec<(Uuid, Moment)> = schedules.iter()
-                .filter_map(|(schedule_uuid, schedule)| match schedule.next_schedule(&current_moment) {
-                    Some(m) => Some((schedule_uuid.clone(), m)),
-                    None => None,
-
+            let mut moments: Vec<(Uuid, Moment)> = schedules
+                .iter()
+                .filter_map(|(schedule_uuid, schedule)| {
+                    match schedule.next_schedule(&current_moment) {
+                        Some(m) => Some((schedule_uuid.clone(), m)),
+                        None => None,
+                    }
                 })
                 .collect();
 
@@ -189,30 +191,39 @@ impl Store {
                     match receiver.recv().await {
                         Ok(Change::ScheduleInput(uuids)) => {
                             let read = self.read().await;
-                            if uuids.iter().any(|u| read.schedules.get(u).is_some_and(|s| s.has_scheduled_playlists())) {
+                            if uuids.iter().any(|u| {
+                                read.schedules
+                                    .get(u)
+                                    .is_some_and(|s| s.has_scheduled_playlists())
+                            }) {
                                 info!("[Scheduler] An updated Schedule has scheduled playlists, rerunning loop");
-                                break
+                                break;
                             }
-                        },
+                        }
                         Err(e) => error!("[Scheduler] RecvError: {e}"),
                         _ => info!("[Scheduler] Non relevant change received, continue waiting"),
                     }
                 }
-                continue
+                continue;
             }
 
+            let closest_time = moments.iter().min_by_key(|(_, m)| m.time).unwrap().1.time;
 
-            let closest_time = moments.iter()
-                .min_by_key(|(_, m)| m.time).unwrap().1.time;
-
-            moments = moments.into_iter().filter(|(_, m)| m.time == closest_time).collect();
+            moments = moments
+                .into_iter()
+                .filter(|(_, m)| m.time == closest_time)
+                .collect();
 
             let sleep = match (closest_time - Local::now()).to_std() {
                 Ok(d) => instant + d,
                 Err(_) => instant,
             };
 
-            info!("[Scheduler] Sleeping for {:?} until {} to change active playlists", sleep.duration_since(instant), closest_time.to_string());
+            info!(
+                "[Scheduler] Sleeping for {:?} until {} to change active playlists",
+                sleep.duration_since(instant),
+                closest_time.to_string()
+            );
 
             loop {
                 tokio::select! {
@@ -244,11 +255,15 @@ impl Store {
             info!("[Scheduler] Sleep done, updating active playlists");
 
             self.update_schedule_active_playlist(
-                moments.iter()
+                moments
+                    .iter()
                     .map(|(u, m)| (*u, m.playlist))
-                    .inspect(|(uuid, _)| info!("[Scheduler] Updating Schedule {uuid} active playlist"))
-                    .collect::<Vec<_>>()
-            ).await;
+                    .inspect(|(uuid, _)| {
+                        info!("[Scheduler] Updating Schedule {uuid} active playlist")
+                    })
+                    .collect::<Vec<_>>(),
+            )
+            .await;
             current_moment = closest_time;
         }
     }
@@ -265,7 +280,9 @@ impl Store {
     /// Runs closure with lock write guard handle given as argument
     /// and sends a message signalling a state change once it is done
     async fn write<F>(&self, fun: F)
-    where F: FnOnce(RwLockWriteGuard<Content>) -> Option<Change> {
+    where
+        F: FnOnce(RwLockWriteGuard<Content>) -> Option<Change>,
+    {
         let c = self.content.write().await;
         let changes = fun(c);
         info!("[Store] Sending changes after write: {changes:?}");
@@ -277,7 +294,10 @@ impl Store {
         info!("[Store] writing new state to db");
         let mut con = self.con.lock().await;
         let content = &self.content.read().await.clone();
-        if let Err(error) = con.json_set::<_, _, _, String>("content", "$", &content).await {
+        if let Err(error) = con
+            .json_set::<_, _, _, String>("content", "$", &content)
+            .await
+        {
             error_span!("Redis Error", ?error);
             // error_span!("Logging current state instead", ?self.content);
         }
@@ -290,7 +310,8 @@ impl Store {
         self.write(|mut c| {
             c.displays.insert(uuid, Display { name, schedule });
             Some(Change::Display(HashSet::from([uuid])))
-        }).await;
+        })
+        .await;
     }
 
     /// Creates a new playlist
@@ -298,9 +319,16 @@ impl Store {
     /// Overrides existing playlist with same uuid
     pub async fn create_playlist(&self, uuid: Uuid, name: String) {
         self.write(|mut c| {
-            c.playlists.insert(uuid, Playlist { name, items: vec![] });
+            c.playlists.insert(
+                uuid,
+                Playlist {
+                    name,
+                    items: vec![],
+                },
+            );
             Some(Change::Playlist(HashSet::from([uuid])))
-        }).await;
+        })
+        .await;
     }
 
     /// Creates a new Schedule
@@ -308,9 +336,11 @@ impl Store {
     /// Overrides existing Schedule with same uuid
     pub async fn create_schedule(&self, uuid: Uuid, name: String, playlist: Uuid) {
         self.write(|mut c| {
-            c.schedules.insert(uuid, Schedule::new(name, vec![], playlist).unwrap());
+            c.schedules
+                .insert(uuid, Schedule::new(name, vec![], playlist).unwrap());
             Some(Change::Schedule(HashSet::from([uuid])))
-        }).await;
+        })
+        .await;
     }
 
     /// Updates the display with the given Uuid
@@ -322,7 +352,8 @@ impl Store {
                 .entry(uuid)
                 .and_modify(|d| *d = Display { name, schedule });
             Some(Change::Display(HashSet::from([uuid])))
-        }).await
+        })
+        .await
     }
 
     /// Updates the playlist with the given Uuid
@@ -334,23 +365,29 @@ impl Store {
                 .entry(uuid)
                 .and_modify(|p| *p = Playlist { name, items });
             Some(Change::Playlist(HashSet::from([uuid])))
-        }).await
+        })
+        .await
     }
 
     /// Updates the Schedule with the given Uuid
     ///
     /// Does nothing if no such Schedule is found
-    pub async fn update_schedule(&self, uuid: Uuid, name: String, playlist: Uuid, schedules: Vec<schedule::ScheduledPlaylistInput>) -> Result<(), String> {
+    pub async fn update_schedule(
+        &self,
+        uuid: Uuid,
+        name: String,
+        playlist: Uuid,
+        schedules: Vec<schedule::ScheduledPlaylistInput>,
+    ) -> Result<(), String> {
         let schedule = match Schedule::new(name, schedules, playlist) {
             Ok(s) => s,
             Err(e) => return Err(e),
         };
         self.write(|mut c| {
-            c.schedules
-                .entry(uuid)
-                .and_modify(|s| *s = schedule);
+            c.schedules.entry(uuid).and_modify(|s| *s = schedule);
             Some(Change::ScheduleInput(HashSet::from([uuid])))
-        }).await;
+        })
+        .await;
         Ok(())
     }
 
@@ -361,7 +398,8 @@ impl Store {
         self.write(|mut c| {
             c.displays.remove(&uuid);
             Some(Change::Display(HashSet::from([uuid])))
-        }).await
+        })
+        .await
     }
 
     /// Deletes the Playlist with the given Uuid
@@ -371,7 +409,8 @@ impl Store {
         self.write(|mut c| {
             c.playlists.remove(&uuid);
             Some(Change::Playlist(HashSet::from([uuid])))
-        }).await
+        })
+        .await
     }
 
     /// Deletes the Schedule with the given Uuid
@@ -381,14 +420,21 @@ impl Store {
         self.write(|mut c| {
             c.schedules.remove(&uuid);
             Some(Change::Schedule(HashSet::from([uuid])))
-        }).await
+        })
+        .await
     }
 
     /// Get all PlaylistItem(s) from the scheduled playlist in the display's schedule
     pub async fn get_display_playlists(&self, display: &Uuid) -> Option<Vec<PlaylistItem>> {
         let content = self.read().await;
         let schedule = &content.displays.get(display)?.schedule;
-        Some(content.playlists.get(&content.schedules.get(schedule)?.playlist)?.items.clone())
+        Some(
+            content
+                .playlists
+                .get(&content.schedules.get(schedule)?.playlist)?
+                .items
+                .clone(),
+        )
     }
 
     /// Get Uuids of schedule and playlist connected to Display of given Uuid
@@ -403,7 +449,10 @@ impl Store {
 
     /// Returns String of current state
     pub async fn to_string(&self) -> String {
-        format!("{}", serde_json::to_string_pretty::<Content>(&*self.content.read().await).unwrap())
+        format!(
+            "{}",
+            serde_json::to_string_pretty::<Content>(&*self.content.read().await).unwrap()
+        )
     }
 }
 
