@@ -20,4 +20,5 @@ tokio = { version = "1.21", features = ["full"] }
 tokio-tungstenite = "0.18.0"
 url = "2.3"
 futures-util = "0.3.26"
-adler = {version = "1.0.2", features = ["std"]}
+adler = { version = "1.0.2", features = ["std"] }
+casta_protocol = { path = "../casta_protocol" }

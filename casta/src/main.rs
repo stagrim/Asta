@@ -1,25 +1,27 @@
-mod websocket;
 mod sasta;
+mod websocket;
 
 use std::fs::File;
 use std::io::BufReader;
 use std::process;
+use std::str::FromStr;
 use std::sync::Arc;
-use std::{fmt::Debug, env};
+use std::{env, fmt::Debug};
 
 use actix::Addr;
-use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer, get};
-use actix_web_actors::ws::WsResponseBuilder;
 use actix_files::Files;
+use actix_web::{get, web, App, HttpRequest, HttpResponse, HttpServer};
+use actix_web_actors::ws::WsResponseBuilder;
 use adler::adler32;
-use sasta::{Sasta, SastaResponse, DisplayData};
-use tokio::signal;
-use serde::Serialize;
+use casta_protocol::uuid::Uuid;
+use casta_protocol::ResponsePayload as SastaPayload;
+use casta_protocol::{DisplayPayload, WebsitePayload};
 use dotenv::dotenv;
 use lazy_static::lazy_static;
+use sasta::Sasta;
+use serde::Serialize;
+use tokio::signal;
 use tokio::sync::Mutex;
-
-use crate::sasta::WebsiteData;
 
 //Other solutions not including a shared mutable state are welcome
 lazy_static! {
@@ -28,9 +30,9 @@ lazy_static! {
 
 #[derive(Serialize, Debug, Clone)]
 pub enum ClientPayload {
-    Display(DisplayData),
+    Display(DisplayPayload),
     Disconnected(),
-    Hash(String)
+    Hash(String),
 }
 
 async fn send_to_view(payload: ClientPayload) -> String {
@@ -39,31 +41,41 @@ async fn send_to_view(payload: ClientPayload) -> String {
         Some(h) => {
             let r = h.recipient().send(websocket::Payload { payload }).await;
             format!("result: {:?}", r)
-        },
-        None => format!("Handle has not yet been created. Let a client connect to the websocket and try again")
+        }
+        None => format!(
+            "Handle has not yet been created. Let a client connect to the websocket and try again"
+        ),
     }
 }
 
 pub async fn send_cached_to_view(cached_display_req: Arc<Mutex<Option<ClientPayload>>>) {
     let cached = cached_display_req.lock().await;
     match cached.clone() {
-        Some(c) => { send_to_view(c).await; },
+        Some(c) => {
+            send_to_view(c).await;
+        }
         None => (),
     }
 }
 
 ///Returns a websocket connection
 #[get("/ws")]
-async fn get_ws(cached_display_req: web::Data<Mutex<Option<ClientPayload>>>, req: HttpRequest, stream: web::Payload) -> HttpResponse {
+async fn get_ws(
+    cached_display_req: web::Data<Mutex<Option<ClientPayload>>>,
+    req: HttpRequest,
+    stream: web::Payload,
+) -> HttpResponse {
+    let (addr, resp) = WsResponseBuilder::new(
+        websocket::Websocket::new(
+            cached_display_req.into_inner().clone(),
+            *req.app_data::<u32>().unwrap(),
+        ),
+        &req,
+        stream,
+    )
+    .start_with_addr()
+    .expect("An error occurred during the handshake");
 
-    let (addr, resp) =
-        WsResponseBuilder::new(
-            websocket::Websocket::new(cached_display_req.into_inner().clone(), *req.app_data::<u32>().unwrap()),
-            &req,
-            stream,
-        ).start_with_addr()
-        .expect("An error occurred during the handshake");
-    
     *HANDLE.lock().await = Some(addr);
     resp
 }
@@ -77,7 +89,8 @@ async fn send_disconnected_to_view(cached_display_req: Arc<Mutex<Option<ClientPa
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     dotenv().ok();
-    let uuid = env::var("UUID").expect("Must provide a UUID");
+    let uuid = Uuid::from_str(&env::var("UUID").expect("Must provide a UUID"))
+        .expect("Provided UUID is not valid");
     let port = env::var("PORT").expect("Must provide a port");
     let casta_port = env::var("CASTA_PORT").unwrap_or("3000".to_string());
     let address = env::var("ADDRESS").expect("Must provide an address");
@@ -103,32 +116,36 @@ async fn main() -> std::io::Result<()> {
             Ok(_) => println!("\nReceived shutdown signal, exiting..."),
             Err(err) => {
                 eprintln!("Unable to listen for shutdown signal: {err}");
-            },
+            }
         }
         process::exit(0);
     });
 
     tokio::task::spawn(async move {
         send_disconnected_to_view(cached_display_req.clone()).await;
-        let mut sasta = Sasta::new(address, port, uuid.clone(), hostname).await;
-        
+        let mut sasta = Sasta::new(address, port, uuid).await;
+
         loop {
             match sasta.read_message().await {
                 Some(resp) => {
                     let mut api: Option<ClientPayload> = None;
                     match resp {
-                        SastaResponse::Name(name) => println!("Handshake done, received name {name:?}"),
-                        SastaResponse::Pending(pending) => {
+                        SastaPayload::Welcome { name, .. } => {
+                            println!("Handshake done, received name {name:?}");
+                        }
+                        SastaPayload::Pending(pending) => {
                             println!("[Pending {}] Waiting to be defined in Sasta", pending);
-                            let send = ClientPayload::Display(DisplayData::Text { 
-                                data: WebsiteData {
-                                    content: format!("Pending connection to Sasta with uuid {}", &uuid)
-                                },
-                            });
+                            let send =
+                                ClientPayload::Display(DisplayPayload::Text(WebsitePayload {
+                                    content: format!(
+                                        "Pending connection to Sasta with uuid {}",
+                                        &uuid
+                                    ),
+                                }));
                             send_to_view(send.clone()).await;
                             api = Some(send);
-                        },
-                        SastaResponse::Display(display) => {
+                        }
+                        SastaPayload::Display(display) => {
                             println!("[Message] {:?}", display);
                             let send = ClientPayload::Display(display);
                             send_to_view(send.clone()).await;
@@ -140,7 +157,7 @@ async fn main() -> std::io::Result<()> {
                     if let Some(a) = api {
                         *cached_display_req.lock().await = Some(a);
                     }
-                },
+                }
                 None => {
                     send_disconnected_to_view(cached_display_req.clone()).await;
                     sasta.reconnect().await
@@ -149,10 +166,14 @@ async fn main() -> std::io::Result<()> {
         }
     });
 
-    HttpServer::new(move || App::new()
-        .app_data(hash)
-        .app_data(web::Data::from(cached_display_req_2.clone()))
-        .service(get_ws)
-        .service(Files::new("/", "./static").index_file("index.html"))
-    ).bind(format!("0.0.0.0:{casta_port}"))?.run().await
+    HttpServer::new(move || {
+        App::new()
+            .app_data(hash)
+            .app_data(web::Data::from(cached_display_req_2.clone()))
+            .service(get_ws)
+            .service(Files::new("/", "./static").index_file("index.html"))
+    })
+    .bind(format!("0.0.0.0:{casta_port}"))?
+    .run()
+    .await
 }

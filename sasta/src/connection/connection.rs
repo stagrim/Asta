@@ -6,48 +6,19 @@ use std::{
 };
 
 use axum::extract::ws::{Message, WebSocket};
+use casta_protocol::{DisplayPayload, RequestPayload, ResponsePayload, WebsitePayload};
 use futures_util::{
     stream::{SplitSink, SplitStream},
     SinkExt, StreamExt,
 };
 use maud::html;
-use serde::{Deserialize, Serialize};
 use tokio::{
     sync::Mutex,
     time::{sleep_until, timeout, Instant},
 };
 use tracing::{error, info, trace, warn};
-use uuid::Uuid;
 
 use crate::store::store::{Change, ImageData, PlaylistItem, Store, TextData, WebsiteData};
-
-#[derive(Deserialize, Clone)]
-struct HelloRequest {
-    uuid: Uuid,
-    #[serde(default)]
-    htmx: bool,
-}
-
-#[derive(Debug, Serialize)]
-pub enum Payload {
-    #[serde(rename(serialize = "display"))]
-    Display(DisplayPayload),
-    #[serde(rename(serialize = "name"))]
-    Name(String),
-    #[serde(rename(serialize = "pending"))]
-    Pending(bool),
-}
-
-#[derive(Serialize, Debug, Clone)]
-#[serde(tag = "type")]
-pub enum DisplayPayload {
-    #[serde(rename(serialize = "WEBSITE"))]
-    Website { data: WebsitePayload },
-    #[serde(rename(serialize = "TEXT"))]
-    Text { data: WebsitePayload },
-    #[serde(rename(serialize = "IMAGE"))]
-    Image { data: WebsitePayload },
-}
 
 trait IntoHtmx {
     fn into_htmx(&self) -> String;
@@ -57,35 +28,38 @@ impl IntoHtmx for DisplayPayload {
     fn into_htmx(&self) -> String {
         html! { div hx-swap-oob="innerHTML:#content" {
         @match self {
-            DisplayPayload::Website { data } => iframe frameborder="0" allow="autoplay; encrypted-media" src=(data.content) allowfullscreen;,
-            DisplayPayload::Text { data } => {
+            DisplayPayload::Website(data) => iframe frameborder="0" allow="autoplay; encrypted-media" src=(data.content) allowfullscreen;,
+            DisplayPayload::Text(data) => {
                 div #text { (data.content) }
             }
-            DisplayPayload::Image { data } => img src=(data.content);,
+            DisplayPayload::Image(data) => img src=(data.content);,
         }
     }}
         .into_string()
     }
 }
 
-#[derive(Serialize, Debug, Clone)]
-pub struct WebsitePayload {
-    pub content: String,
-}
-
-pub async fn client_connection(socket: WebSocket, who: SocketAddr, store: Arc<Store>) {
+/// Websocket connection to the client following the casta protocol
+///
+/// htmx_hash will be sent to the client using giving the htmx option
+/// and should reflect any changes to the htmx client hosted on the server.
+/// The fetched client is expected to refresh to get the latest version if the
+/// hash sent in the welcome response does not match the previously stored hash.
+pub async fn client_connection(
+    socket: WebSocket,
+    who: SocketAddr,
+    store: Arc<Store>,
+    htmx_hash: String,
+) {
     let (client_send, mut client_receive) = socket.split();
     let client_send = Arc::new(Mutex::new(client_send));
 
     // Wait for a hello response from connected client to get its UUID
-    let HelloRequest {
-        uuid: client_uuid,
-        htmx,
-    } = loop {
+    let (client_uuid, htmx) = loop {
         if let Some(Ok(Message::Text(msg))) = client_receive.next().await {
-            match serde_json::from_str(&msg) {
-                Ok(msg) => break msg,
-                Err(_) => error!("[{who}] {msg:?} was not a HelloRequest"),
+            match serde_json::from_str::<RequestPayload>(&msg) {
+                Ok(RequestPayload::Hello { uuid, htmx }) => break (uuid, htmx),
+                _ => error!("[{who}] {msg:?} was not a HelloRequest"),
             };
         }
     };
@@ -123,18 +97,18 @@ pub async fn client_connection(socket: WebSocket, who: SocketAddr, store: Arc<St
                     );
                     let msg = if htmx {
                         Message::Text(
-                            DisplayPayload::Text {
-                                data: WebsitePayload {
-                                    content: format!(
-                                        "Pending connection to Sasta with uuid {}",
-                                        &client_uuid
-                                    ),
-                                },
-                            }
+                            DisplayPayload::Text(WebsitePayload {
+                                content: format!(
+                                    "Pending connection to Sasta with uuid {}",
+                                    &client_uuid
+                                ),
+                            })
                             .into_htmx(),
                         )
                     } else {
-                        Message::Text(serde_json::to_string(&Payload::Pending(true)).unwrap())
+                        Message::Text(
+                            serde_json::to_string(&ResponsePayload::Pending(true)).unwrap(),
+                        )
                     };
                     client_send.lock().await.send(msg).await.unwrap();
 
@@ -156,8 +130,13 @@ pub async fn client_connection(socket: WebSocket, who: SocketAddr, store: Arc<St
             .clone()
             .unwrap_or("Got a None".to_string());
 
-        let msg =
-            Message::Text(serde_json::to_string(&Payload::Name(client_name.clone())).unwrap());
+        let msg = Message::Text(
+            serde_json::to_string(&ResponsePayload::Welcome {
+                name: client_name.clone(),
+                htmx_hash: htmx.then(|| htmx_hash),
+            })
+            .unwrap(),
+        );
         client_send.lock().await.send(msg).await.unwrap();
 
         info!("[{who}] was given the name {client_name}");
@@ -197,9 +176,7 @@ pub async fn client_connection(socket: WebSocket, who: SocketAddr, store: Arc<St
                             url
                         );
                         sleep_duration = duration;
-                        DisplayPayload::Website {
-                            data: WebsitePayload { content: url },
-                        }
+                        DisplayPayload::Website(WebsitePayload { content: url })
                     }
                     PlaylistItem::Text {
                         name,
@@ -207,9 +184,7 @@ pub async fn client_connection(socket: WebSocket, who: SocketAddr, store: Arc<St
                     } => {
                         info!("[{who} ({client_name})] Sending Text '{name}' with text '{text}'");
                         sleep_duration = duration;
-                        DisplayPayload::Text {
-                            data: WebsitePayload { content: text },
-                        }
+                        DisplayPayload::Text(WebsitePayload { content: text })
                     }
                     PlaylistItem::Image {
                         name,
@@ -217,9 +192,7 @@ pub async fn client_connection(socket: WebSocket, who: SocketAddr, store: Arc<St
                     } => {
                         info!("[{who} ({client_name})] Sending Image '{name}' with src '{src}'");
                         sleep_duration = duration;
-                        DisplayPayload::Image {
-                            data: WebsitePayload { content: src },
-                        }
+                        DisplayPayload::Image(WebsitePayload { content: src })
                     }
                     PlaylistItem::BackgroundAudio { .. } => todo!(),
                 };
@@ -227,7 +200,9 @@ pub async fn client_connection(socket: WebSocket, who: SocketAddr, store: Arc<St
                 let msg = if htmx {
                     Message::Text(payload.into_htmx())
                 } else {
-                    Message::Text(serde_json::to_string(&Payload::Display(payload)).unwrap())
+                    Message::Text(
+                        serde_json::to_string(&ResponsePayload::Display(payload)).unwrap(),
+                    )
                 };
                 client_send.lock().await.send(msg).await.unwrap();
 
