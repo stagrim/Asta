@@ -26,9 +26,9 @@ tracing = "0.1.40"
 uuid = { version = "1.7.0", features = ["serde", "v4"] }
 cron = "0.12.0"
 chrono = "0.4.34"
-ts-rs = "7.1.1"
+ts-rs = "8.1.0"
 tracing-subscriber = "0.3.18"
-redis = { version = "0.24.0", features = ["tokio-comp", "json"] }
+redis = { version = "0.25.2", features = ["tokio-comp", "json"] }
 regex = "1.10.3"
 utoipa-swagger-ui = { version = "6.0.0", features = ["axum"] }
 utoipa = { version = "4.2.0", features = ["axum_extras", "uuid"] }
@@ -40,3 +40,5 @@ crypto = { version = "0.5.1", features = ["digest"] }
 sha2 = "0.10.8"
 base16ct = { version = "0.2.0", features = ["alloc"] }
 casta_protocol = { path = "../casta_protocol" }
+lightningcss = "1.0.0-alpha.55"
+minify-js = "0.6.0"

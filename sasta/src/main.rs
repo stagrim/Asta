@@ -1,6 +1,4 @@
-use std::{
-    collections::HashSet, env, net::SocketAddr, path::PathBuf, str::FromStr, sync::Arc, vec,
-};
+use std::{collections::HashSet, env, net::SocketAddr, str::FromStr, sync::Arc, vec};
 
 use axum::{
     extract::{ConnectInfo, Path, State, WebSocketUpgrade},
@@ -23,7 +21,7 @@ use utoipa_swagger_ui::SwaggerUi;
 use uuid::Uuid;
 
 use crate::{
-    casta::casta::{casta_index, compute_hash},
+    casta::casta::{casta_index, compute_hash, minify},
     connection::connection::client_connection,
     file_server::file_server::{add_files, get_all_paths, get_file, FileServer},
     store::schedule,
@@ -83,16 +81,14 @@ async fn main() {
     dotenv().ok();
     let redis_url = env::var("REDIS_URL").expect("REDIS_URL variable must be set");
     let sasta_address = env::var("ADDRESS").unwrap_or("127.0.0.1:8080".into());
-    let htmx_hash = compute_hash(vec![
-        &std::env::current_exe().unwrap(),
-        &PathBuf::from("./assets/style.css"),
-        &PathBuf::from("./assets/script.js"),
-    ]);
     let subscriber = FmtSubscriber::builder()
         .with_span_events(FmtSpan::NEW)
         .with_max_level(Level::TRACE)
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
+
+    minify();
+    let htmx_hash = compute_hash();
 
     let store = Arc::new(Store::new(&redis_url).await);
     let file_server = Arc::new(Mutex::new(FileServer::new(&redis_url).await));

@@ -4,7 +4,7 @@ document.addEventListener("htmx:wsOpen", (e) => {
     const test = {
         type: "Hello",
         data: {
-            uuid: uuid,
+            uuid,
             hostname: "htmx-client",
             htmx: true,
         },
@@ -31,6 +31,8 @@ document.addEventListener("htmx:wsAfterMessage", (e) => {
                 if (hash !== welcome.htmx_hash) {
                     console.log("Hashes were not identical, reloading...")
                     window.location.reload(true)
+                    // Must be here, see https://github.com/wilsonzlin/minify-js/issues/21
+                    return
                 } else {
                     console.log("Hashes are identical")
                 }
