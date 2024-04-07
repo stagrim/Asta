@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { form_action } from '$lib/form_action';
-	import TypePicker from '../../lib/TypePicker.svelte';
+	import TypePicker from '$lib/TypePicker.svelte';
 	import type { PageData } from './$types';
 
 	export let data: PageData;

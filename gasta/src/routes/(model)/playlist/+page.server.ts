@@ -1,5 +1,5 @@
 import type { Actions } from '@sveltejs/kit';
-import type { CreatePlaylist } from '../../api_bindings/create/CreatePlaylist';
+import type { CreatePlaylist } from '$lib/api_bindings/create/CreatePlaylist';
 import { create } from '$lib/server/actions';
 
 export const actions = {

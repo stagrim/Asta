@@ -1,6 +1,6 @@
 import type { Actions } from '@sveltejs/kit';
-import { delete_action, update } from '../../../lib/server/actions';
-import type { UpdatePlaylist } from '../../../api_bindings/update/UpdatePlaylist';
+import { delete_action, update } from '$lib/server/actions';
+import type { UpdatePlaylist } from '$lib/api_bindings/update/UpdatePlaylist';
 
 const type = 'Playlist';
 

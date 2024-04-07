@@ -1,8 +1,8 @@
 // See https://kit.svelte.dev/docs/types#app
 
-import type { Display } from './api_bindings/read/Display';
-import type { Playlist } from './api_bindings/read/Playlist';
-import type { Schedule } from './api_bindings/read/Schedule';
+import type { Display } from '$lib/api_bindings/read/Display';
+import type { Playlist } from '$lib/api_bindings/read/Playlist';
+import type { Schedule } from '$lib/api_bindings/read/Schedule';
 
 // for information about these interfaces
 declare global {

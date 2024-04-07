@@ -2,10 +2,11 @@
 	import { form_action } from '$lib/form_action';
 	import { enhance } from '$app/forms';
 	import lodash from 'lodash';
-	import type { Playlist } from '../api_bindings/read/Playlist';
-	import type { Display } from '../api_bindings/read/Display';
-	import type { Schedule } from '../api_bindings/read/Schedule';
+	import type { Playlist } from '$lib/api_bindings/read/Playlist';
+	import type { Display } from '$lib/api_bindings/read/Display';
+	import type { Schedule } from '$lib/api_bindings/read/Schedule';
 	import { getModalStore } from '@skeletonlabs/skeleton';
+	import type { State } from '../app';
 
 	export let uuid: string;
 	export let type: State;

@@ -7,10 +7,10 @@
 
 	import { page } from '$app/stores';
 	import type { PageData } from './$types';
-	import type { PlaylistItem } from '../../../api_bindings/update/PlaylistItem';
-	import type { Playlist } from '../../../api_bindings/read/Playlist';
+	import type { PlaylistItem } from '$lib/api_bindings/update/PlaylistItem';
+	import type { Playlist } from '$lib/api_bindings/read/Playlist';
 	import TypePicker from '$lib/TypePicker.svelte';
-	import type { Schedule } from '../../../api_bindings/read/Schedule';
+	import type { Schedule } from '$lib/api_bindings/read/Schedule';
 	import { flip } from 'svelte/animate';
 	import UpdateForm from '$lib/UpdateForm.svelte';
 

@@ -1,5 +1,5 @@
 import type { Actions } from '@sveltejs/kit';
-import type { CreateDisplay } from '../../api_bindings/create/CreateDisplay';
+import type { CreateDisplay } from '$lib/api_bindings/create/CreateDisplay';
 import { create } from '$lib/server/actions';
 
 export const actions = {

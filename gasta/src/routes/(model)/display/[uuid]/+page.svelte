@@ -2,7 +2,7 @@
 	import copy from 'svelte-awesome/icons/copy';
 
 	import { page } from '$app/stores';
-	import TypePicker from '../../../lib/TypePicker.svelte';
+	import TypePicker from '$lib/TypePicker.svelte';
 	import UpdateForm from '$lib/UpdateForm.svelte';
 	import { toastStore } from '$lib/stores';
 	import type { PageData } from './$types';

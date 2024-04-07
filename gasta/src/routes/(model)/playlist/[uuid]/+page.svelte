@@ -10,7 +10,7 @@
 	import type { PageData } from './$types';
 	import { flip } from 'svelte/animate';
 	import UpdateForm from '$lib/UpdateForm.svelte';
-	import type { Playlist } from '../../../api_bindings/read/Playlist';
+	import type { Playlist } from '$lib/api_bindings/read/Playlist';
 
 	export let data: PageData;
 

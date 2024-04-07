@@ -1,6 +1,6 @@
 import { env } from '$env/dynamic/private';
 import { fail, redirect } from '@sveltejs/kit';
-import type { Payload } from '../../api_bindings/read/Payload';
+import type { Payload } from '$lib/api_bindings/read/Payload';
 
 export type type = 'Display' | 'Playlist' | 'Schedule';
 

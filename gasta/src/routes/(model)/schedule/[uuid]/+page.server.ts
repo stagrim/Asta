@@ -1,6 +1,6 @@
 import type { Actions } from '@sveltejs/kit';
-import { delete_action, update } from '../../../lib/server/actions';
-import type { UpdateSchedule } from '../../../api_bindings/update/UpdateSchedule';
+import { delete_action, update } from '$lib/server/actions';
+import type { UpdateSchedule } from '$lib/api_bindings/update/UpdateSchedule';
 
 const type = 'Schedule';
 

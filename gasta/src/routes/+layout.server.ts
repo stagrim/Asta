@@ -1,10 +1,10 @@
 import { env } from '$env/dynamic/private';
-import type { Payload } from '../api_bindings/read/Payload';
+import type { Payload } from '$lib/api_bindings/read/Payload';
 import type { State } from '../app';
 import type { LayoutServerLoad } from './$types';
-import type { Display } from '../api_bindings/read/Display';
-import type { Playlist } from '../api_bindings/read/Playlist';
-import type { Schedule } from '../api_bindings/read/Schedule';
+import type { Display } from '$lib/api_bindings/read/Display';
+import type { Playlist } from '$lib/api_bindings/read/Playlist';
+import type { Schedule } from '$lib/api_bindings/read/Schedule';
 
 export const load = (async ({ locals }) => {
 	if (!locals.user) {
