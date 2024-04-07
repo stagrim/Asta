@@ -2,37 +2,31 @@
 	import copy from 'svelte-awesome/icons/copy';
 
 	import { page } from '$app/stores';
-	import { getModalStore } from '@skeletonlabs/skeleton';
-	import type { PageData } from './$types';
 	import TypePicker from '../../../lib/TypePicker.svelte';
-	import { enhance } from '$app/forms';
-	import { form_action } from '$lib/form_action';
+	import UpdateForm from '$lib/UpdateForm.svelte';
 	import { toastStore } from '$lib/stores';
+	import type { PageData } from './$types';
 	import { Icon } from 'svelte-awesome';
 
 	export let data: PageData;
 
-	const modalStore = getModalStore();
-
 	$: uuid = $page.params.uuid;
-	const get_display = (uuid) => structuredClone(data.display.content.get(uuid));
-	$: display = get_display(uuid);
 
-	let delete_button: HTMLButtonElement;
+	let item;
 </script>
 
 <!-- svelte-ignore a11y-click-events-have-key-events -->
 <!-- svelte-ignore a11y-no-static-element-interactions -->
 <!-- svelte-ignore a11y-missing-attribute -->
-<form class="card m-4" method="POST" use:enhance={() => form_action}>
-	<section class="p-4">
+<UpdateForm bind:type={data.display} bind:uuid bind:item>
+	{#if item}
 		<span class="mb-5">
 			<span>Uuid</span>
 			<div
 				class="input-group input-group-divider grid-cols-[1fr_auto] cursor-pointer"
 				on:click={async (_) => {
 					try {
-						await navigator.clipboard.writeText(display.uuid);
+						await navigator.clipboard.writeText(item.uuid);
 						$toastStore.trigger({
 							message: 'Display Uuid copied to clipboard',
 							background: 'variant-filled-primary',
@@ -48,7 +42,7 @@
 					}
 				}}
 			>
-				<input class="input text-surface-400" type="text" readonly value={display.uuid} />
+				<input class="input text-surface-400" type="text" readonly value={item.uuid} />
 				<a><Icon data={copy} scale={0.75} /></a>
 			</div>
 		</span>
@@ -61,31 +55,13 @@
 				class="input"
 				type="text"
 				placeholder="Name must be unique"
-				bind:value={display.name}
+				bind:value={item.name}
 			/>
 		</label>
 
-		<TypePicker name="schedule" bind:chosen_type={display.schedule} types={data.schedule} />
-
-		<div class="flex w-full justify-center gap-4 mt-5">
-			<button
-				type="button"
-				class="btn variant-ringed-error"
-				on:click={() =>
-					modalStore.trigger({
-						type: 'confirm',
-						title: `Delete '${display.name}'?`,
-						body: `Are your sure you want to delete Display '${display.name}'?`,
-						response: (r) => (r ? delete_button.click() : '')
-					})}>Delete</button
-			>
-			<!-- Disable button when nothing is changed -->
-			<button class="btn variant-filled-primary" formaction="?/update">Apply</button>
-		</div>
-
-		<button class="hidden" formaction="?/delete" bind:this={delete_button} />
-	</section>
-</form>
+		<TypePicker name="schedule" bind:chosen_type={item.schedule} types={data.schedule} />
+	{/if}
+</UpdateForm>
 
 <style>
 	input[readonly] {

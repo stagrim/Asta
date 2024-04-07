@@ -1,5 +1,4 @@
 import { env } from '$env/dynamic/private';
-import { error, fail } from '@sveltejs/kit';
 import type { Payload } from '../api_bindings/read/Payload';
 import type { State } from '../app';
 import type { LayoutServerLoad } from './$types';

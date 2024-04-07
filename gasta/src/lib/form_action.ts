@@ -1,6 +1,5 @@
 import { applyAction } from '$app/forms';
 import { goto, invalidateAll } from '$app/navigation';
-import { getToastStore } from '@skeletonlabs/skeleton';
 import { get } from 'svelte/store';
 import { toastStore } from './stores';
 

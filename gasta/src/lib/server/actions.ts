@@ -7,6 +7,7 @@ export type type = 'Display' | 'Playlist' | 'Schedule';
 interface Input {
 	body: { [key: string]: any };
 	type: type;
+	/** Must have data key containing JSON value to be sent */
 	data: FormData;
 	uuid?: string;
 }
@@ -27,7 +28,7 @@ const return_handling = async ({
 	let payload: Payload;
 	try {
 		payload = JSON.parse(text);
-		console.log(payload);
+		// console.log(payload);
 	} catch {
 		console.log(text);
 		return fail(400, { message: text });
@@ -67,32 +68,18 @@ export const create = async ({ body, type, data }: Input) => {
 
 export const update = async ({ body, data, type, uuid }: Input) => {
 	if (!uuid) return fail(400, { message: `Missing Uuid` });
-
-	for (const key of Object.keys(body)) {
-		const field = data.get(key);
-		if (field) {
-			try {
-				body[key] = JSON.parse(field.toString());
-			} catch (e) {
-				body[key] = field.toString();
-			}
-		} else {
-			return fail(400, { message: `${key} field was empty` });
-		}
-	}
-
-	console.log(JSON.stringify(body));
+	if (!data.has('data')) return fail(400, { message: `No data field present in form request` });
 
 	const res = await fetch(`${env.SERVER_URL}/api/${type.toLocaleLowerCase()}/${uuid}`, {
 		method: 'PUT',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify(body)
+		body: data.get('data')
 	});
 
 	return await return_handling({
 		res,
 		type,
-		ret: (_) => ({ message: 'Display updated' })
+		ret: (_) => ({ message: `${type} updated` })
 	});
 };
 
