@@ -1,4 +1,4 @@
-import { invalidate_session, login } from '$lib/server/auth';
+import { invalidate_session, login, session_username } from '$lib/server/auth';
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -27,15 +27,20 @@ export const actions = {
 		const res = await login(username, password, user_agent);
 
 		if (res.result === 'success') {
+			console.log({ type: 'login', name: username, message: 'Successful login' });
+
 			cookies.set('session-id', res.session_id, res.cookie);
 		} else {
+			console.log({ type: 'login', name: username, message: 'Login attempt rejected' });
 			return { msg: res.msg, username };
 		}
 		throw redirect(303, '/');
 	},
 	logout: ({ cookies }) => {
+		const username = session_username(cookies.get('session-id')!);
 		invalidate_session(cookies.get('session-id')!);
-		cookies.delete('session-id');
+		cookies.delete('session-id', { path: '/' });
+		console.log({ type: 'logout', name: username, message: 'Successful logout' });
 		throw redirect(303, '/login');
 	}
 } satisfies Actions;

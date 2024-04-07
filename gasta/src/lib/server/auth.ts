@@ -11,7 +11,7 @@ export type Login =
 	| {
 			result: 'success';
 			session_id: string;
-			cookie: CookieSerializeOptions;
+			cookie: CookieSerializeOptions & { path: string };
 	  }
 	| {
 			result: 'failure';

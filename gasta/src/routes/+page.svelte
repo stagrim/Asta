@@ -41,7 +41,7 @@
 				}}>Log out</button
 			>
 
-			<button class="hidden" formaction="/login?/logout" bind:this={logout_submit_button} />
+			<button class="hidden" bind:this={logout_submit_button} />
 		</form>
 	{/if}
 
