@@ -1,4 +1,8 @@
 <script lang="ts">
+	import { Icon } from 'svelte-awesome';
+	import calendar from 'svelte-awesome/icons/calendar';
+	import tv from 'svelte-awesome/icons/tv';
+
 	import { form_action } from '$lib/form_action';
 	import { enhance } from '$app/forms';
 	import lodash from 'lodash';
@@ -11,6 +15,10 @@
 	export let uuid: string;
 	export let type: State;
 	export let item: Display;
+	/** Map with entries where current type could have an item depending on it; for example a Schedule that may depend on the current Playlist */
+	export let dependant_state:
+		| Exclude<State, { type: 'Playlist'; content: Map<string, Playlist> }>
+		| undefined;
 
 	$: map = type.content;
 	// State is cloned from last committed value for
@@ -20,7 +28,40 @@
 	const modalStore = getModalStore();
 
 	let delete_button: HTMLButtonElement;
+
+	const filter_state = (
+		uuid: string
+	): ((predicate: [string, Display] | [string, Schedule]) => boolean) => {
+		if (dependant_state?.type === 'Display') {
+			return ([k, v]) => (v as Display).schedule === uuid;
+		} else {
+			return ([k, v]) =>
+				(v as Schedule).playlist === uuid ||
+				(v as Schedule).scheduled?.some((i) => i.playlist === uuid);
+		}
+	};
+
+	$: dependents = dependant_state
+		? [...dependant_state.content.entries()].filter(filter_state(uuid))
+		: null;
 </script>
+
+{#if dependant_state && dependents}
+	<div class="card m-4 p-4">
+		<div class="flex overflow-scroll hide-scrollbar gap-2">
+			{#if dependents.length < 1}
+				<i class="text-surface-300">No dependents... :(</i>
+			{/if}
+			{#each dependents as [uuid, { name }] (uuid)}
+				<a href={`/${dependant_state.type.toLowerCase()}/${uuid}`}>
+					<span class="chip variant-ghost-primary gap-1"
+						><Icon data={dependant_state.type === 'Display' ? tv : calendar}></Icon> &nbsp;{name}</span
+					>
+				</a>
+			{/each}
+		</div>
+	</div>
+{/if}
 
 <form
 	class="card m-4"

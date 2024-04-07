@@ -36,7 +36,12 @@
 	};
 </script>
 
-<UpdateForm bind:type={data.playlist} bind:uuid bind:item={playlist}>
+<UpdateForm
+	bind:type={data.playlist}
+	bind:dependant_state={data.schedule}
+	bind:uuid
+	bind:item={playlist}
+>
 	{#if playlist}
 		<label class="label mb-5">
 			<span>Name</span>

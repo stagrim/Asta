@@ -29,7 +29,7 @@
 	};
 </script>
 
-<UpdateForm bind:type={data.schedule} bind:uuid bind:item>
+<UpdateForm bind:type={data.schedule} bind:dependant_state={data.display} bind:uuid bind:item>
 	{#if item}
 		<label class="label mb-5">
 			<span>Name</span>
