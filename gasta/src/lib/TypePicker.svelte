@@ -8,6 +8,7 @@
 
 	/** Bind value to react to user changes */
 	export let chosen_type: string = '';
+
 	$: types_values = [...types.content.values()].sort((a, b) => a.name.localeCompare(b.name));
 
 	/** Name property of the select element for form */
@@ -26,8 +27,12 @@
 			{/each}
 		</select>
 		<!-- svelte-ignore a11y-missing-attribute -->
-		<a href={`/${types.type.toLocaleLowerCase()}/${chosen_type}`}
-			><Icon data={arrowRight} scale={0.75} /></a
-		>
+		<a class="h-[40px]" href={`/${types.type.toLocaleLowerCase()}/${chosen_type}`}>
+			<div>
+				<!-- <button type="button"> -->
+				<Icon data={arrowRight} scale={0.75} />
+				<!-- </button> -->
+			</div>
+		</a>
 	</div>
 </label>
