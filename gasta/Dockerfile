@@ -1,7 +1,7 @@
 FROM node:lts-slim
 
 WORKDIR /
-COPY . .
+COPY gasta .
 
 RUN npm i -g pnpm
 RUN pnpm i
