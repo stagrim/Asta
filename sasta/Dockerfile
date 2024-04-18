@@ -29,6 +29,6 @@ RUN if [ "$TARGETARCH" = "arm" ] && [ "$TARGETVARIANT" = "v7" ];\
 FROM debian:stable-slim
 
 COPY --from=build /sasta/target/release/sasta /
-COPY sasta/assets /
+COPY sasta/assets /assets
 
 CMD ["/sasta"]
