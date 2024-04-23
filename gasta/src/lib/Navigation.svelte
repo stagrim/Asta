@@ -57,12 +57,14 @@
 		filter: string
 	) => {
 		if (filter) {
-			const regex = new RegExp(`(${filter})`, 'gi');
 			return kind
-				.filter(({ title_name }) => regex.test(title_name))
+				.filter(({ title_name }) => RegExp(`(${filter})`, 'gi').test(title_name))
 				.map((k) =>
 					Object.assign(k, {
-						title_name: k.title_name.replace(regex, '<span class="highlight">$1</span>')
+						title_name: k.title_name.replace(
+							RegExp(`(${filter})`, 'gi'),
+							'<span class="highlight">$1</span>'
+						)
 					})
 				);
 		}
