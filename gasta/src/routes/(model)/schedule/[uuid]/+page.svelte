@@ -13,6 +13,7 @@
 	import type { Schedule } from '$lib/api_bindings/read/Schedule';
 	import { flip } from 'svelte/animate';
 	import UpdateForm from '$lib/UpdateForm.svelte';
+	import CronField from './CronField.svelte';
 
 	export let data: PageData;
 
@@ -27,9 +28,35 @@
 		item.scheduled![a] = item.scheduled![b];
 		item.scheduled![b] = tmp;
 	};
+
+	const throwless = (fn: Function) => {
+		try {
+			fn();
+			return true;
+		} catch (e) {
+			console.log(e);
+			return false;
+		}
+	};
+
+	let valid_crons: boolean[] = [];
+
+	const set_valid = (index: number, value: boolean) => {
+		valid_crons[index] = value;
+	};
+	$: console.log(valid_crons);
+	$: console.log(`enabled: ${update_enabled}`);
+
+	$: update_enabled = valid_crons.every((a) => a);
 </script>
 
-<UpdateForm bind:type={data.schedule} bind:dependant_state={data.display} bind:uuid bind:item>
+<UpdateForm
+	bind:type={data.schedule}
+	bind:dependant_state={data.display}
+	bind:uuid
+	bind:item
+	bind:update_enabled
+>
 	{#if item}
 		<label class="label mb-5">
 			<span>Name</span>
@@ -60,17 +87,16 @@
 		{#if item.scheduled}
 			{#each item.scheduled as scheduled_playlist, i (scheduled_playlist.playlist)}
 				<div class="card mb-4" animate:flip={{ duration: 300 }}>
-					<header class="card-header">
-						<div class="flex w-full justify-center gap-4">
-							{#if i > 0}
-								<button
-									type="button"
-									class="btn-icon btn-icon-sm variant-outline-primary"
-									on:click={() => swap_item(i, i - 1)}
-								>
-									<Icon data={arrowUp} scale="0.75" />
-								</button>
-							{/if}
+					<section class="p-4 lg:flex lg:flex-row-reverse">
+						<div class="flex justify-center gap-4 lg:flex-col lg:ml-4">
+							<button
+								type="button"
+								class="btn-icon btn-icon-sm variant-filled-primary"
+								class:invisible={i <= 0}
+								on:click={() => swap_item(i, i - 1)}
+							>
+								<Icon data={arrowUp} scale="0.75" />
+							</button>
 							<button
 								type="button"
 								class="btn-icon btn-icon-sm variant-filled-error"
@@ -81,42 +107,34 @@
 							>
 								<Icon data={trash} />
 							</button>
-							{#if i < item.scheduled.length - 1}
-								<button
-									type="button"
-									class="btn-icon btn-icon-sm variant-outline-primary"
-									on:click={() => swap_item(i, i + 1)}
-								>
-									<Icon data={arrowDown} scale="0.75" />
-								</button>
-							{/if}
+							<button
+								type="button"
+								class="btn-icon btn-icon-sm variant-filled-primary"
+								class:invisible={i >= item.scheduled.length - 1}
+								on:click={() => swap_item(i, i + 1)}
+							>
+								<Icon data={arrowDown} scale="0.75" />
+							</button>
 						</div>
-					</header>
 
-					<section class="p-4">
-						<TypePicker types={data.playlist} bind:chosen_type={scheduled_playlist.playlist} />
+						<div class="w-full">
+							<TypePicker types={data.playlist} bind:chosen_type={scheduled_playlist.playlist} />
+							<div class="lg:flex gap-6 mt-2">
+								<CronField
+									title={'Start'}
+									index={2 * i}
+									{set_valid}
+									bind:value={scheduled_playlist.start}
+								></CronField>
 
-						<label class="label mb-5">
-							<span>Start</span>
-							<input
-								required
-								class="input"
-								type="text"
-								placeholder="ss mm HH dd mm weekday YYYY"
-								bind:value={scheduled_playlist.start}
-							/>
-						</label>
-
-						<label class="label mb-5">
-							<span>End</span>
-							<input
-								required
-								class="input"
-								type="text"
-								placeholder=""
-								bind:value={scheduled_playlist.end}
-							/>
-						</label>
+								<CronField
+									title={'End'}
+									index={2 * i + 1}
+									{set_valid}
+									bind:value={scheduled_playlist.end}
+								></CronField>
+							</div>
+						</div>
 					</section>
 				</div>
 			{/each}

@@ -15,6 +15,7 @@
 	export let uuid: string;
 	export let type: State;
 	export let item: Display;
+	export let update_enabled: boolean = true;
 	/** Map with entries where current type could have an item depending on it; for example a Schedule that may depend on the current Playlist */
 	export let dependant_state:
 		| Exclude<State, { type: 'Playlist'; content: Map<string, Playlist> }>
@@ -46,6 +47,7 @@
 		: null;
 </script>
 
+<!--  Give fields linked to id of uuid to highlight how they are dependant on link -->
 {#if dependant_state && dependents}
 	<div class="card m-4 p-4">
 		<div class="flex overflow-scroll hide-scrollbar gap-2">
@@ -104,7 +106,7 @@
 
 			<button
 				class="btn variant-filled-primary"
-				disabled={lodash.isEqual(item, map.get(uuid))}
+				disabled={lodash.isEqual(item, map.get(uuid)) || !update_enabled}
 				formaction="?/update">Apply</button
 			>
 		</div>
