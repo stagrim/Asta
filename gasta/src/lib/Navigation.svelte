@@ -73,8 +73,12 @@
 </script>
 
 <!-- svelte-ignore a11y-click-events-have-key-events -->
+<!-- svelte-ignore a11y-autofocus -->
 <nav class="list-nav">
 	<div class="input-group input-group-divider grid-cols-[1fr_auto] mb-1">
+		<!-- Stupid solution to avoid having mobiles autofocus and bring up the keyboard on the filter input field -->
+		<input type="hidden" autofocus="true" />
+
 		<input type="text" class="input" placeholder="filter" bind:value={filter_value} />
 		{#if filter_value === undefined || filter_value === ''}
 			<div class="input-group-shim" in:fade><Icon data={filter}></Icon></div>
