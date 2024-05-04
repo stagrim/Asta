@@ -18,16 +18,20 @@
 <label class="label">
 	<span>{types.type}</span>
 
-	<div
-		class="flex flex-row items-center input-group input-group-divider grid-cols-[1fr_auto] cursor-pointer"
-	>
-		<select required {name} class="select" bind:value={chosen_type}>
+	<div class="flex flex-row items-center input-group input-group-divider cursor-pointer">
+		<select
+			required
+			{name}
+			class="select"
+			style="min-width: unset !important;"
+			bind:value={chosen_type}
+		>
 			{#each types_values as type (type.uuid)}
 				<option value={type.uuid}>{type.name}</option>
 			{/each}
 		</select>
 		<!-- svelte-ignore a11y-missing-attribute -->
-		<a class="h-[40px]" href={`/${types.type.toLocaleLowerCase()}/${chosen_type}`}>
+		<a class="h-[40px] w-10" href={`/${types.type.toLocaleLowerCase()}/${chosen_type}`}>
 			<div>
 				<!-- <button type="button"> -->
 				<Icon data={arrowRight} scale={0.75} />
