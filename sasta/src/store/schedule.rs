@@ -1,19 +1,20 @@
 use std::str::FromStr;
 
 use chrono::{DateTime, Local};
+use cron::Schedule as CronSchedule;
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 use ts_rs::TS;
 use uuid::Uuid;
-use cron::Schedule as CronSchedule;
 
 #[derive(Debug, Clone)]
 enum ScheduledItem {
     Schedule {
         start: CronSchedule,
         end: CronSchedule,
-        playlist: Uuid
+        playlist: Uuid,
     },
-    Fallback (Uuid)
+    Fallback(Uuid),
 }
 
 #[derive(Clone)]
@@ -23,14 +24,14 @@ enum NextMoment {
     /// Moment found, but does not change active playlist, a moment from tested scheduled time may exist
     Continue(DateTime<Local>),
     /// No future scheduled times exists, a moment will not be found
-    Exhausted
+    Exhausted,
 }
 
 impl From<&NextMoment> for bool {
     fn from(value: &NextMoment) -> Self {
         match value {
             NextMoment::Exhausted => false,
-            _ => true
+            _ => true,
         }
     }
 }
@@ -39,23 +40,31 @@ impl From<&NextMoment> for bool {
 pub struct Schedule {
     pub name: String,
     pub playlist: Uuid,
-    schedules: Vec<ScheduledItem>
+    schedules: Vec<ScheduledItem>,
 }
 
 impl Schedule {
-    pub fn new(name: String, schedules_input: Vec<ScheduledPlaylistInput>, playlist: Uuid) -> Result<Self, String> {
+    pub fn new(
+        name: String,
+        schedules_input: Vec<ScheduledPlaylistInput>,
+        playlist: Uuid,
+    ) -> Result<Self, String> {
         let mut schedules = Vec::with_capacity(schedules_input.len());
 
         for s in schedules_input {
             schedules.push(ScheduledItem::Schedule {
                 start: Self::str_to_cron(&s.start)?,
                 end: Self::str_to_cron(&s.end)?,
-                playlist: s.playlist
+                playlist: s.playlist,
             })
         }
         schedules.push(ScheduledItem::Fallback(playlist));
 
-        Ok(Schedule { name, playlist, schedules })
+        Ok(Schedule {
+            name,
+            playlist,
+            schedules,
+        })
     }
 
     fn str_to_cron(s: &str) -> Result<CronSchedule, String> {
@@ -73,36 +82,51 @@ impl Schedule {
             // Check last schedules moment if any
             Some(back) if &back <= from => Some(back),
             // No scheduled moments have existed before
-            _ => None
+            _ => None,
         }
     }
 
     /// Get the current active playlist in schedule at the provided point in time
     pub fn current_playlist(&self, time: &DateTime<Local>) -> Uuid {
-        self.schedules.iter().find_map(|schedule| {
-            // A branch returning a Some signals last scheduled moment was a start action, None is used otherwise.
-            // find_map returns the value of the first closure to return a Some, and since all Vectors in Scheduled
-            // include a fallback resulting in a guaranteed Some, unwrap may safely be used to avoid returning an Option
-            match schedule {
-                ScheduledItem::Schedule { start, end, playlist } => {
-                    let (last_start, last_end) =
-                        (Self::previous_time(time, start), Self::previous_time(time, end));
+        self.schedules
+            .iter()
+            .find_map(|schedule| {
+                // A branch returning a Some signals last scheduled moment was a start action, None is used otherwise.
+                // find_map returns the value of the first closure to return a Some, and since all Vectors in Scheduled
+                // include a fallback resulting in a guaranteed Some, unwrap may safely be used to avoid returning an Option
+                match schedule {
+                    ScheduledItem::Schedule {
+                        start,
+                        end,
+                        playlist,
+                    } => {
+                        let (last_start, last_end) = (
+                            Self::previous_time(time, start),
+                            Self::previous_time(time, end),
+                        );
 
-                    if let (Some(last_start), Some(last_end)) = (last_start, last_end) {
-                        // If both previous start and end moments were found, return Some if the most recent one was a start action
-                        match last_start.cmp(&last_end) {
-                            std::cmp::Ordering::Greater => Some(playlist.clone()),
-                            std::cmp::Ordering::Less => None,
-                            std::cmp::Ordering::Equal => panic!("Start and end action happening at the same moment ({})", last_start.to_string()),
+                        if let (Some(last_start), Some(last_end)) = (last_start, last_end) {
+                            // If both previous start and end moments were found, return Some if the most recent one was a start action
+                            match last_start.cmp(&last_end) {
+                                std::cmp::Ordering::Greater => Some(playlist.clone()),
+                                std::cmp::Ordering::Less => None,
+                                std::cmp::Ordering::Equal => {
+                                    warn!(
+                                        "Start and end action happening at the same moment ({})",
+                                        last_start.to_string()
+                                    );
+                                    None
+                                }
+                            }
+                        } else {
+                            // If at most one previous moment was found, return Some if it was a last_start
+                            last_start.and_then(|_| Some(playlist.clone()))
                         }
-                    } else {
-                        // If at most one previous moment was found, return Some if it was a last_start
-                        last_start.and_then(|_| Some(playlist.clone()))
                     }
-                },
-                ScheduledItem::Fallback(uuid) => Some(uuid.clone()),
-            }
-        }).unwrap()
+                    ScheduledItem::Fallback(uuid) => Some(uuid.clone()),
+                }
+            })
+            .unwrap()
     }
 
     // fn get_fallback(&self) -> Uuid {
@@ -191,7 +215,7 @@ impl Schedule {
 
             // Check if all results are exhausted and exits if that is the case
             if let None = future_moments.iter().find(|(res, _)| res.into()) {
-                return None
+                return None;
             }
 
             // Checks the lowest timestamp of all results (trying to exclude Exhausted) and returns the result if
@@ -199,27 +223,33 @@ impl Schedule {
             // priority and `min_by_key` takes the first value if found equally minimum, the correct playlist is returned.
             // Should not even be an issue though since an overshadowed schedule (only was to get two equal Moments) would
             // result in an Continue result from closure since it is overshadowed with lower priority
-            if let Some((NextMoment::Moment(m), _)) = future_moments.iter().min_by_key(|(res, _)| match res {
-                NextMoment::Moment(m) => m.time,
-                NextMoment::Continue(t) => *t,
-                NextMoment::Exhausted => max_date
-            }) {
-                return Some(m.to_owned())
+            if let Some((NextMoment::Moment(m), _)) =
+                future_moments.iter().min_by_key(|(res, _)| match res {
+                    NextMoment::Moment(m) => m.time,
+                    NextMoment::Continue(t) => *t,
+                    NextMoment::Exhausted => max_date,
+                })
+            {
+                return Some(m.to_owned());
             }
         }
     }
 
     /// True if the Schedule has any scheduled playlists
     pub fn has_scheduled_playlists(&self) -> bool {
-        return !self.schedules.is_empty()
+        return !self.schedules.is_empty();
     }
 
     /// Returns Vec of the Uuids of all playlists (fallback + any scheduled) which the schedule contains
     pub fn all_playlists(&self) -> Vec<&Uuid> {
-        self.schedules.iter().map(|s| match s {
-            ScheduledItem::Schedule { playlist, .. }
-            | ScheduledItem::Fallback(playlist) => playlist,
-        }).collect()
+        self.schedules
+            .iter()
+            .map(|s| match s {
+                ScheduledItem::Schedule { playlist, .. } | ScheduledItem::Fallback(playlist) => {
+                    playlist
+                }
+            })
+            .collect()
     }
 }
 
@@ -238,7 +268,7 @@ pub struct Moment {
 pub struct ScheduleInput {
     pub name: String,
     pub scheduled: Option<Vec<ScheduledPlaylistInput>>,
-    pub playlist: Uuid
+    pub playlist: Uuid,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, TS)]
@@ -247,14 +277,20 @@ pub struct ScheduledPlaylistInput {
     #[ts(type = "string")]
     pub playlist: Uuid,
     pub start: String,
-    pub end: String
+    pub end: String,
 }
 
 impl<'de> Deserialize<'de> for Schedule {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where D: serde::Deserializer<'de> {
+    where
+        D: serde::Deserializer<'de>,
+    {
         let input = ScheduleInput::deserialize(deserializer)?;
-        match Schedule::new(input.name, input.scheduled.unwrap_or(vec![]), input.playlist) {
+        match Schedule::new(
+            input.name,
+            input.scheduled.unwrap_or(vec![]),
+            input.playlist,
+        ) {
             Ok(s) => Ok(s),
             Err(s) => Err(serde::de::Error::custom(s)),
         }
@@ -263,7 +299,9 @@ impl<'de> Deserialize<'de> for Schedule {
 
 impl Serialize for Schedule {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where S: serde::Serializer {
+    where
+        S: serde::Serializer,
+    {
         ScheduleInput::serialize(&self.to_owned().into(), serializer)
     }
 }
@@ -278,14 +316,22 @@ impl From<Schedule> for ScheduleInput {
         };
 
         let scheduled = {
-            let vec = value.schedules.iter().filter_map(|s| match s {
-                ScheduledItem::Schedule { start, end, playlist } => Some(ScheduledPlaylistInput {
-                    playlist: *playlist,
-                    start: start.to_string(),
-                    end: end.to_string(),
-                }),
-                ScheduledItem::Fallback(_) => None,
-            }).collect::<Vec<_>>();
+            let vec = value
+                .schedules
+                .iter()
+                .filter_map(|s| match s {
+                    ScheduledItem::Schedule {
+                        start,
+                        end,
+                        playlist,
+                    } => Some(ScheduledPlaylistInput {
+                        playlist: *playlist,
+                        start: start.to_string(),
+                        end: end.to_string(),
+                    }),
+                    ScheduledItem::Fallback(_) => None,
+                })
+                .collect::<Vec<_>>();
 
             (!vec.is_empty()).then_some(vec)
         };
@@ -339,34 +385,90 @@ mod test {
                 end: "* 0 17 * * * *".to_string(),
             },
         ];
-        let schedule: Schedule = Schedule::new("test".to_string(), schedules, default_uuid).unwrap();
+        let schedule: Schedule =
+            Schedule::new("test".to_string(), schedules, default_uuid).unwrap();
 
-        let first_schedule_start =
-            Moment { time: Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap(), playlist: scheduled_uuid };
+        let first_schedule_start = Moment {
+            time: Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap(),
+            playlist: scheduled_uuid,
+        };
 
-        let first_schedule_end =
-            Moment { time: Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap(), playlist: scheduled2_uuid };
+        let first_schedule_end = Moment {
+            time: Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap(),
+            playlist: scheduled2_uuid,
+        };
 
-        assert_eq!(first_schedule_start, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 9, 59, 59).unwrap()).unwrap());
-        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap()).unwrap());
-        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 1).unwrap()).unwrap());
+        assert_eq!(
+            first_schedule_start,
+            schedule
+                .next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 9, 59, 59).unwrap())
+                .unwrap()
+        );
+        assert_eq!(
+            first_schedule_end,
+            schedule
+                .next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap())
+                .unwrap()
+        );
+        assert_eq!(
+            first_schedule_end,
+            schedule
+                .next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 1).unwrap())
+                .unwrap()
+        );
 
-        let second_schedule_end =
-            Moment { time: Local.with_ymd_and_hms(2023, 4, 18, 15, 0, 0).unwrap(), playlist: scheduled3_uuid };
+        let second_schedule_end = Moment {
+            time: Local.with_ymd_and_hms(2023, 4, 18, 15, 0, 0).unwrap(),
+            playlist: scheduled3_uuid,
+        };
 
-        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 13, 59, 59).unwrap()).unwrap());
-        assert_eq!(second_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap()).unwrap());
-        assert_eq!(second_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 1).unwrap()).unwrap());
+        assert_eq!(
+            first_schedule_end,
+            schedule
+                .next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 13, 59, 59).unwrap())
+                .unwrap()
+        );
+        assert_eq!(
+            second_schedule_end,
+            schedule
+                .next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap())
+                .unwrap()
+        );
+        assert_eq!(
+            second_schedule_end,
+            schedule
+                .next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 1).unwrap())
+                .unwrap()
+        );
 
-        let forth_schedule_end =
-            Moment { time: Local.with_ymd_and_hms(2023, 4, 18, 17, 0, 0).unwrap(), playlist: default_uuid };
+        let forth_schedule_end = Moment {
+            time: Local.with_ymd_and_hms(2023, 4, 18, 17, 0, 0).unwrap(),
+            playlist: default_uuid,
+        };
 
-        let first_schedule_start_next_day =
-            Moment { time: Local.with_ymd_and_hms(2023, 4, 19, 10, 0, 0).unwrap(), playlist: scheduled_uuid };
+        let first_schedule_start_next_day = Moment {
+            time: Local.with_ymd_and_hms(2023, 4, 19, 10, 0, 0).unwrap(),
+            playlist: scheduled_uuid,
+        };
 
-        assert_eq!(forth_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 16, 59, 59).unwrap()).unwrap());
-        assert_eq!(first_schedule_start_next_day, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 17, 0, 0).unwrap()).unwrap());
-        assert_eq!(first_schedule_start_next_day, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 17, 0, 1).unwrap()).unwrap());
+        assert_eq!(
+            forth_schedule_end,
+            schedule
+                .next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 16, 59, 59).unwrap())
+                .unwrap()
+        );
+        assert_eq!(
+            first_schedule_start_next_day,
+            schedule
+                .next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 17, 0, 0).unwrap())
+                .unwrap()
+        );
+        assert_eq!(
+            first_schedule_start_next_day,
+            schedule
+                .next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 17, 0, 1).unwrap())
+                .unwrap()
+        );
     }
 
     #[test]
@@ -384,20 +486,38 @@ mod test {
                 playlist: scheduled2_uuid,
                 start: "0 0 10 * * * *".to_string(),
                 end: "0 0 14 * * * *".to_string(),
-            }
+            },
         ];
-        let schedule: Schedule = Schedule::new("test".to_string(), schedules, default_uuid).unwrap();
+        let schedule: Schedule =
+            Schedule::new("test".to_string(), schedules, default_uuid).unwrap();
 
         assert_eq!(
-            Moment { time: Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap(), playlist: scheduled_uuid },
-            schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 9, 59, 59).unwrap()).unwrap()
+            Moment {
+                time: Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap(),
+                playlist: scheduled_uuid
+            },
+            schedule
+                .next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 9, 59, 59).unwrap())
+                .unwrap()
         );
 
-        let first_schedule_end =
-            Moment { time: Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap(), playlist: default_uuid };
+        let first_schedule_end = Moment {
+            time: Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap(),
+            playlist: default_uuid,
+        };
 
-        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap()).unwrap());
-        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 1).unwrap()).unwrap());
+        assert_eq!(
+            first_schedule_end,
+            schedule
+                .next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap())
+                .unwrap()
+        );
+        assert_eq!(
+            first_schedule_end,
+            schedule
+                .next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 1).unwrap())
+                .unwrap()
+        );
     }
 
     #[test]
@@ -415,38 +535,105 @@ mod test {
                 playlist: scheduled2_uuid,
                 start: "0 0 11 * * * *".to_string(),
                 end: "0 0 15 * * * *".to_string(),
-            }
+            },
         ];
-        let schedule: Schedule = Schedule::new("test".to_string(), schedules, default_uuid).unwrap();
+        let schedule: Schedule =
+            Schedule::new("test".to_string(), schedules, default_uuid).unwrap();
 
         assert_eq!(
-            Moment { time: Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap(), playlist: scheduled_uuid },
-            schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 9, 59, 59).unwrap()).unwrap()
+            Moment {
+                time: Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap(),
+                playlist: scheduled_uuid
+            },
+            schedule
+                .next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 9, 59, 59).unwrap())
+                .unwrap()
         );
 
-        let first_schedule_end =
-            Moment { time: Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap(), playlist: scheduled2_uuid };
+        let first_schedule_end = Moment {
+            time: Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap(),
+            playlist: scheduled2_uuid,
+        };
 
-        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap()).unwrap());
-        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 1).unwrap()).unwrap());
+        assert_eq!(
+            first_schedule_end,
+            schedule
+                .next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap())
+                .unwrap()
+        );
+        assert_eq!(
+            first_schedule_end,
+            schedule
+                .next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 1).unwrap())
+                .unwrap()
+        );
 
-        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 10, 59, 59).unwrap()).unwrap());
-        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 11, 0, 0).unwrap()).unwrap());
-        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 11, 0, 1).unwrap()).unwrap());
+        assert_eq!(
+            first_schedule_end,
+            schedule
+                .next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 10, 59, 59).unwrap())
+                .unwrap()
+        );
+        assert_eq!(
+            first_schedule_end,
+            schedule
+                .next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 11, 0, 0).unwrap())
+                .unwrap()
+        );
+        assert_eq!(
+            first_schedule_end,
+            schedule
+                .next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 11, 0, 1).unwrap())
+                .unwrap()
+        );
 
-        let second_schedule_end =
-            Moment { time: Local.with_ymd_and_hms(2023, 4, 18, 15, 0, 0).unwrap(), playlist: default_uuid };
+        let second_schedule_end = Moment {
+            time: Local.with_ymd_and_hms(2023, 4, 18, 15, 0, 0).unwrap(),
+            playlist: default_uuid,
+        };
 
-        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 13, 59, 59).unwrap()).unwrap());
-        assert_eq!(second_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap()).unwrap());
-        assert_eq!(second_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 1).unwrap()).unwrap());
+        assert_eq!(
+            first_schedule_end,
+            schedule
+                .next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 13, 59, 59).unwrap())
+                .unwrap()
+        );
+        assert_eq!(
+            second_schedule_end,
+            schedule
+                .next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap())
+                .unwrap()
+        );
+        assert_eq!(
+            second_schedule_end,
+            schedule
+                .next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 1).unwrap())
+                .unwrap()
+        );
 
-        let first_schedule_start =
-            Moment { time: Local.with_ymd_and_hms(2023, 4, 19, 10, 0, 0).unwrap(), playlist: scheduled_uuid };
+        let first_schedule_start = Moment {
+            time: Local.with_ymd_and_hms(2023, 4, 19, 10, 0, 0).unwrap(),
+            playlist: scheduled_uuid,
+        };
 
-        assert_eq!(second_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 14, 59, 59).unwrap()).unwrap());
-        assert_eq!(first_schedule_start, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 15, 0, 0).unwrap()).unwrap());
-        assert_eq!(first_schedule_start, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 15, 0, 1).unwrap()).unwrap());
+        assert_eq!(
+            second_schedule_end,
+            schedule
+                .next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 14, 59, 59).unwrap())
+                .unwrap()
+        );
+        assert_eq!(
+            first_schedule_start,
+            schedule
+                .next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 15, 0, 0).unwrap())
+                .unwrap()
+        );
+        assert_eq!(
+            first_schedule_start,
+            schedule
+                .next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 15, 0, 1).unwrap())
+                .unwrap()
+        );
     }
 
     #[test]
@@ -464,92 +651,201 @@ mod test {
                 playlist: scheduled2_uuid,
                 start: "0 0 11 18 4 * 2023".to_string(),
                 end: "0 0 15 18 4 * 2023".to_string(),
-            }
+            },
         ];
-        let schedule: Schedule = Schedule::new("test".to_string(), schedules, default_uuid).unwrap();
+        let schedule: Schedule =
+            Schedule::new("test".to_string(), schedules, default_uuid).unwrap();
 
         assert_eq!(
-            Moment { time: Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap(), playlist: scheduled_uuid },
-            schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 9, 59, 59).unwrap()).unwrap()
+            Moment {
+                time: Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap(),
+                playlist: scheduled_uuid
+            },
+            schedule
+                .next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 9, 59, 59).unwrap())
+                .unwrap()
         );
 
-        let first_schedule_end =
-            Some(Moment { time: Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap(), playlist: scheduled2_uuid });
+        let first_schedule_end = Some(Moment {
+            time: Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap(),
+            playlist: scheduled2_uuid,
+        });
 
-        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap()));
-        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 1).unwrap()));
+        assert_eq!(
+            first_schedule_end,
+            schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap())
+        );
+        assert_eq!(
+            first_schedule_end,
+            schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 1).unwrap())
+        );
 
-        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 10, 59, 59).unwrap()));
-        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 11, 0, 0).unwrap()));
-        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 11, 0, 1).unwrap()));
+        assert_eq!(
+            first_schedule_end,
+            schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 10, 59, 59).unwrap())
+        );
+        assert_eq!(
+            first_schedule_end,
+            schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 11, 0, 0).unwrap())
+        );
+        assert_eq!(
+            first_schedule_end,
+            schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 11, 0, 1).unwrap())
+        );
 
-        let second_schedule_end =
-            Some(Moment { time: Local.with_ymd_and_hms(2023, 4, 18, 15, 0, 0).unwrap(), playlist: default_uuid });
+        let second_schedule_end = Some(Moment {
+            time: Local.with_ymd_and_hms(2023, 4, 18, 15, 0, 0).unwrap(),
+            playlist: default_uuid,
+        });
 
-        assert_eq!(first_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 13, 59, 59).unwrap()));
-        assert_eq!(second_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap()));
-        assert_eq!(second_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 1).unwrap()));
+        assert_eq!(
+            first_schedule_end,
+            schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 13, 59, 59).unwrap())
+        );
+        assert_eq!(
+            second_schedule_end,
+            schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap())
+        );
+        assert_eq!(
+            second_schedule_end,
+            schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 1).unwrap())
+        );
 
-        assert_eq!(second_schedule_end, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 14, 59, 59).unwrap()));
-        assert_eq!(None, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 15, 0, 0).unwrap()));
-        assert_eq!(None, schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 15, 0, 1).unwrap()));
+        assert_eq!(
+            second_schedule_end,
+            schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 14, 59, 59).unwrap())
+        );
+        assert_eq!(
+            None,
+            schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 15, 0, 0).unwrap())
+        );
+        assert_eq!(
+            None,
+            schedule.next_schedule(&Local.with_ymd_and_hms(2023, 4, 18, 15, 0, 1).unwrap())
+        );
     }
 
     #[test]
     fn test_current_playlist_specific_date() {
         let scheduled_uuid = Uuid::parse_str("8626f6e1-df7c-48d9-83c8-d7845b774ecd").unwrap();
         let default_uuid = Uuid::parse_str("25cd63df-1f10-4c3f-afdb-58156ca47ebd").unwrap();
-        let schedules = vec![
-            ScheduledPlaylistInput {
-                playlist: scheduled_uuid,
-                start: "0 0 10 18 4 * 2023".to_string(),
-                end: "0 0 14 18 4 * 2023".to_string(),
-            }
-        ];
-        let schedule: Schedule = Schedule::new("test".to_string(), schedules, default_uuid).unwrap();
+        let schedules = vec![ScheduledPlaylistInput {
+            playlist: scheduled_uuid,
+            start: "0 0 10 18 4 * 2023".to_string(),
+            end: "0 0 14 18 4 * 2023".to_string(),
+        }];
+        let schedule: Schedule =
+            Schedule::new("test".to_string(), schedules, default_uuid).unwrap();
 
-        assert_eq!(default_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 9, 59, 59).unwrap()));
-        assert_eq!(scheduled_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap()));
-        assert_eq!(scheduled_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 1).unwrap()));
+        assert_eq!(
+            default_uuid,
+            schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 9, 59, 59).unwrap())
+        );
+        assert_eq!(
+            scheduled_uuid,
+            schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap())
+        );
+        assert_eq!(
+            scheduled_uuid,
+            schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 1).unwrap())
+        );
 
-        assert_eq!(scheduled_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 13, 59, 59).unwrap()));
-        assert_eq!(default_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap()));
-        assert_eq!(default_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 1).unwrap()));
+        assert_eq!(
+            scheduled_uuid,
+            schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 13, 59, 59).unwrap())
+        );
+        assert_eq!(
+            default_uuid,
+            schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap())
+        );
+        assert_eq!(
+            default_uuid,
+            schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 1).unwrap())
+        );
+    }
+
+    // Only works with https://github.com/zslayton/cron/pull/116 at this time. Hopefully it gets merged
+    #[test]
+    fn test_next_after_past_date_next_year() {
+        let scheduled_uuid = Uuid::parse_str("8626f6e1-df7c-48d9-83c8-d7845b774ecd").unwrap();
+        let default_uuid = Uuid::parse_str("25cd63df-1f10-4c3f-afdb-58156ca47ebd").unwrap();
+        let schedules = vec![ScheduledPlaylistInput {
+            playlist: scheduled_uuid,
+            start: "0 0 10 * * * 2025/1".to_string(),
+            end: "0 0 11 * * * 2025/1".to_string(),
+        }];
+        let schedule: Schedule =
+            Schedule::new("test".to_string(), schedules, default_uuid).unwrap();
+
+        assert_eq!(
+            default_uuid,
+            schedule.current_playlist(&Local.with_ymd_and_hms(2024, 8, 8, 13, 42, 00).unwrap())
+        );
+        assert_eq!(
+            scheduled_uuid,
+            schedule.current_playlist(&Local.with_ymd_and_hms(2025, 1, 1, 10, 42, 00).unwrap())
+        );
+
+        assert_eq!(
+            scheduled_uuid,
+            schedule.current_playlist(&Local.with_ymd_and_hms(2025, 1, 1, 10, 0, 0).unwrap())
+        );
+        assert_eq!(
+            Some(Moment {
+                time: Local.with_ymd_and_hms(2025, 1, 1, 10, 0, 0).unwrap(),
+                playlist: scheduled_uuid
+            }),
+            schedule.next_schedule(&Local.with_ymd_and_hms(2024, 8, 8, 13, 42, 00).unwrap())
+        );
     }
 
     #[test]
     fn test_current_playlist() {
         let scheduled_uuid = Uuid::parse_str("8626f6e1-df7c-48d9-83c8-d7845b774ecd").unwrap();
         let default_uuid = Uuid::parse_str("25cd63df-1f10-4c3f-afdb-58156ca47ebd").unwrap();
-        let playlist = vec![
-            ScheduledPlaylistInput {
-                playlist: scheduled_uuid,
-                start: "0 * 10 * * * *".to_string(),
-                end: "0 0 14 * * * *".to_string(),
-            }
-        ];
+        let playlist = vec![ScheduledPlaylistInput {
+            playlist: scheduled_uuid,
+            start: "0 * 10 * * * *".to_string(),
+            end: "0 0 14 * * * *".to_string(),
+        }];
         let schedule: Schedule = Schedule::new("test".to_string(), playlist, default_uuid).unwrap();
 
-        assert_eq!(default_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 9, 59, 59).unwrap()));
-        assert_eq!(scheduled_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap()));
-        assert_eq!(scheduled_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 1).unwrap()));
+        assert_eq!(
+            default_uuid,
+            schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 9, 59, 59).unwrap())
+        );
+        assert_eq!(
+            scheduled_uuid,
+            schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 0).unwrap())
+        );
+        assert_eq!(
+            scheduled_uuid,
+            schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 10, 0, 1).unwrap())
+        );
 
-        assert_eq!(scheduled_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 13, 59, 59).unwrap()));
-        assert_eq!(default_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap()));
-        assert_eq!(default_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 1).unwrap()));
+        assert_eq!(
+            scheduled_uuid,
+            schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 13, 59, 59).unwrap())
+        );
+        assert_eq!(
+            default_uuid,
+            schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap())
+        );
+        assert_eq!(
+            default_uuid,
+            schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 1).unwrap())
+        );
     }
 
     #[test]
     fn test_invalid_date() {
         let scheduled_uuid = Uuid::parse_str("8626f6e1-df7c-48d9-83c8-d7845b774ecd").unwrap();
         let default_uuid = Uuid::parse_str("25cd63df-1f10-4c3f-afdb-58156ca47ebd").unwrap();
-        let playlist = vec![
-            ScheduledPlaylistInput {
-                playlist: scheduled_uuid,
-                start: "0 * 10 32 10 * *".to_string(),
-                end: "0 0 14 32 10 * *".to_string(),
-            }
-        ];
+        let playlist = vec![ScheduledPlaylistInput {
+            playlist: scheduled_uuid,
+            start: "0 * 10 32 10 * *".to_string(),
+            end: "0 0 14 32 10 * *".to_string(),
+        }];
         assert!(Schedule::new("test".into(), playlist, default_uuid).is_err());
     }
 
@@ -568,19 +864,38 @@ mod test {
                 playlist: scheduled2_uuid,
                 start: "0 0 14 * * * *".to_string(),
                 end: "0 0 18 * * * *".to_string(),
-            }
+            },
         ];
-        let schedule: Schedule = Schedule::new("test".to_string(), playlist.clone(), default_uuid).unwrap();
+        let schedule: Schedule =
+            Schedule::new("test".to_string(), playlist.clone(), default_uuid).unwrap();
 
-        assert_eq!(scheduled_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 13, 59, 59).unwrap()));
-        assert_eq!(scheduled2_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap()));
-        assert_eq!(scheduled2_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 1).unwrap()));
+        assert_eq!(
+            scheduled_uuid,
+            schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 13, 59, 59).unwrap())
+        );
+        assert_eq!(
+            scheduled2_uuid,
+            schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap())
+        );
+        assert_eq!(
+            scheduled2_uuid,
+            schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 1).unwrap())
+        );
 
         playlist.reverse();
         let schedule: Schedule = Schedule::new("test".to_string(), playlist, default_uuid).unwrap();
 
-        assert_eq!(scheduled_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 13, 59, 59).unwrap()));
-        assert_eq!(scheduled2_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap()));
-        assert_eq!(scheduled2_uuid, schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 1).unwrap()));
+        assert_eq!(
+            scheduled_uuid,
+            schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 13, 59, 59).unwrap())
+        );
+        assert_eq!(
+            scheduled2_uuid,
+            schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 0).unwrap())
+        );
+        assert_eq!(
+            scheduled2_uuid,
+            schedule.current_playlist(&Local.with_ymd_and_hms(2023, 4, 18, 14, 0, 1).unwrap())
+        );
     }
 }

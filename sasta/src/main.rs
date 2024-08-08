@@ -7,9 +7,10 @@ use axum::{
     Json, Router,
 };
 use axum_macros::debug_handler;
+use chrono::Local;
 use dotenv::dotenv;
 use hyper::StatusCode;
-use store::store::Store;
+use store::{schedule::Moment, store::Store};
 use tokio::sync::{oneshot, Mutex};
 use tower_http::services::ServeDir;
 use tracing::{error, info, info_span, Level};
@@ -144,6 +145,7 @@ async fn main() {
                     Router::new()
                         .route("/", post(create_schedule))
                         .route("/", get(read_schedule))
+                        .route("/:uuid", get(schedule_info))
                         .route("/:uuid", put(update_schedule))
                         .route("/:uuid", delete(delete_schedule)),
                 )
@@ -257,6 +259,23 @@ mod read {
                 scheduled: s.scheduled,
             }
         }
+    }
+
+    #[derive(Serialize, TS)]
+    #[ts(export, export_to = "api_bindings/read/")]
+    pub struct ScheduleInfo {
+        #[ts(type = "string")]
+        pub current: Uuid,
+        pub next: Option<NextMoment>,
+    }
+
+    #[derive(Serialize, TS)]
+    #[ts(export, export_to = "api_bindings/read/")]
+    pub struct NextMoment {
+        /// Amount of milliseconds until change
+        pub in_ms: u64,
+        #[ts(type = "string")]
+        pub playlist: Uuid,
     }
 }
 
@@ -1034,6 +1053,30 @@ async fn delete_schedule(State(state): State<AppState>, Path(uuid): Path<Uuid>) 
     store.delete_schedule(uuid).await;
     info!("[Api] Deleted Schedule {uuid}");
     res
+}
+
+async fn schedule_info(State(state): State<AppState>, Path(uuid): Path<Uuid>) -> impl IntoResponse {
+    let current_moment = Local::now();
+    let store = state.store.read().await;
+
+    if let Some(schedule) = store.schedules.get(&uuid) {
+        let next_moment =
+            schedule
+                .next_schedule(&current_moment)
+                .and_then(|Moment { time, playlist }| {
+                    Some(read::NextMoment {
+                        in_ms: (time - current_moment).num_milliseconds() as u64,
+                        playlist,
+                    })
+                });
+
+        Ok(Json(read::ScheduleInfo {
+            current: schedule.current_playlist(&current_moment),
+            next: next_moment,
+        }))
+    } else {
+        Err(format!("Schedule '{uuid}' not found"))
+    }
 }
 
 async fn ws_handler(

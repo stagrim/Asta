@@ -10,7 +10,7 @@ license = "GPL-3.0-or-later"
 [dependencies]
 axum = { version = "0.7.5", features = ["ws", "multipart"] }
 axum-macros = "0.4.1"
-hyper = { version = "1.2.0", features = ["full"] }
+hyper = { version = "1.4.1", features = ["full"] }
 tower = "0.4.13"
 # Using git repo until fix is available in a release https://github.com/tower-rs/tower-http/issues/318
 tower-http = { version = "0.5.2", features = ["full"] }
@@ -18,22 +18,24 @@ futures-util = { version = "0.3.30", default-features = false, features = [
     "sink",
     "std",
 ] }
-serde = { version = "1.0.197", features = ["derive"] }
-serde_json = "1.0.115"
-tokio = { version = "1.36.0", features = ["full"] }
-tokio-util = "0.7.10"
+serde = { version = "1.0.205", features = ["derive"] }
+serde_json = "1.0.122"
+tokio = { version = "1.39.2", features = ["full"] }
+tokio-util = "0.7.11"
 tracing = "0.1.40"
-uuid = { version = "1.8.0", features = ["serde", "v4"] }
-cron = "0.12.1"
-chrono = "0.4.37"
-ts-rs = "8.1.0"
+uuid = { version = "1.10.0", features = ["serde", "v4"] }
+# See https://github.com/zslayton/cron/pull/116
+cron = { version = "0.12.0", git = "https://github.com/AhmedSoliman/cron/", branch = "fix-97-upcoming-year-for-past-date-ignored" }
+# cron = "0.12.1"
+chrono = "0.4.38"
+ts-rs = "9.0.1"
 tracing-subscriber = "0.3.18"
-redis = { version = "0.25.2", features = ["tokio-comp", "json"] }
-regex = "1.10.4"
-utoipa-swagger-ui = { version = "6.0.0", features = ["axum"] }
-utoipa = { version = "4.2.0", features = ["axum_extras", "uuid"] }
-utoipa-redoc = { version = "3.0.0", features = ["axum"] }
-utoipa-rapidoc = { version = "3.0.0", features = ["axum"] }
+redis = { version = "0.26.1", features = ["tokio-comp", "json"] }
+regex = "1.10.6"
+utoipa-swagger-ui = { version = "7.1.0", features = ["axum"] }
+utoipa = { version = "4.2.3", features = ["axum_extras", "uuid"] }
+utoipa-redoc = { version = "4.0.0", features = ["axum"] }
+utoipa-rapidoc = { version = "4.0.0", features = ["axum"] }
 dotenv = "0.15.0"
 maud = { version = "0.26.0", features = ["axum"] }
 crypto = { version = "0.5.1", features = ["digest"] }
