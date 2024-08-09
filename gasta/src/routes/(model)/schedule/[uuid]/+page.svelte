@@ -145,7 +145,7 @@
 
 			<button
 				type="button"
-				class="btn-icon btn-icon-sm variant-soft-primary ml-2"
+				class="btn-icon btn-icon-sm variant-filled-primary ml-2"
 				on:click={add_item}
 			>
 				<Icon data={plus} scale="0.75" />

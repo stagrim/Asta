@@ -68,7 +68,7 @@
 				</select>
 				<button
 					type="button"
-					class="btn-icon btn-icon-sm variant-soft-primary ml-2"
+					class="btn-icon btn-icon-sm variant-filled-primary ml-2"
 					on:click={add_item}
 				>
 					<Icon data={plus} scale={0.75} />
@@ -79,18 +79,17 @@
 
 		{#if playlist.items}
 			{#each playlist.items as item, i (item.name)}
-				<div class="card mb-4" animate:flip={{ duration: 300 }}>
-					<header class="card-header">
-						<div class="flex w-full justify-center gap-4">
-							{#if i > 0}
-								<button
-									type="button"
-									class="btn-icon btn-icon-sm variant-outline-primary"
-									on:click={() => swap_item(i, i - 1)}
-								>
-									<Icon data={arrowUp} scale={0.75} />
-								</button>
-							{/if}
+				<div class="card mb-4 transition-all" animate:flip={{ duration: 300 }}>
+					<section class="p-4 lg:flex lg:flex-row-reverse">
+						<div class="flex justify-center gap-4 lg:flex-col lg:ml-4">
+							<button
+								type="button"
+								class="btn-icon btn-icon-sm variant-filled-primary"
+								class:invisible={i <= 0}
+								on:click={() => swap_item(i, i - 1)}
+							>
+								<Icon data={arrowUp} scale={0.75} />
+							</button>
 							<button
 								type="button"
 								class="btn-icon btn-icon-sm variant-filled-error"
@@ -101,76 +100,74 @@
 							>
 								<Icon data={trash} scale={0.75} />
 							</button>
-							{#if i < playlist.items.length - 1}
-								<button
-									type="button"
-									class="btn-icon btn-icon-sm variant-outline-primary"
-									on:click={() => swap_item(i, i + 1)}
-								>
-									<Icon data={arrowDown} scale={0.75} />
-								</button>
+							<button
+								type="button"
+								class="btn-icon btn-icon-sm variant-filled-primary"
+								class:invisible={i >= playlist.items.length - 1}
+								on:click={() => swap_item(i, i + 1)}
+							>
+								<Icon data={arrowDown} scale={0.75} />
+							</button>
+						</div>
+						<div class="w-full">
+							<div class="flex items-center gap-3">
+								<label class="label mb-5">
+									<span>Name</span>
+									<input
+										required
+										class="input"
+										type="text"
+										placeholder="Name must be unique"
+										bind:value={item.name}
+									/>
+								</label>
+
+								<label class="label mb-5">
+									<span>Duration (s)</span>
+									<input
+										required
+										class="input"
+										type="number"
+										placeholder="Duration in seconds"
+										bind:value={item.settings.duration}
+									/>
+								</label>
+							</div>
+
+							{#if item.type == 'WEBSITE'}
+								<label class="label mb-5">
+									<span>URL</span>
+									<input
+										required
+										class="input"
+										type="text"
+										placeholder="https://example.com"
+										bind:value={item.settings.url}
+									/>
+								</label>
+							{:else if item.type == 'TEXT'}
+								<label class="label mb-5">
+									<span>Text</span>
+									<textarea
+										required
+										class="input"
+										placeholder="Some text..."
+										bind:value={item.settings.text}
+									/>
+								</label>
+							{:else if item.type == 'IMAGE'}
+								<label class="label mb-5">
+									<span>Image source</span>
+									<input
+										required
+										class="input"
+										type="text"
+										placeholder="https://example.com/src.png"
+										bind:value={item.settings.src}
+									/>
+								</label>
 							{/if}
 						</div>
-					</header>
-
-					<section class="p-4">
-						<div class="flex items-center gap-3">
-							<label class="label mb-5">
-								<span>Name</span>
-								<input
-									required
-									class="input"
-									type="text"
-									placeholder="Name must be unique"
-									bind:value={item.name}
-								/>
-							</label>
-
-							<label class="label mb-5">
-								<span>Duration (s)</span>
-								<input
-									required
-									class="input"
-									type="number"
-									placeholder="Duration in seconds"
-									bind:value={item.settings.duration}
-								/>
-							</label>
-						</div>
-
-						{#if item.type == 'WEBSITE'}
-							<label class="label mb-5">
-								<span>URL</span>
-								<input
-									required
-									class="input"
-									type="text"
-									placeholder="https://example.com"
-									bind:value={item.settings.url}
-								/>
-							</label>
-						{:else if item.type == 'TEXT'}
-							<label class="label mb-5">
-								<span>Text</span>
-								<textarea
-									required
-									class="input"
-									placeholder="Some text..."
-									bind:value={item.settings.text}
-								/>
-							</label>
-						{:else if item.type == 'IMAGE'}
-							<label class="label mb-5">
-								<span>Image source</span>
-								<input
-									required
-									class="input"
-									type="text"
-									placeholder="https://example.com/src.png"
-									bind:value={item.settings.src}
-								/>
-							</label>
-						{/if}
 					</section>
 				</div>
 			{/each}
