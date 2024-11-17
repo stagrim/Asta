@@ -1,17 +1,18 @@
 import { env } from '$env/dynamic/private';
-import ldapjs, { type Client } from 'ldapjs';
-const { createClient } = ldapjs;
 import pkg from 'js-sha3';
-import { building, dev } from '$app/environment';
-import type { CookieSerializeOptions } from 'cookie';
-import { Redis } from 'ioredis';
 const { sha3_512 } = pkg;
+import { building, dev } from '$app/environment';
+import { Redis } from 'ioredis';
+import { Client, InvalidCredentialsError } from 'ldapts';
+import { type SerializeOptions } from 'cookie';
 
 export type Login =
 	| {
 			result: 'success';
 			session_id: string;
-			cookie: CookieSerializeOptions & { path: string };
+			cookie: SerializeOptions & {
+				path: string;
+			};
 	  }
 	| {
 			result: 'failure';
@@ -19,32 +20,16 @@ export type Login =
 	  };
 
 export interface Session {
-	// session_id: string,
 	name: string;
 	username: string;
 	user_agent: string;
-	// expires: string,
 }
-
-// TODO: Set setInterval to remove old sessions from map
 
 const session_valid_time = 60 * 60 * 24 * 7; // Valid for a week
 
 let redis: Redis;
-let ldap: Client;
 
 if (!building) {
-	ldap = createClient({
-		url: [env.LDAP_URL],
-		timeout: 2000,
-		connectTimeout: 2000,
-		reconnect: true
-	});
-
-	ldap.on('error', (err) => {
-		console.debug({ msg: 'connection failed, retrying', err });
-	});
-
 	redis = new Redis(env.REDIS_URL);
 }
 
@@ -54,7 +39,7 @@ export const login = async (
 	user_agent: string
 ): Promise<Login> => {
 	let res: Login;
-	let auth: Authenticate = await authenticate(username, password);
+	let auth: Authenticate = await authenticate_user(username, password);
 
 	if (
 		auth.result === 'success' ||
@@ -131,8 +116,13 @@ const filter = `(|${['dsek.km', 'dsek.cafe', 'dsek.sex']
 	.map((g) => `(memberOf=cn=${g},cn=groups,cn=accounts,dc=dsek,dc=se)`)
 	.join('')})`;
 
-const authenticate = async (username: string, password: string): Promise<Authenticate> => {
-	return new Promise(function (resolve) {
+function authenticate_user(username: string, password: string): Promise<Authenticate> {
+	let ldap = new Client({
+		url: env.LDAP_URL,
+		timeout: 2000,
+		connectTimeout: 2000
+	});
+	return new Promise(async (resolve) => {
 		// Oskar "badoddss" Stenberg was here
 		if (!new RegExp('^[A-Za-z0-9]{6,10}(-s)?$').test(username)) {
 			resolve({
@@ -141,72 +131,49 @@ const authenticate = async (username: string, password: string): Promise<Authent
 			});
 		}
 
-		let res: string[] = [];
+		try {
+			await ldap.bind(`uid=${username},cn=users,cn=accounts,dc=dsek,dc=se`, password);
 
-		ldap.bind(`uid=${username},cn=users,cn=accounts,dc=dsek,dc=se`, password, (err, _) => {
-			if (err) {
-				console.log({ err: err.name });
-				ldap.unbind();
-				if (err.name === 'ConnectionError') {
-					resolve({
-						result: 'failure',
-						msg: `Aye be tryin' to reach the LDAP server, but it be as elusive as buried treasure on a deserted island!`
-					});
-				} else if (err.name === 'InvalidCredentialsError') {
-					resolve({
-						result: 'failure',
-						msg: `Ye 'ave forgotten yer username or yer password`
-					});
-				} else {
-					resolve({
-						result: 'failure',
-						msg: `Arrr, ye scallywag! We've hit a rough sea on the LDAP voyage - ${err.name}, the treasure map to that directory be lost to the depths of Davy Jones' locker!`
-					});
+			const { searchEntries } = await ldap.search(
+				`uid=${username},cn=users,cn=accounts,dc=dsek,dc=se`,
+				{
+					filter
 				}
+			);
+			console.log(searchEntries);
+			if (searchEntries.length > 0) {
+				resolve({
+					result: 'success',
+					name: searchEntries[0]['givenName'].toString()
+				});
 			} else {
-				ldap.search(
-					`uid=${username},cn=users,cn=accounts,dc=dsek,dc=se`,
-					{},
-					(searchError, searchResponse) => {
-						if (searchError) {
-							console.error('LDAP search error:', searchError);
-							ldap.unbind();
-							resolve({
-								result: 'failure',
-								msg: `LDAP error: ${searchError.message}`
-							});
-						}
-						searchResponse.on('searchEntry', (entry) => {
-							// The entry object contains information about the group
-							const display_name =
-								entry.attributes.find((a) => a.type === 'givenName')?.values[0] ?? '';
-							res.push(display_name);
-						});
-						searchResponse.on('end', () => {
-							ldap.unbind();
-							if (res.length > 0) {
-								resolve({
-									result: 'success',
-									name: res[0]
-								});
-							} else {
-								resolve({
-									result: 'failure',
-									msg: "Ahoy there, matey! I be sorry to inform ye that ye don't have the proper authorization to be layin' eyes on the Asta web page. Arrr, it be guarded like a chest of precious booty, and only them with the right permissions can set their sights on it. Ye best be seekin' permission from the rightful owner or the webmaster if ye wish to gain access to that there treasure trove of information. Fair winds to ye on yer digital adventures, but for now, ye best be sailin' away from these waters. Arrr! 🏴‍☠️⚓🦜"
-								});
-							}
-						});
-
-						searchResponse.on('connectError', (err) => {
-							console.log(err);
-							resolve({
-								result: 'failure',
-								msg: `LDAP error: ${err.message}`
-							});
-						});
-					}
-				);
+				resolve({
+					result: 'failure',
+					msg: "Ahoy there, matey! I be sorry to inform ye that ye don't have the proper authorization to be layin' eyes on the Asta web page. Arrr, it be guarded like a chest of precious booty, and only them with the right permissions can set their sights on it. Ye best be seekin' permission from the rightful owner or the webmaster if ye wish to gain access to that there treasure trove of information. Fair winds to ye on yer digital adventures, but for now, ye best be sailin' away from these waters. Arrr! 🏴‍☠️⚓🦜"
+				});
 			}
-		});
+		} catch (_e) {
+			let err: Error = _e as Error;
+			if (err instanceof AggregateError) {
+				resolve({
+					result: 'failure',
+					msg: `Aye be tryin' to reach the LDAP server, but it be as elusive as buried treasure on a deserted island!`
+				});
+			} else if (err instanceof InvalidCredentialsError) {
+				resolve({
+					result: 'failure',
+					msg: `Ye 'ave forgotten yer username or yer password`
+				});
+			} else {
+				console.log({ type: 'Unknown Error', error: err });
+				resolve({
+					result: 'failure',
+					msg: `Arrr, ye scallywag! We've hit a rough sea on the LDAP voyage - ${err.name}, the treasure map to that directory be lost to the depths of Davy Jones' locker! I be havin' no clue, matey! Ye best be callin' the scallywag in charge of this here mess to fix this pickle, savvy?`
+				});
+			}
+		} finally {
+			console.log('I ran!!!');
+			ldap.unbind();
+		}
 	});
-};
+}
