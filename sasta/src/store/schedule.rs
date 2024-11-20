@@ -3,7 +3,7 @@ use std::str::FromStr;
 use chrono::{DateTime, Local};
 use cron::Schedule as CronSchedule;
 use serde::{Deserialize, Serialize};
-use tracing::warn;
+use tracing::{error, warn};
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -112,7 +112,8 @@ impl Schedule {
                                 std::cmp::Ordering::Less => None,
                                 std::cmp::Ordering::Equal => {
                                     warn!(
-                                        "Start and end action happening at the same moment ({})",
+                                        "Start and end action happening at the same moment in schedule {} playlist {playlist} ({})", 
+                                        self.name,
                                         last_start.to_string()
                                     );
                                     None
@@ -142,54 +143,69 @@ impl Schedule {
     /// Does not return scheduled moments at the exact time passed as argument
     pub fn next_schedule(&self, from: &DateTime<Local>) -> Option<Moment> {
         // Vector with closures returning the next scheduled time
-        let mut future_moments = self.schedules.iter()
-            .filter_map(|schedule| { match schedule {
-                ScheduledItem::Schedule { start, end, playlist } => {
-                    let (mut next_start_iter, mut next_end_iter) =
-                        (start.after(from).peekable(), end.after(from).peekable());
+        let mut future_moments = self
+            .schedules
+            .iter()
+            .filter_map(|schedule| {
+                match schedule {
+                    ScheduledItem::Schedule {
+                        start,
+                        end,
+                        playlist,
+                    } => {
+                        let (mut next_start_iter, mut next_end_iter) =
+                            (start.after(from).peekable(), end.after(from).peekable());
 
-                    let current_playlist = self.current_playlist(&from);
+                        let current_playlist = self.current_playlist(&from);
 
-                    Some(move || {
-                        let time_opt = if &current_playlist == playlist {
-                            // Only use the end scheduled times if current schedule's playlist is already active
-                            next_end_iter.next()
-                        } else {
-                            // Consume item from the iterator which holds the closest point in time without modifying the other iterator
-                            let (next_start, next_end) = (next_start_iter.peek(), next_end_iter.peek());
-                            match (next_start, next_end) {
-                                (None, None) => None,
-                                (Some(_), None) => next_start_iter.next(),
-                                (None, Some(_)) => next_end_iter.next(),
-                                (Some(s), Some(e)) => match s.cmp(e) {
-                                    std::cmp::Ordering::Less => next_start_iter.next(),
-                                    std::cmp::Ordering::Greater => next_end_iter.next(),
-                                    std::cmp::Ordering::Equal => panic!("Start and end action happening at the same moment ({})", s.to_string()),
-                                },
+                        Some(move || {
+                            let time_opt = if &current_playlist == playlist {
+                                // Only use the end scheduled times if current schedule's playlist is already active
+                                next_end_iter.next()
+                            } else {
+                                // Consume item from the iterator which holds the closest point in time without modifying the other iterator
+                                let (next_start, next_end) =
+                                    (next_start_iter.peek(), next_end_iter.peek());
+                                match (next_start, next_end) {
+                                    (None, None) => None,
+                                    (Some(_), None) => next_start_iter.next(),
+                                    (None, Some(_)) => next_end_iter.next(),
+                                    (Some(s), Some(e)) => match s.cmp(e) {
+                                        std::cmp::Ordering::Less => next_start_iter.next(),
+                                        std::cmp::Ordering::Greater => next_end_iter.next(),
+                                        std::cmp::Ordering::Equal => {
+                                            //TODO: Actual error handling here; extend enum with error type
+                                            error!("Schedule {} has a start and end time at the same timestamp with the scheduled playlist {}. Marking playlist schedule as exhausted to avoid issues. TODO: Better error handling here", self.name, playlist);
+                                            return NextMoment::Exhausted;
+                                        }
+                                    },
+                                }
+                            };
+
+                            if let Some(time) = time_opt {
+                                let playlist_at_moment = self.current_playlist(&time);
+                                // Return a moment if schedule becomes active at time
+                                if playlist_at_moment != current_playlist {
+                                    return NextMoment::Moment(Moment {
+                                        time,
+                                        playlist: playlist_at_moment,
+                                    });
+                                }
+                                // Return a continue if the Moment found was overshadowed by another Schedule
+                                return NextMoment::Continue(time);
                             }
-                        };
-
-                        if let Some(time) = time_opt {
-                            let playlist_at_moment = self.current_playlist(&time);
-                            // Return a moment if schedule becomes active at time
-                            if playlist_at_moment != current_playlist {
-                                return NextMoment::Moment(Moment { time, playlist: playlist_at_moment })
-                            }
-                            // Return a continue if the Moment found was overshadowed by another Schedule
-                            return NextMoment::Continue(time)
-                        }
-                        // Return if no future schedules times exists for schedule
-                        NextMoment::Exhausted
-                    })
-                },
-                // Fallback is not used in this function, ignore
-                ScheduledItem::Fallback(_) => None,
-            }
-        })
-        // Create tuple structure where first value is the last result from the closure and the second is the closure itself
-        // All start with with Continue result since a new result should be calculated in the loop
-        .map(|f| (NextMoment::Continue(*from), f))
-        .collect::<Vec<_>>();
+                            // Return if no future schedules times exists for schedule
+                            NextMoment::Exhausted
+                        })
+                    }
+                    // Fallback is not used in this function, ignore
+                    ScheduledItem::Fallback(_) => None,
+                }
+            })
+            // Create tuple structure where first value is the last result from the closure and the second is the closure itself
+            // All start with with Continue result since a new result should be calculated in the loop
+            .map(|f| (NextMoment::Continue(*from), f))
+            .collect::<Vec<_>>();
 
         let max_date = DateTime::from(DateTime::<Local>::MAX_UTC);
         // Lowest timestamp for a moment found

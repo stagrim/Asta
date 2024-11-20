@@ -130,6 +130,8 @@
 			/>
 		</label>
 
+		<h3 class="h3">Default Playlist</h3>
+
 		<div
 			class={`rounded-md transition-all ${
 				schedule_info.current === item.playlist ? 'border-4 border-primary-500' : 'p-[4px]'
@@ -153,6 +155,7 @@
 		</div>
 
 		{#if item.scheduled}
+			<!-- TODO: Hide this and other signals while editing non applied values -->
 			{#if item.scheduled.length !== 0}
 				<div class="card m-4 p-4">
 					{#if schedule_info.next}

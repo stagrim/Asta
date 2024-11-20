@@ -22,29 +22,31 @@
 	{#if item}
 		<span class="mb-5">
 			<span>Uuid</span>
-			<div
-				class="input-group input-group-divider grid-cols-[1fr_auto] cursor-pointer"
-				on:click={async (_) => {
-					try {
-						await navigator.clipboard.writeText(item.uuid);
-						$toastStore.trigger({
-							message: 'Display Uuid copied to clipboard',
-							background: 'variant-filled-primary',
-							timeout: 2000,
-							hideDismiss: true
-						});
-					} catch (err) {
-						$toastStore.trigger({
-							message: 'Could not copy Uuid, ' + err,
-							background: 'variant-filled-error',
-							autohide: false
-						});
-					}
-				}}
-			>
-				<input class="input text-surface-400" type="text" readonly value={item.uuid} />
-				<a><Icon data={copy} scale={0.75} /></a>
-			</div>
+			<abbr title="Click to copy UUID">
+				<div
+					class="input-group input-group-divider grid-cols-[1fr_auto] cursor-pointer"
+					on:click={async (_) => {
+						try {
+							await navigator.clipboard.writeText(item.uuid);
+							$toastStore.trigger({
+								message: 'Display Uuid copied to clipboard',
+								background: 'variant-filled-primary',
+								timeout: 2000,
+								hideDismiss: true
+							});
+						} catch (err) {
+							$toastStore.trigger({
+								message: 'Could not copy Uuid, ' + err,
+								background: 'variant-filled-error',
+								autohide: false
+							});
+						}
+					}}
+				>
+					<input class="input text-surface-400" type="text" readonly value={item.uuid} />
+					<a><Icon data={copy} scale={0.75} /></a>
+				</div>
+			</abbr>
 		</span>
 
 		<label class="label mb-5">
