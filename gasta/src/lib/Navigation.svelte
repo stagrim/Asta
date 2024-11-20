@@ -77,7 +77,7 @@
 <nav class="list-nav">
 	<div class="input-group input-group-divider grid-cols-[1fr_auto] mb-1">
 		<!-- Stupid solution to avoid having mobiles autofocus and bring up the keyboard on the filter input field -->
-		<input type="hidden" autofocus="true" />
+		<input type="hidden" autofocus={true} />
 
 		<input type="text" class="input" placeholder="filter" bind:value={filter_value} />
 		{#if filter_value === undefined || filter_value === ''}
@@ -106,7 +106,7 @@
 				</svelte:fragment>
 				<svelte:fragment slot="content">
 					<ul>
-						{#each filter_titles(sanitized_values, filter_value) as { name, uuid, title_name } (uuid)}
+						{#each filter_titles(sanitized_values, filter_value) as { uuid, title_name } (uuid)}
 							{@const href = `/${kind.type}/${uuid}`}
 							<li
 								transition:slide={{ delay: 50, duration: 150 }}
@@ -127,7 +127,7 @@
 								class={`/${kind.type}` === $page.url.pathname ? 'variant-glass-primary' : ''}
 							>
 								<span class="btn-icon btn-icon-sm variant-soft-primary">
-									<Icon data={plus} scale="0.75" />
+									<Icon data={plus} scale={0.75} />
 								</span>
 								<span class="flex-auto py-1 whitespace-pre-wrap">Add {capitalized}</span>
 							</a>
