@@ -112,7 +112,7 @@ export type Authenticate =
 	  };
 
 // (|(*group logic*)(*another group logic*))
-const filter = `(|${['dsek.km', 'dsek.cafe', 'dsek.sex']
+const filter = `(|${['dsek.km', 'dsek.cafe', 'dsek.sex', 'dsek.cpu']
 	.map((g) => `(memberOf=cn=${g},cn=groups,cn=accounts,dc=dsek,dc=se)`)
 	.join('')})`;
 
