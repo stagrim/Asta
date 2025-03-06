@@ -14,7 +14,7 @@
 
 	export let uuid: string;
 	export let type: State;
-	export let item: Display;
+	export let item: Display | Schedule | Playlist;
 	export let update_enabled: boolean = true;
 	/** Map with entries where current type could have an item depending on it; for example a Schedule that may depend on the current Playlist */
 	export let dependant_state:
@@ -24,7 +24,7 @@
 	$: map = type.content;
 	// State is cloned from last committed value for
 	// changes to live independently from database
-	$: item = structuredClone(map.get(uuid));
+	$: item = structuredClone(map.get(uuid)!);
 
 	const modalStore = getModalStore();
 
@@ -34,11 +34,11 @@
 		uuid: string
 	): ((predicate: [string, Display] | [string, Schedule]) => boolean) => {
 		if (dependant_state?.type === 'Display') {
-			return ([k, v]) => (v as Display).schedule === uuid;
+			return ([_k, v]) => (v as Display).schedule === uuid;
 		} else {
-			return ([k, v]) =>
+			return ([_k, v]) =>
 				(v as Schedule).playlist === uuid ||
-				(v as Schedule).scheduled?.some((i) => i.playlist === uuid);
+				(v as Schedule).scheduled!.some((i) => i.playlist === uuid);
 		}
 	};
 
@@ -111,6 +111,7 @@
 			>
 		</div>
 
-		<button class="hidden" formaction="?/delete" bind:this={delete_button} />
+		<!-- svelte-ignore a11y_consider_explicit_label -->
+		<button class="hidden" formaction="?/delete" bind:this={delete_button}></button>
 	</section>
 </form>

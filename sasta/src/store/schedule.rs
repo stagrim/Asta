@@ -5,6 +5,7 @@ use cron::Schedule as CronSchedule;
 use serde::{Deserialize, Serialize};
 use tracing::{error, warn};
 use ts_rs::TS;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
@@ -287,7 +288,7 @@ pub struct ScheduleInput {
     pub playlist: Uuid,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, TS)]
+#[derive(Deserialize, Serialize, Debug, Clone, TS, ToSchema)]
 #[ts(export, export_to = "api_bindings/update/")]
 pub struct ScheduledPlaylistInput {
     #[ts(type = "string")]

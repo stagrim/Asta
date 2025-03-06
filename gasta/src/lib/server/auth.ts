@@ -5,6 +5,7 @@ import { building, dev } from '$app/environment';
 import { Redis } from 'ioredis';
 import { Client, InvalidCredentialsError } from 'ldapts';
 import { type SerializeOptions } from 'cookie';
+import process from "node:process";
 
 export type Login =
 	| {
@@ -39,7 +40,7 @@ export const login = async (
 	user_agent: string
 ): Promise<Login> => {
 	let res: Login;
-	let auth: Authenticate = await authenticate_user(username, password);
+	const auth: Authenticate = await authenticate_user(username, password);
 
 	if (
 		auth.result === 'success' ||
@@ -47,7 +48,7 @@ export const login = async (
 	) {
 		const message = `${user_agent}${Math.random()}${Date.now()}`;
 		const session_id = sha3_512(`${env.UUID5_NAMESPACE}${username}${message}`);
-		let session: Session = {
+		const session: Session = {
 			user_agent,
 			username,
 			name: auth.result === 'success' ? auth.name : 'Rosa Pantern'
@@ -112,12 +113,12 @@ export type Authenticate =
 	  };
 
 // (|(*group logic*)(*another group logic*))
-const filter = `(|${['dsek.km', 'dsek.cafe', 'dsek.sex']
+const filter = `(|${['dsek.km', 'dsek.cafe', 'dsek.sex', 'dsek.cpu']
 	.map((g) => `(memberOf=cn=${g},cn=groups,cn=accounts,dc=dsek,dc=se)`)
 	.join('')})`;
 
 function authenticate_user(username: string, password: string): Promise<Authenticate> {
-	let ldap = new Client({
+	const ldap = new Client({
 		url: env.LDAP_URL,
 		timeout: 2000,
 		connectTimeout: 2000
@@ -153,7 +154,7 @@ function authenticate_user(username: string, password: string): Promise<Authenti
 				});
 			}
 		} catch (_e) {
-			let err: Error = _e as Error;
+			const err: Error = _e as Error;
 			if (err instanceof AggregateError) {
 				resolve({
 					result: 'failure',
@@ -168,7 +169,7 @@ function authenticate_user(username: string, password: string): Promise<Authenti
 				console.log({ type: 'Unknown Error', error: err });
 				resolve({
 					result: 'failure',
-					msg: `Arrr, ye scallywag! We've hit a rough sea on the LDAP voyage - ${err.name}, the treasure map to that directory be lost to the depths of Davy Jones' locker! I be havin' no clue, matey! Ye best be callin' the scallywag in charge of this here mess to fix this pickle, savvy?`
+					msg: `Arrr, ye scallywag! We've hit a rough sea on the LDAP voyage - ${err.message}, the treasure map to that directory be lost to the depths of Davy Jones' locker! I be havin' no clue, matey! Ye best be callin' the scallywag in charge of this here mess to fix this pickle, savvy?`
 				});
 			}
 		} finally {

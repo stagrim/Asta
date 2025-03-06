@@ -1,8 +1,9 @@
 import { invalidate_session, login, session_username } from '$lib/server/auth';
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
+import process from "node:process";
 
-export const load: PageServerLoad = async () => {
+export const load: PageServerLoad = () => {
 	if (process.env.NODE_ENV === 'development')
 		return { banner: `Development mode in use, admin account with password 'admin' is usable` };
 };

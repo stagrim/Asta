@@ -9,10 +9,10 @@ export async function GET({ params }) {
 	try {
 		const data = await fs.readFile(filePath);
 		// Determine the Content-Type from the file extension
-		const contentType = 'determine the content type here';
+		// const contentType = 'determine the content type here';
 
 		return new Response(data, { status: 200 });
-	} catch (error) {
+	} catch {
 		// Handle errors, like file not found
 		return new Response('File not found', { status: 404 });
 	}

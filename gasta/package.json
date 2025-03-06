@@ -13,19 +13,20 @@
 		"format": "prettier --plugin-search-dir . --write ."
 	},
 	"devDependencies": {
-		"@fortawesome/free-regular-svg-icons": "^6.6.0",
-		"@fortawesome/free-solid-svg-icons": "^6.6.0",
+		"@fortawesome/free-regular-svg-icons": "^6.7.1",
+		"@fortawesome/free-solid-svg-icons": "^6.7.1",
 		"@skeletonlabs/skeleton": "^2.10.3",
 		"@skeletonlabs/tw-plugin": "^0.4.0",
 		"@sveltejs/adapter-node": "^5.2.9",
 		"@sveltejs/kit": "^2.8.1",
 		"@sveltejs/vite-plugin-svelte": "^4.0.1",
 		"@tailwindcss/forms": "^0.5.9",
-		"cookie": "^1.0.1",
-		"@types/node": "^22.9.0",
+		"@types/lodash": "^4.17.15",
+		"cookie": "^1.0.2",
+		"@types/node": "^22.9.1",
 		"@types/sanitize-html": "^2.13.0",
-		"@typescript-eslint/eslint-plugin": "^8.14.0",
-		"@typescript-eslint/parser": "^8.14.0",
+		"@typescript-eslint/eslint-plugin": "^8.15.0",
+		"@typescript-eslint/parser": "^8.15.0",
 		"autoprefixer": "^10.4.20",
 		"eslint": "^9.15.0",
 		"eslint-config-prettier": "^9.1.0",
@@ -35,7 +36,7 @@
 		"prettier": "^3.3.3",
 		"prettier-plugin-svelte": "^3.2.8",
 		"random-words": "^2.0.1",
-		"svelte": "^5.2.2",
+		"svelte": "^5.2.6",
 		"svelte-awesome": "^3.3.5",
 		"svelte-check": "^4.0.9",
 		"svelte-preprocess": "^6.0.3",
@@ -43,6 +44,7 @@
 		"tslib": "^2.8.1",
 		"typescript": "^5.6.3",
 		"vite": "^5.4.11",
+		"lodash": "^4.17.21",
 		"vite-plugin-tailwind-purgecss": "^0.3.3"
 	},
 	"dependencies": {
@@ -50,9 +52,7 @@
 		"cronstrue": "^2.51.0",
 		"ioredis": "^5.4.1",
 		"js-sha3": "^0.9.3",
-		"ldap-authentication": "^3.2.4",
 		"ldapts": "^7.2.1",
-		"lodash": "^4.17.21",
 		"sanitize-html": "^2.13.1",
 		"svelte-markdown": "^0.4.1"
 	}

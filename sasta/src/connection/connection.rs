@@ -5,7 +5,10 @@ use std::{
     time::Duration,
 };
 
-use axum::extract::ws::{Message, WebSocket};
+use axum::{
+    body::Bytes,
+    extract::ws::{Message, WebSocket},
+};
 use casta_protocol::{DisplayPayload, RequestPayload, ResponsePayload, WebsitePayload};
 use futures_util::{
     stream::{SplitSink, SplitStream},
@@ -103,11 +106,14 @@ pub async fn client_connection(
                                     &client_uuid
                                 ),
                             })
-                            .into_htmx(),
+                            .into_htmx()
+                            .into(),
                         )
                     } else {
                         Message::Text(
-                            serde_json::to_string(&ResponsePayload::Pending(true)).unwrap(),
+                            serde_json::to_string(&ResponsePayload::Pending(true))
+                                .unwrap()
+                                .into(),
                         )
                     };
                     client_send.lock().await.send(msg).await.unwrap();
@@ -135,7 +141,8 @@ pub async fn client_connection(
                 name: client_name.clone(),
                 htmx_hash: htmx.then(|| htmx_hash),
             })
-            .unwrap(),
+            .unwrap()
+            .into(),
         );
         client_send.lock().await.send(msg).await.unwrap();
 
@@ -195,10 +202,12 @@ pub async fn client_connection(
                 };
 
                 let msg = if htmx {
-                    Message::Text(payload.into_htmx())
+                    Message::Text(payload.into_htmx().into())
                 } else {
                     Message::Text(
-                        serde_json::to_string(&ResponsePayload::Display(payload)).unwrap(),
+                        serde_json::to_string(&ResponsePayload::Display(payload))
+                            .unwrap()
+                            .into(),
                     )
                 };
                 client_send.lock().await.send(msg).await.unwrap();
@@ -280,7 +289,7 @@ async fn heartbeat(
 
         let ping = timeout(time, async {
             let mut socket = sender.lock().await;
-            match socket.send(Message::Ping(vec![])).await {
+            match socket.send(Message::Ping(Bytes::new())).await {
                 Ok(_) => trace!("[{who}] Sent Ping"),
                 Err(_) => {
                     warn!("[{who}] Could not Ping");

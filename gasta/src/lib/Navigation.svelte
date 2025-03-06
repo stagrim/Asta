@@ -7,7 +7,7 @@
 	import plus from 'svelte-awesome/icons/plus';
 	import { faDeleteLeft } from '@fortawesome/free-solid-svg-icons/faDeleteLeft';
 
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { Accordion, AccordionItem, getDrawerStore } from '@skeletonlabs/skeleton';
 	import type { LayoutData } from '../routes/$types';
 	import { fade, slide } from 'svelte/transition';
@@ -16,35 +16,41 @@
 	import type { Schedule } from './api_bindings/read/Schedule';
 	import type { Playlist } from './api_bindings/read/Playlist';
 
-	export let data: LayoutData;
+	let { data }: { data: LayoutData } = $props();
 
 	const drawerStore = getDrawerStore();
 
 	const drawerClose = () => drawerStore.close();
 
-	let drawer_open: [boolean, boolean, boolean] = [false, false, false];
+	let drawer_open: [boolean, boolean, boolean] = $state([false, false, false]);
 
 	// Only to be able to close drawer menu of the kind you are on. The block below reruns since drawer_open changes
 	// when the drawer state is available, making one unable to close the display drawer if the user starts with display
 	const set_drawer = (index: number, value = true) => (drawer_open[index] = value);
 
-	$: if ($page.url.pathname.startsWith('/display')) {
-		set_drawer(0);
-	} else if ($page.url.pathname.startsWith('/schedule')) {
-		set_drawer(1);
-	} else if ($page.url.pathname.startsWith('/playlist')) {
-		set_drawer(2);
-	}
-	let filter_value: string;
+	$effect(() => {
+		if (page.url.pathname.startsWith('/display')) {
+			set_drawer(0);
+		} else if (page.url.pathname.startsWith('/schedule')) {
+			set_drawer(1);
+		} else if (page.url.pathname.startsWith('/playlist')) {
+			set_drawer(2);
+		}
+	});
+	let filter_value: string = $state('');
 
-	$: if (filter_value && filter_value !== '') {
-		// Open all drawers
-		[...Array(3)].forEach((_, i) => set_drawer(i));
-	}
-	$: kinds = [data.display, data.schedule, data.playlist].map((state) => ({
-		values: [...state.content.values()].sort((a, b) => a.name.localeCompare(b.name)),
-		type: state.type.toLocaleLowerCase()
-	}));
+	$effect(() => {
+		if (filter_value && filter_value !== '') {
+			// Open all drawers
+			[...Array(3)].forEach((_, i) => set_drawer(i));
+		}
+	});
+	let kinds = $derived(
+		[data.display, data.schedule, data.playlist].map((state) => ({
+			values: [...state.content.values()].sort((a, b) => a.name.localeCompare(b.name)),
+			type: state.type.toLocaleLowerCase()
+		}))
+	);
 
 	const sanitize_html = (dirty: string) =>
 		sanitizeHtml(dirty, {
@@ -52,10 +58,10 @@
 			disallowedTagsMode: 'escape'
 		});
 
-	const filter_titles = (
+	function filter_titles(
 		kind: ((Display | Schedule | Playlist) & { title_name: string })[],
 		filter: string
-	) => {
+	) {
 		if (filter) {
 			return kind
 				.filter(({ title_name }) => RegExp(`(${filter})`, 'gi').test(title_name))
@@ -69,11 +75,9 @@
 				);
 		}
 		return kind;
-	};
+	}
 </script>
 
-<!-- svelte-ignore a11y-click-events-have-key-events -->
-<!-- svelte-ignore a11y-autofocus -->
 <nav class="list-nav">
 	<div class="input-group input-group-divider grid-cols-[1fr_auto] mb-1">
 		<!-- Stupid solution to avoid having mobiles autofocus and bring up the keyboard on the filter input field -->
@@ -83,7 +87,7 @@
 		{#if filter_value === undefined || filter_value === ''}
 			<div class="input-group-shim" in:fade><Icon data={filter}></Icon></div>
 		{:else}
-			<button class="input-group-divider" in:fade on:click={() => (filter_value = '')}
+			<button class="input-group-divider" in:fade onclick={() => (filter_value = '')}
 				><Icon data={faDeleteLeft}></Icon></button
 			>
 		{/if}
@@ -111,9 +115,9 @@
 							<li
 								transition:slide={{ delay: 50, duration: 150 }}
 								class="overflow-hidden rounded-container-token"
-								class:variant-filled-primary={href === $page.url.pathname}
+								class:variant-filled-primary={href === page.url.pathname}
 							>
-								<a {href} on:click={drawerClose}>
+								<a {href} onclick={drawerClose}>
 									<span class="flex-auto p-1 whitespace-pre-wrap leading-5">{@html title_name}</span
 									>
 								</a>
@@ -123,8 +127,8 @@
 						<li>
 							<a
 								href={`/${kind.type}/`}
-								on:click={drawerClose}
-								class={`/${kind.type}` === $page.url.pathname ? 'variant-glass-primary' : ''}
+								onclick={drawerClose}
+								class={`/${kind.type}` === page.url.pathname ? 'variant-glass-primary' : ''}
 							>
 								<span class="btn-icon btn-icon-sm variant-soft-primary">
 									<Icon data={plus} scale={0.75} />

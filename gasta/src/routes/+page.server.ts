@@ -1,10 +1,12 @@
 import type { PageServerLoad } from './$types';
 import fs from 'fs';
 
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = ({ locals }) => {
 	let markdown = null;
 	try {
 		markdown = fs.readFileSync('Greet.md').toString();
-	} catch {}
+	} catch {
+		console.log('No Greet.md file found');
+	}
 	return { name: locals.name, markdown };
 };

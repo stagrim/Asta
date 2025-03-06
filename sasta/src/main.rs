@@ -10,6 +10,7 @@ use axum_macros::debug_handler;
 use chrono::Local;
 use dotenv::dotenv;
 use hyper::StatusCode;
+use read::Payload;
 use store::{schedule::Moment, store::Store};
 use tokio::sync::{oneshot, Mutex};
 use tower_http::services::ServeDir;
@@ -129,25 +130,25 @@ async fn main() {
                     Router::new()
                         .route("/", get(read_display))
                         .route("/", post(create_display))
-                        .route("/:uuid", put(update_display))
-                        .route("/:uuid", delete(delete_display)),
+                        .route("/{uuid}", put(update_display))
+                        .route("/{uuid}", delete(delete_display)),
                 )
                 .nest(
                     "/playlist",
                     Router::new()
                         .route("/", post(create_playlist))
                         .route("/", get(read_playlist))
-                        .route("/:uuid", put(update_playlist))
-                        .route("/:uuid", delete(delete_playlist)),
+                        .route("/{uuid}", put(update_playlist))
+                        .route("/{uuid}", delete(delete_playlist)),
                 )
                 .nest(
                     "/schedule",
                     Router::new()
                         .route("/", post(create_schedule))
                         .route("/", get(read_schedule))
-                        .route("/:uuid", get(schedule_info))
-                        .route("/:uuid", put(update_schedule))
-                        .route("/:uuid", delete(delete_schedule)),
+                        .route("/{uuid}", get(schedule_info))
+                        .route("/{uuid}", put(update_schedule))
+                        .route("/{uuid}", delete(delete_schedule)),
                 )
                 .nest(
                     "/files",
@@ -159,8 +160,8 @@ async fn main() {
         .nest("/files", Router::new().fallback(get_file))
         .route("/", get(ws_handler))
         .route("/ws", get(ws_handler))
-        .route("/display/:uuid", get(casta_index))
-        .route("/casta/:uuid", get(casta_index))
+        .route("/display/{uuid}", get(casta_index))
+        .route("/casta/{uuid}", get(casta_index))
         .nest_service("/assets", ServeDir::new("assets"))
         .with_state(app_state);
 
@@ -219,7 +220,7 @@ mod read {
         }
     }
 
-    #[derive(Serialize, TS)]
+    #[derive(Serialize, TS, ToSchema)]
     #[ts(export, export_to = "api_bindings/read/")]
     pub struct Playlist {
         #[ts(type = "string")]
@@ -238,7 +239,7 @@ mod read {
         }
     }
 
-    #[derive(Serialize, TS)]
+    #[derive(Serialize, TS, ToSchema)]
     #[ts(export, export_to = "api_bindings/read/")]
     pub struct Schedule {
         #[ts(type = "string")]

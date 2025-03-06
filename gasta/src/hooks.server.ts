@@ -75,7 +75,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 							try {
 								// Try to convert value to JSON and replace val with the parsed data
 								val = JSON.parse(val.toString());
-							} catch {}
+							} catch {
+								console.log('Failed to parse: ' + val.toString());
+							}
 							return Object.assign(prev, { [key.toString()]: val });
 						}, {})
 				},

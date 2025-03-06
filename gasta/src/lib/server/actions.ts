@@ -1,11 +1,11 @@
 import { env } from '$env/dynamic/private';
-import { fail, redirect } from '@sveltejs/kit';
+import { fail } from '@sveltejs/kit';
 import type { Payload } from '$lib/api_bindings/read/Payload';
 
 export type type = 'Display' | 'Playlist' | 'Schedule';
 
 interface Input {
-	body: { [key: string]: any };
+	body: { [key: string]: string | number };
 	type: type;
 	/** Must have data key containing JSON value to be sent */
 	data: FormData;
@@ -66,7 +66,7 @@ export const create = async ({ body, type, data }: Input) => {
 	});
 };
 
-export const update = async ({ body, data, type, uuid }: Input) => {
+export const update = async ({ data, type, uuid }: Input) => {
 	if (!uuid) return fail(400, { message: `Missing Uuid` });
 	if (!data.has('data')) return fail(400, { message: `No data field present in form request` });
 
