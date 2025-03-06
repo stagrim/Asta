@@ -5,7 +5,7 @@ import { building, dev } from '$app/environment';
 import { Redis } from 'ioredis';
 import { Client, InvalidCredentialsError } from 'ldapts';
 import { type SerializeOptions } from 'cookie';
-import process from "node:process";
+import process from 'node:process';
 
 export type Login =
 	| {
@@ -113,9 +113,13 @@ export type Authenticate =
 	  };
 
 // (|(*group logic*)(*another group logic*))
-const filter = `(|${['dsek.km', 'dsek.cafe', 'dsek.sex', 'dsek.cpu']
+const group_list = env.LDAP_GROUPS.split(',').map((i) => i.trim());
+console.log(group_list);
+const filter = `(|${group_list
+	// const filter = `(|${['dsek.km', 'dsek.cafe', 'dsek.sex', 'dsek.cpu']
 	.map((g) => `(memberOf=cn=${g},cn=groups,cn=accounts,dc=dsek,dc=se)`)
 	.join('')})`;
+console.log(filter);
 
 function authenticate_user(username: string, password: string): Promise<Authenticate> {
 	const ldap = new Client({
@@ -173,7 +177,6 @@ function authenticate_user(username: string, password: string): Promise<Authenti
 				});
 			}
 		} finally {
-			console.log('I ran!!!');
 			ldap.unbind();
 		}
 	});

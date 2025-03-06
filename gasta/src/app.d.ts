@@ -14,6 +14,7 @@ declare global {
 		interface ImportMetaEnv {
 			SERVER_URL: string;
 			LDAP_URL: string;
+			LDAP_GROUPS: string;
 			UUID5_NAMESPACE: string;
 			REDIS_URL: string;
 		}
