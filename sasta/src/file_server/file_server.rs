@@ -1,4 +1,5 @@
 use std::{
+    collections::LinkedList,
     path::Path,
     sync::{Arc, Mutex},
 };
@@ -10,6 +11,7 @@ use axum::{
     Json,
 };
 use axum_macros::debug_handler;
+use chrono::{DateTime, Local};
 use hyper::{Request, StatusCode, Uri};
 use redis::{aio::MultiplexedConnection, Client, JsonAsyncCommands};
 use regex::Regex;
@@ -19,20 +21,24 @@ use tokio_util::bytes::Bytes;
 use tower::ServiceExt;
 use tower_http::services::ServeFile;
 use tracing::{error_span, info_span, warn, warn_span};
+use ts_rs::TS;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::AppState;
 
 pub type Response<T> = Result<Json<T>, (StatusCode, Json<T>)>;
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema, TS)]
 #[serde(tag = "type", content = "content")]
+#[ts(export, export_to = "api_bindings/files/")]
 pub enum Payload {
-    FilePaths(Vec<TreeView>),
+    FilePaths(ListView),
     Error { code: u8, message: String },
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, ToSchema, TS)]
+#[ts(export, export_to = "api_bindings/files/")]
 pub struct TreeView {
     content: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -77,16 +83,84 @@ impl From<&Directory> for TreeView {
     }
 }
 
+#[derive(Serialize, Debug, ToSchema, TS)]
+#[ts(export, export_to = "api_bindings/files/")]
+pub struct ListView(Vec<ListViewItem>);
+
+#[derive(Serialize, Deserialize, Debug, ToSchema, TS)]
+pub struct ListViewItem {
+    id: String,
+    size: usize,
+    date: String,
+    r#type: Type,
+}
+
+#[derive(Serialize, Deserialize, Debug, ToSchema, TS)]
+enum Type {
+    #[serde(rename(serialize = "folder"))]
+    Directory,
+    #[serde(rename(serialize = "file"))]
+    File,
+}
+
+impl From<&Directory> for ListView {
+    fn from(value: &Directory) -> Self {
+        let mut children = Vec::new();
+        let mut visit_dirs = LinkedList::new();
+        visit_dirs.push_back((value.children.clone(), value.files.clone()));
+        while let Some((dirs, files)) = visit_dirs.pop_front() {
+            let child_mutex = dirs.lock().unwrap();
+            children.append(
+                &mut child_mutex
+                    .iter()
+                    .inspect(|d| visit_dirs.push_back((d.children.clone(), d.files.clone())))
+                    .map(|f| f.into())
+                    .collect::<Vec<ListViewItem>>(),
+            );
+            children.append(
+                &mut files
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .map(|f| f.into())
+                    .collect::<Vec<ListViewItem>>(),
+            );
+        }
+        ListView(children)
+    }
+}
+
+impl From<&File> for ListViewItem {
+    fn from(value: &File) -> Self {
+        ListViewItem {
+            id: value.path.clone(),
+            size: value.size,
+            date: value.date.to_rfc3339(),
+            r#type: Type::File,
+        }
+    }
+}
+impl From<&Directory> for ListViewItem {
+    fn from(value: &Directory) -> Self {
+        ListViewItem {
+            id: value.path.clone(),
+            size: 0,
+            date: "1996-12-19T16:39:57-08:00".to_string(),
+            r#type: Type::Directory,
+        }
+    }
+}
+
 #[debug_handler]
 pub async fn get_all_paths(State(state): State<AppState>) -> Response<Payload> {
-    let root = state.file_server.lock().await.get_paths().await;
-    Ok(Json(Payload::FilePaths(root.children.unwrap_or(vec![]))))
+    let files = state.file_server.lock().await.get_paths_list().await;
+    Ok(Json(Payload::FilePaths(files)))
 }
 
 #[debug_handler]
 pub async fn get_file(State(state): State<AppState>, uri: Uri) -> impl IntoResponse {
     let file_server = state.file_server.lock().await;
-    let path = file_server.get_file(uri.to_string()).await;
+    let path = file_server.get_file(&uri.to_string()).await;
 
     match path {
         Some(p) => {
@@ -103,19 +177,20 @@ pub async fn get_file(State(state): State<AppState>, uri: Uri) -> impl IntoRespo
     }
 }
 
-struct AddFiles {
-    directory: String,
-    files: Vec<(String, Bytes)>,
-}
-
 #[debug_handler]
 pub async fn add_files(
     State(state): State<AppState>,
     mut multipart: Multipart,
 ) -> Response<Payload> {
     let mut file_server = state.file_server.lock().await;
+
+    #[derive(Debug)]
+    struct AddFiles {
+        directory: Option<String>,
+        files: Vec<(String, Bytes)>,
+    }
     let mut add_files = AddFiles {
-        directory: String::new(),
+        directory: None,
         files: Vec::new(),
     };
 
@@ -136,7 +211,7 @@ pub async fn add_files(
                     .trim_end_matches("/")
                     .to_string();
                 info_span!("Got directory name", directory);
-                add_files.directory = directory;
+                add_files.directory = Some(directory);
             }
             continue;
         } else {
@@ -144,53 +219,73 @@ pub async fn add_files(
         }
     }
 
-    if add_files.directory.is_empty() {
-        return Err((
+    if let Some(dir) = add_files.directory {
+        let mut files = Vec::with_capacity(add_files.files.len());
+
+        // No files in request, create empty folder
+        if add_files.files.is_empty() {
+            info_span!("No files in request; creating dirs");
+            match file_server.add_dir(&dir).await {
+                Ok(_) => (),
+                Err(message) => {
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        Json(Payload::Error { code: 3, message }),
+                    ))
+                }
+            }
+        }
+
+        for (filename, bytes) in add_files.files {
+            match file_server
+                .add_file(format!("{}/{filename}", dir), bytes.len())
+                .await
+            {
+                Ok(f) => files.push((f, bytes)),
+                Err(message) => {
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        Json(Payload::Error { code: 3, message }),
+                    ))
+                }
+            }
+        }
+
+        file_server.write().await;
+
+        for (f, bytes) in files {
+            let mut file = TokioFile::create(format!("file_server/{}", f.file_server))
+                .await
+                .unwrap();
+            file.write_all(&bytes).await.unwrap();
+        }
+
+        Ok(Json(Payload::FilePaths(ListView(vec![]))))
+    } else {
+        error_span!("No directory field provided");
+        Err((
             StatusCode::BAD_REQUEST,
             Json(Payload::Error {
                 code: 2,
                 message: format!("Directory cannot be empty"),
             }),
-        ));
+        ))
     }
-
-    let mut files = Vec::with_capacity(add_files.files.len());
-    for (filename, bytes) in add_files.files {
-        match file_server
-            .add_file(format!("{}/{filename}", add_files.directory))
-            .await
-        {
-            Ok(f) => files.push((f, bytes)),
-            Err(message) => {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    Json(Payload::Error { code: 3, message }),
-                ))
-            }
-        }
-    }
-
-    file_server.write().await;
-
-    for (f, bytes) in files {
-        let mut file = TokioFile::create(format!("file_server/{}", f.file_server))
-            .await
-            .unwrap();
-        file.write_all(&bytes).await.unwrap();
-    }
-
-    Ok(Json(Payload::FilePaths(vec![])))
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct File {
     name: String,
     file_server: String,
+    path: String,
+    size: usize,
+    date: DateTime<Local>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Directory {
     name: String,
+    path: String,
     files: Arc<Mutex<Vec<File>>>,
     children: Arc<Mutex<Vec<Directory>>>,
 }
@@ -198,6 +293,7 @@ struct Directory {
 #[derive(Deserialize, Serialize)]
 struct DesDir {
     name: String,
+    path: String,
     files: Vec<File>,
     children: Vec<Directory>,
 }
@@ -210,6 +306,7 @@ impl<'de> Deserialize<'de> for Directory {
         let input = DesDir::deserialize(deserializer)?;
         Ok(Self {
             name: input.name,
+            path: input.path,
             files: Arc::new(Mutex::new(input.files)),
             children: Arc::new(Mutex::new(input.children)),
         })
@@ -224,6 +321,7 @@ impl Serialize for Directory {
         DesDir::serialize(
             &DesDir {
                 name: self.name.clone(),
+                path: self.path.clone(),
                 files: self.files.lock().unwrap().to_vec(),
                 children: self.children.lock().unwrap().to_vec(),
             },
@@ -248,6 +346,7 @@ impl FileServer {
                 warn!("Could not parse files content, starting with a blank root directory (Error: {:?})", e);
                 Directory {
                     name: "".to_string(),
+                    path: String::from("/"),
                     files: Arc::new(Mutex::new(vec![])),
                     children: Arc::new(Mutex::new(vec![])),
                 }
@@ -260,18 +359,24 @@ impl FileServer {
         }
     }
 
-    pub async fn get_paths(&self) -> TreeView {
+    pub async fn get_paths_list(&self) -> ListView {
+        (&self.root).into()
+    }
+
+    #[allow(unused)]
+    pub async fn get_paths_tree(&self) -> TreeView {
         (&self.root).into()
     }
 
     /// Add file name to directory tree, and create folder if they don't already exists
     ///
     /// Does not call write to avoid writing when not all files are returning Ok()
-    pub async fn add_file(&mut self, file_path: String) -> Result<File, String> {
+    pub async fn add_file(&mut self, file_path: String, size: usize) -> Result<File, String> {
         info_span!("Adding file with ", file_path);
         let file_path = file_path.trim();
-        let re = Regex::new(r"^/[\w/_\-\.]+[\w]$").unwrap();
+        let re = Regex::new(r"^/[\w/_\-\. ]+[\w]$").unwrap();
         if !re.is_match(file_path) {
+            error_span!("Illegal file name");
             return Err("Illegal file name. Must only contain '_-./' special characters, start with root ('/') and end with a letter.".to_string());
         }
 
@@ -296,6 +401,9 @@ impl FileServer {
                             Uuid::new_v4(),
                             Path::new(file_name).extension().unwrap().to_str().unwrap()
                         ),
+                        path: file_path.to_string(),
+                        size,
+                        date: Local::now(),
                         //TODO: Add things like path to file on disk (with uuid generated name)
                     },
                 );
@@ -305,7 +413,26 @@ impl FileServer {
         }
     }
 
-    async fn get_file(&self, file_path: String) -> Option<String> {
+    pub async fn add_dir(&mut self, dir_path: &String) -> Result<(), String> {
+        info_span!("Adding dir ", dir_path);
+        let dir_path = dir_path.trim();
+        let re = Regex::new(r"^/[\w/_\- ]+[\w]$").unwrap();
+        if !re.is_match(dir_path) {
+            error_span!("Illegal dir name");
+            return Err("Illegal directory name. Must only contain '_-' special characters, start with root ('/') and end with a letter.".to_string());
+        }
+
+        let path = dir_path
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>();
+
+        let _dir = self.traverse_to_dir(path).await;
+
+        Ok(())
+    }
+
+    async fn get_file(&self, file_path: &String) -> Option<String> {
         let mut path = file_path
             .split('/')
             .filter(|s| !s.is_empty())
@@ -321,12 +448,14 @@ impl FileServer {
         }
     }
 
+    /// Traverse through tree until path and create dirs on the way
     async fn traverse_to_dir(&self, path: Vec<&str>) -> Directory {
         let mut dir = self.root.clone();
-        for p in path {
+        let mut depth = 1;
+        for p in &path {
             let dir_c = dir.clone();
             let mut d = dir_c.children.lock().unwrap();
-            let pos = match d.binary_search_by_key(&p, |d| &d.name) {
+            let pos = match d.binary_search_by_key(p, |d| &d.name) {
                 // Update dir to dir and traverse down the tree
                 Ok(pos) => pos,
                 // Add Dir at sorted position in Vec if not present
@@ -335,6 +464,11 @@ impl FileServer {
                         pos,
                         Directory {
                             name: p.to_string(),
+                            path: path
+                                .iter()
+                                .take(depth)
+                                .fold(String::from(""), |acc, x| acc + "/" + x)
+                                .to_owned(),
                             files: Arc::new(Mutex::new(vec![])),
                             children: Arc::new(Mutex::new(vec![])),
                         },
@@ -343,6 +477,7 @@ impl FileServer {
                 }
             };
             dir = d.get(pos).unwrap().clone();
+            depth += 1;
         }
         dir
     }
