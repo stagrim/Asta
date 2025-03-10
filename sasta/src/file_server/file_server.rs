@@ -8,11 +8,12 @@ use axum::{
     body::Body,
     extract::{Multipart, State},
     response::IntoResponse,
-    Json,
+    Form, Json,
 };
 use axum_macros::debug_handler;
 use chrono::{DateTime, Local};
 use hyper::{Request, StatusCode, Uri};
+use mockall::automock;
 use redis::{aio::MultiplexedConnection, Client, JsonAsyncCommands};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -273,6 +274,25 @@ pub async fn add_files(
     }
 }
 
+#[derive(Deserialize, Debug, ToSchema, TS)]
+#[ts(export, export_to = "api_bindings/files/")]
+pub struct DeleteFilesRequest {
+    /// path of files /dirs to be deleted.
+    ///
+    /// May not handle case where a folder and a file inside the folder is to be deleted in the same request
+    ids: Vec<String>,
+}
+
+/// Delete files and directories
+pub async fn delete_files(
+    State(state): State<AppState>,
+    Json(files): Json<DeleteFilesRequest>,
+) -> Response<Payload> {
+    info_span!("Deleting files", ?files);
+    for id in files.ids {}
+    todo!()
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct File {
     name: String,
@@ -413,6 +433,19 @@ impl FileServer {
         }
     }
 
+    pub async fn delete_file(&mut self, file_path: String) -> Result<(), String> {
+        let file_path = file_path.trim();
+        let mut path = file_path
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>();
+        let file_name = path.pop().unwrap();
+
+        let dir = self.traverse_to_dir(path).await;
+
+        todo!()
+    }
+
     pub async fn add_dir(&mut self, dir_path: &String) -> Result<(), String> {
         info_span!("Adding dir ", dir_path);
         let dir_path = dir_path.trim();
@@ -439,6 +472,7 @@ impl FileServer {
             .collect::<Vec<_>>();
         let file_name = path.pop()?;
 
+        // TODO: make this the version not creating dirs, but who errors out
         let dir = self.traverse_to_dir(path).await;
 
         let files = dir.files.lock().unwrap();
@@ -447,6 +481,8 @@ impl FileServer {
             Err(_) => None,
         }
     }
+
+    //TODO: traversing where no folder is created, error is returned, and where both file path and dir path works as input.
 
     /// Traverse through tree until path and create dirs on the way
     async fn traverse_to_dir(&self, path: Vec<&str>) -> Directory {
@@ -495,4 +531,11 @@ impl FileServer {
             // error_span!("Logging current state instead", ?self.content);
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn traverse() {}
 }

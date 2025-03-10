@@ -37,6 +37,7 @@
 </Drawer>
 
 <!-- svelte-ignore a11y-click-events-have-key-events -->
+<!-- svelte-ignore a11y_consider_explicit_label -->
 <AppShell
 	slotSidebarLeft={!data.empty ? 'max-w-xs w-0 md:w-2/6 md:p-4 h-screen overflow-y-scroll' : ''}
 >

@@ -44,3 +44,4 @@ base16ct = { version = "0.2.0", features = ["alloc"] }
 casta_protocol = { path = "../casta_protocol" }
 lightningcss = "1.0.0-alpha.63"
 minify-js = "0.6.0"
+mockall = "0.13.1"

@@ -1,7 +1,7 @@
 use std::{collections::HashSet, env, net::SocketAddr, str::FromStr, sync::Arc, vec};
 
 use axum::{
-    extract::{ConnectInfo, Path, State, WebSocketUpgrade},
+    extract::{ConnectInfo, DefaultBodyLimit, Path, State, WebSocketUpgrade},
     response::IntoResponse,
     routing::{delete, get, post, put},
     Json, Router,
@@ -9,6 +9,7 @@ use axum::{
 use axum_macros::debug_handler;
 use chrono::Local;
 use dotenv::dotenv;
+use file_server::file_server::delete_files;
 use hyper::StatusCode;
 use read::Payload;
 use store::{schedule::Moment, store::Store};
@@ -153,8 +154,9 @@ async fn main() {
                 .nest(
                     "/files",
                     Router::new()
-                        .route("/", get(get_all_paths))
-                        .route("/", post(add_files)),
+                        .route("/", get(get_all_paths).delete(delete_files))
+                        .route("/", post(add_files))
+                        .layer(DefaultBodyLimit::max(10_000_000)),
                 ),
         )
         .nest("/files", Router::new().fallback(get_file))

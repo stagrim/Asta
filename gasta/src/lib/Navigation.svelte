@@ -4,6 +4,7 @@
 	import calendar from 'svelte-awesome/icons/calendar';
 	import filter from 'svelte-awesome/icons/filter';
 	import listUl from 'svelte-awesome/icons/listUl';
+	import file from 'svelte-awesome/icons/file';
 	import plus from 'svelte-awesome/icons/plus';
 	import { faDeleteLeft } from '@fortawesome/free-solid-svg-icons/faDeleteLeft';
 
@@ -81,6 +82,7 @@
 <nav class="list-nav">
 	<div class="input-group input-group-divider grid-cols-[1fr_auto] mb-1">
 		<!-- Stupid solution to avoid having mobiles autofocus and bring up the keyboard on the filter input field -->
+		<!-- svelte-ignore a11y_autofocus -->
 		<input type="hidden" autofocus={true} />
 
 		<input type="text" class="input" placeholder="filter" bind:value={filter_value} />
@@ -140,6 +142,30 @@
 				</svelte:fragment>
 			</AccordionItem>
 		{/each}
+		<ul>
+			<li
+				class="overflow-hidden rounded-container-token"
+				class:variant-filled-primary={'/files' === page.url.pathname}
+			>
+				<a href="/files">
+					<h3 class="h3 flex items-center gap-2">
+						<Icon data={file} />
+						Files <span class="badge variant-ghost-secondary">Beta</span>
+					</h3>
+				</a>
+			</li>
+			<li
+				class="overflow-hidden rounded-container-token"
+				class:variant-filled-primary={'/filechooser' === page.url.pathname}
+			>
+				<a href="/filechooser">
+					<h3 class="h3 flex items-center gap-2">
+						<Icon data={file} />
+						File Chooser
+					</h3>
+				</a>
+			</li>
+		</ul>
 	</Accordion>
 </nav>
 

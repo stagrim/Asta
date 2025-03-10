@@ -1,19 +1,7 @@
-import { promises as fs } from 'fs';
-import path from 'path';
+import { env } from '$env/dynamic/private';
 
-export async function GET({ params }) {
+export const GET = async ({ params, fetch }) => {
 	const { file } = params;
-	const normalized_file = path.normalize(file).replace(/^(\.\.(\/|\\|$))+/, '');
-	const filePath = path.join('./files/', normalized_file);
-
-	try {
-		const data = await fs.readFile(filePath);
-		// Determine the Content-Type from the file extension
-		// const contentType = 'determine the content type here';
-
-		return new Response(data, { status: 200 });
-	} catch {
-		// Handle errors, like file not found
-		return new Response('File not found', { status: 404 });
-	}
-}
+	const f = await fetch(`${env.SERVER_URL}/files/${file}`);
+	return f;
+};
