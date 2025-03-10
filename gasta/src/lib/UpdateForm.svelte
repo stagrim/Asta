@@ -32,13 +32,13 @@
 
 	const filter_state = (
 		uuid: string
-	): ((predicate: [string, Display] | [string, Schedule]) => boolean) => {
+	): ((predicate: [string, Display] | [string, Schedule]) => boolean | undefined) => {
 		if (dependant_state?.type === 'Display') {
 			return ([_k, v]) => (v as Display).schedule === uuid;
 		} else {
 			return ([_k, v]) =>
 				(v as Schedule).playlist === uuid ||
-				(v as Schedule).scheduled!.some((i) => i.playlist === uuid);
+				(v as Schedule).scheduled?.some((i) => i.playlist === uuid);
 		}
 	};
 
