@@ -15,6 +15,14 @@ if (env.LDAP_URL) {
 	throw new Error("LDAP_URL environment variable is not defined, can't connect to LDAP");
 }
 
+if (env.LDAP_GROUPS) {
+	console.log(`LDAP groups allowed to log in: ${env.LDAP_GROUPS}`);
+} else if (!building) {
+	throw new Error(
+		'LDAP_GROUPS environment variable is not defined, must specify groups allowed to log in'
+	);
+}
+
 if (env.REDIS_URL) {
 	console.log(`Listening to Redis on ${env.REDIS_URL}`);
 } else if (!building) {

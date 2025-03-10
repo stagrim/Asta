@@ -1,5 +1,5 @@
 import type { PageServerLoad } from './$types';
-import fs from 'fs';
+import fs from 'node:fs';
 
 export const load: PageServerLoad = ({ locals }) => {
 	let markdown = null;
