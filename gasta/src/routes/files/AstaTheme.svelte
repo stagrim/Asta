@@ -28,7 +28,7 @@
 
 		--wx-fm-background: rgba(var(--color-surface-900));
 		--wx-fm-box-shadow: none;
-		--wx-fm-select-background: #384047;
+		--wx-fm-select-background: rgb(var(--color-primary-500) / 0.1);
 		--wx-fm-grid-border: 1px solid #384047;
 		--wx-fm-grid-header-color: var(--wx-background);
 		--wx-fm-button-font-color: #9fa1ae;
@@ -166,7 +166,7 @@
 		--wx-button-line-height: var(--wx-line-height);
 		--wx-button-font-weight: var(--wx-font-weight-md);
 		--wx-button-text-transform: none;
-		--wx-button-background: var(--wx-background-alt);
+		--wx-button-background: rgba(var(--color-surface-500));
 		--wx-button-font-color: var(--wx-color-font);
 		--wx-button-danger-font-color: #fff;
 		--wx-button-border: 1px solid transparent;
@@ -178,8 +178,8 @@
 		/* end button */
 
 		/* segmented */
-		--wx-segmented-background: var(--wx-background-alt);
-		--wx-segmented-background-hover: var(--wx-background-hover);
+		--wx-segmented-background: rgb(var(--color-surface-800));
+		--wx-segmented-background-hover: rgb(var(--color-primary-500) / 0.1);
 		--wx-segmented-border: none;
 		--wx-segmented-border-radius: 6px;
 		--wx-segmented-padding: 0px;

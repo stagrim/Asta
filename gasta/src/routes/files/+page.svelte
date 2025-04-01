@@ -14,6 +14,10 @@
 
 	let api: any;
 
+	if (!page.url.searchParams.has('p')) {
+		history.replaceState({ p: '/' }, '', '?p=/');
+	}
+
 	// TODO: Why it no work on backwards to no query parameter??
 	$effect(() => {
 		console.log(page.url.href);
