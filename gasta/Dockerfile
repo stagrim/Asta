@@ -1,11 +1,9 @@
-FROM node:lts-slim
+FROM denoland/deno:latest
 
 WORKDIR /
 COPY gasta .
 
-RUN npm i -g pnpm
-RUN pnpm i
-RUN pnpm run build
+RUN deno i --allow-scripts && deno run build
 
 EXPOSE 3000
-CMD ["node", "build"]
+CMD ["deno", "run", "--allow-env", "--allow-read", "--allow-net", "--allow-write", "build/index.js"]

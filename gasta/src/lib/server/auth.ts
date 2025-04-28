@@ -113,7 +113,7 @@ export type Authenticate =
 	  };
 
 // (|(*group logic*)(*another group logic*))
-const group_list = env.LDAP_GROUPS.split(',').map((i) => i.trim());
+const group_list = (env.LDAP_GROUPS ?? '').split(',').map((i) => i.trim());
 console.log(group_list);
 const filter = `(|${group_list
 	// const filter = `(|${['dsek.km', 'dsek.cafe', 'dsek.sex', 'dsek.cpu']
