@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use chrono::Local;
-use redis::{aio::MultiplexedConnection, Client, JsonAsyncCommands};
+use redis::{aio::ConnectionManager, Client, JsonAsyncCommands, RedisError};
 use serde::{Deserialize, Serialize};
 use tokio::{
     sync::{
@@ -73,7 +73,7 @@ pub struct Content {
 }
 
 pub struct Store {
-    con: Mutex<MultiplexedConnection>,
+    con: Mutex<ConnectionManager>,
     sender: Sender<Change>,
     content: RwLock<Content>,
 }
@@ -81,7 +81,7 @@ pub struct Store {
 impl Store {
     pub async fn new(redis_url: &str) -> Self {
         let client = Client::open(redis_url).unwrap();
-        let mut con = client.get_multiplexed_tokio_connection().await.unwrap();
+        let mut con = ConnectionManager::new(client).await.unwrap();
         let (sender, _) = broadcast::channel(5);
         let content = RwLock::new(Self::read_file(&mut con).await);
 
@@ -93,7 +93,7 @@ impl Store {
         s
     }
 
-    async fn read_file(con: &mut MultiplexedConnection) -> Content {
+    async fn read_file(con: &mut ConnectionManager) -> Content {
         match con.json_get::<_, _, String>("content", ".").await {
             Ok(str) => {
                 // println!("{}", str);
@@ -111,7 +111,10 @@ impl Store {
     }
 
     /// Updates all Schedules' Playlists to the (schedule_uuid, active_playlist_uuid) pairs
-    async fn update_schedule_active_playlist(&self, vec: Vec<(Uuid, Uuid)>) {
+    async fn update_schedule_active_playlist(
+        &self,
+        vec: Vec<(Uuid, Uuid)>,
+    ) -> Result<(), RedisError> {
         // Exit if schedule does not exists or if it is already set to the given playlist
         // if !self.read().await.schedules.contains_key(&schedule) || self.read().await.schedules.get(&schedule).unwrap().playlist == active_playlist {
         //     return;
@@ -127,7 +130,7 @@ impl Store {
                 vec.iter().map(|v| v.0),
             )))
         })
-        .await;
+        .await
     }
 
     /// Starts scheduling loop updating the active playlists when necessary
@@ -147,16 +150,20 @@ impl Store {
 
         // Updates all schedules to their current active scheduled playlist
         if !schedules.is_empty() {
-            self.write(|mut c| {
-                schedules.iter().for_each(|(uuid, schedule)| {
-                    c.schedules
-                        .entry(*uuid)
-                        .and_modify(|s| s.playlist = schedule.current_playlist(&current_moment));
-                });
-                // Change notice not needed since main thread waits on oneshot notice before continuing
-                None
-            })
-            .await;
+            // Does not care about redis error, since only changes internal state.
+            // TODO: Make new method which only changes internal state and does not write
+            // to db to make this clearer?
+            let _ = self
+                .write(|mut c| {
+                    schedules.iter().for_each(|(uuid, schedule)| {
+                        c.schedules.entry(*uuid).and_modify(|s| {
+                            s.playlist = schedule.current_playlist(&current_moment)
+                        });
+                    });
+                    // Change notice not needed since main thread waits on oneshot notice before continuing
+                    None
+                })
+                .await;
             info!("[Scheduler] Updated Schedules to current active playlist");
         }
 
@@ -236,7 +243,7 @@ impl Store {
                             //TODO: When updating a schedule, the new schedule is overridden in the API, and since the 'set current block' lies before the loop, they are never reverted to the present version
                             Ok(Change::ScheduleInput(uuids)) => {
                                 info!("[Scheduler] Schedules updated, rerunning loop");
-                                self.write(|mut c| {
+                                let _ = self.write(|mut c| {
                                     uuids.iter().for_each(|uuid| {
                                         c.schedules
                                             .entry(*uuid)
@@ -254,16 +261,17 @@ impl Store {
             }
             info!("[Scheduler] Sleep done, updating active playlists");
 
-            self.update_schedule_active_playlist(
-                moments
-                    .iter()
-                    .map(|(u, m)| (*u, m.playlist))
-                    .inspect(|(uuid, _)| {
-                        info!("[Scheduler] Updating Schedule {uuid} active playlist")
-                    })
-                    .collect::<Vec<_>>(),
-            )
-            .await;
+            let _ = self
+                .update_schedule_active_playlist(
+                    moments
+                        .iter()
+                        .map(|(u, m)| (*u, m.playlist))
+                        .inspect(|(uuid, _)| {
+                            info!("[Scheduler] Updating Schedule {uuid} active playlist")
+                        })
+                        .collect::<Vec<_>>(),
+                )
+                .await;
             current_moment = closest_time;
         }
     }
@@ -279,7 +287,7 @@ impl Store {
 
     /// Runs closure with lock write guard handle given as argument
     /// and sends a message signalling a state change once it is done
-    async fn write<F>(&self, fun: F)
+    async fn write<F>(&self, fun: F) -> Result<(), RedisError>
     where
         F: FnOnce(RwLockWriteGuard<Content>) -> Option<Change>,
     {
@@ -299,25 +307,32 @@ impl Store {
             .await
         {
             error_span!("Redis Error", ?error);
-            // error_span!("Logging current state instead", ?self.content);
+            Err(error)
+        } else {
+            Ok(())
         }
     }
 
     /// Creates a new display
     ///
     /// Overrides existing display with same uuid
-    pub async fn create_display(&self, uuid: Uuid, name: String, schedule: Uuid) {
+    pub async fn create_display(
+        &self,
+        uuid: Uuid,
+        name: String,
+        schedule: Uuid,
+    ) -> Result<(), RedisError> {
         self.write(|mut c| {
             c.displays.insert(uuid, Display { name, schedule });
             Some(Change::Display(HashSet::from([uuid])))
         })
-        .await;
+        .await
     }
 
     /// Creates a new playlist
     ///
     /// Overrides existing playlist with same uuid
-    pub async fn create_playlist(&self, uuid: Uuid, name: String) {
+    pub async fn create_playlist(&self, uuid: Uuid, name: String) -> Result<(), RedisError> {
         self.write(|mut c| {
             c.playlists.insert(
                 uuid,
@@ -328,25 +343,35 @@ impl Store {
             );
             Some(Change::Playlist(HashSet::from([uuid])))
         })
-        .await;
+        .await
     }
 
     /// Creates a new Schedule
     ///
     /// Overrides existing Schedule with same uuid
-    pub async fn create_schedule(&self, uuid: Uuid, name: String, playlist: Uuid) {
+    pub async fn create_schedule(
+        &self,
+        uuid: Uuid,
+        name: String,
+        playlist: Uuid,
+    ) -> Result<(), RedisError> {
         self.write(|mut c| {
             c.schedules
                 .insert(uuid, Schedule::new(name, vec![], playlist).unwrap());
             Some(Change::Schedule(HashSet::from([uuid])))
         })
-        .await;
+        .await
     }
 
     /// Updates the display with the given Uuid
     ///
     /// Does nothing if no such display is found
-    pub async fn update_display(&self, uuid: Uuid, name: String, schedule: Uuid) {
+    pub async fn update_display(
+        &self,
+        uuid: Uuid,
+        name: String,
+        schedule: Uuid,
+    ) -> Result<(), RedisError> {
         self.write(|mut c| {
             c.displays
                 .entry(uuid)
@@ -359,7 +384,12 @@ impl Store {
     /// Updates the playlist with the given Uuid
     ///
     /// Does nothing if no such playlist is found
-    pub async fn update_playlist(&self, uuid: Uuid, name: String, items: Vec<PlaylistItem>) {
+    pub async fn update_playlist(
+        &self,
+        uuid: Uuid,
+        name: String,
+        items: Vec<PlaylistItem>,
+    ) -> Result<(), RedisError> {
         self.write(|mut c| {
             c.playlists
                 .entry(uuid)
@@ -387,14 +417,14 @@ impl Store {
             c.schedules.entry(uuid).and_modify(|s| *s = schedule);
             Some(Change::ScheduleInput(HashSet::from([uuid])))
         })
-        .await;
-        Ok(())
+        .await
+        .map_err(|e| e.to_string())
     }
 
     /// Deletes the display with the given Uuid
     ///
     /// Does nothing if no such display is found
-    pub async fn delete_display(&self, uuid: Uuid) {
+    pub async fn delete_display(&self, uuid: Uuid) -> Result<(), RedisError> {
         self.write(|mut c| {
             c.displays.remove(&uuid);
             Some(Change::Display(HashSet::from([uuid])))
@@ -405,7 +435,7 @@ impl Store {
     /// Deletes the Playlist with the given Uuid
     ///
     /// Does nothing if no such Playlist is found
-    pub async fn delete_playlist(&self, uuid: Uuid) {
+    pub async fn delete_playlist(&self, uuid: Uuid) -> Result<(), RedisError> {
         self.write(|mut c| {
             c.playlists.remove(&uuid);
             Some(Change::Playlist(HashSet::from([uuid])))
@@ -416,7 +446,7 @@ impl Store {
     /// Deletes the Schedule with the given Uuid
     ///
     /// Does nothing if no such Schedule is found
-    pub async fn delete_schedule(&self, uuid: Uuid) {
+    pub async fn delete_schedule(&self, uuid: Uuid) -> Result<(), RedisError> {
         self.write(|mut c| {
             c.schedules.remove(&uuid);
             Some(Change::Schedule(HashSet::from([uuid])))

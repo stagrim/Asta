@@ -401,7 +401,12 @@ async fn create_display(
     };
     info!("[Api] Using Uuid {uuid} for new Display");
 
-    store.create_display(uuid, disp.name, disp.schedule).await;
+    if let Err(e) = store.create_display(uuid, disp.name, disp.schedule).await {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json((5, format!("Could not write changes to db ({e})")).into()),
+        ));
+    }
 
     return if let Some(d) = store.read().await.displays.get(&uuid) {
         info!("[Api] Created Display {uuid}");
@@ -445,7 +450,13 @@ async fn create_playlist(
     drop(read);
     let uuid = Uuid::new_v4();
     info!("[Api] Generated Uuid {uuid} for new Playlist");
-    store.create_playlist(uuid, playlist.name).await;
+
+    if let Err(e) = store.create_playlist(uuid, playlist.name).await {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json((5, format!("Could not write changes to db ({e})")).into()),
+        ));
+    }
 
     return if let Some(p) = store.read().await.playlists.get(&uuid) {
         info!("[Api] Created Playlist {uuid}");
@@ -488,9 +499,16 @@ async fn create_schedule(
     drop(read);
     let uuid = Uuid::new_v4();
     info!("[Api] Generated Uuid {uuid} for new Schedule");
-    store
+
+    if let Err(e) = store
         .create_schedule(uuid, schedule.name, schedule.playlist)
-        .await;
+        .await
+    {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json((5, format!("Could not write changes to db ({e})")).into()),
+        ));
+    }
 
     return if let Some(s) = store.read().await.schedules.get(&uuid) {
         info!("[Api] Created Schedule {uuid}");
@@ -674,9 +692,15 @@ async fn update_display(
     }
     drop(read);
 
-    store
+    if let Err(e) = store
         .update_display(uuid, display.name, display.schedule)
-        .await;
+        .await
+    {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json((5, format!("Could not write changes to db ({e})")).into()),
+        ));
+    }
 
     return if let Some(d) = store.read().await.displays.get(&uuid) {
         info!("[Api] Updated and read Display {uuid}");
@@ -736,9 +760,15 @@ async fn update_playlist(
 
     drop(read);
 
-    store
+    if let Err(e) = store
         .update_playlist(uuid, playlist.name, playlist.items)
-        .await;
+        .await
+    {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json((5, format!("Could not write changes to db ({e})")).into()),
+        ));
+    }
 
     return if let Some(p) = store.read().await.playlists.get(&uuid) {
         info!("[Api] Updated and read Playlist {uuid}");
@@ -882,7 +912,13 @@ async fn delete_display(State(state): State<AppState>, Path(uuid): Path<Uuid>) -
         ));
     }
 
-    store.delete_display(uuid).await;
+    if let Err(e) = store.delete_display(uuid).await {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json((5, format!("Could not write changes to db ({e})")).into()),
+        ));
+    }
+
     info!("[Api] Deleted Display {uuid}");
     res
 }
@@ -968,7 +1004,13 @@ pub(crate) async fn delete_playlist(
 
     drop(read);
 
-    store.delete_playlist(uuid).await;
+    if let Err(e) = store.delete_playlist(uuid).await {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json((5, format!("Could not write changes to db ({e})")).into()),
+        ));
+    }
+
     info!("[Api] Deleted Playlist {uuid}");
     res
 }
@@ -1051,7 +1093,13 @@ async fn delete_schedule(State(state): State<AppState>, Path(uuid): Path<Uuid>) 
 
     drop(read);
 
-    store.delete_schedule(uuid).await;
+    if let Err(e) = store.delete_schedule(uuid).await {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json((5, format!("Could not write changes to db ({e})")).into()),
+        ));
+    }
+
     info!("[Api] Deleted Schedule {uuid}");
     res
 }
