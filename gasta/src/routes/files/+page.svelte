@@ -1,8 +1,7 @@
 <script lang="ts">
-	import { FileButton, getToastStore } from '@skeletonlabs/skeleton';
-	import { Filemanager, WillowDark } from 'wx-svelte-filemanager';
+	import { Filemanager } from 'wx-svelte-filemanager';
 	import type { PageData } from './$types';
-	import { deserialize, enhance } from '$app/forms';
+	import { deserialize } from '$app/forms';
 	import type { ActionResult } from '@sveltejs/kit';
 	import { toastStore } from '$lib/stores';
 	import AstaTheme from './AstaTheme.svelte';
@@ -10,7 +9,7 @@
 
 	let { data }: { data: PageData } = $props();
 
-	const authorized_extensions = ['.jpg', '.jpeg', '.png', '.webp'];
+	const authorized_extensions = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg'];
 
 	let api: any;
 
@@ -20,14 +19,10 @@
 
 	// TODO: Why it no work on backwards to no query parameter??
 	$effect(() => {
-		console.log(page.url.href);
-
-		console.log('i ran');
 		if (page.url.href) {
 			console.log(page.url.href);
 		}
 		if (api) {
-			console.log('i ran 2');
 			api.exec('set-path', {
 				id: page.url.searchParams.get('p') ?? '/'
 			});
@@ -48,8 +43,15 @@
 		height: number
 	) {
 		const ext = file.ext;
-		if (ext === 'png' || ext === 'jpg' || ext === 'jpeg' || ext === 'webp' || ext === 'gif')
-			return `/files/${file.id}?width=${width}&height=${height}&id=${encodeURIComponent(file.id)}`;
+		if (
+			ext === 'png' ||
+			ext === 'jpg' ||
+			ext === 'jpeg' ||
+			ext === 'webp' ||
+			ext === 'gif' ||
+			ext === 'svg'
+		)
+			return `/files/${file.id}`;
 
 		return false;
 	}
@@ -99,7 +101,12 @@
 
 		api.on('delete-files', async ({ ids }: { ids: string[] }) => {
 			const body = new FormData();
-			ids.forEach((id) => body.append('ids', id));
+			ids.forEach((id) =>
+				body.append(
+					'ids',
+					data.payload.content.find((v) => v.id == id)?.type === 'folder' ? id + '/' : id
+				)
+			);
 			const response = await fetch('?/delete', {
 				method: 'POST',
 				body
@@ -107,15 +114,15 @@
 
 			const result: ActionResult = deserialize(await response.text());
 
-			// if (result.type === 'failure') {
-			// 	$toastStore.trigger({
-			// 		message: result.data?.content.message,
-			// 		timeout: 9999,
-			// 		background: 'variant-filled-error',
-			// 		hideDismiss: false
-			// 	});
-			// 	return false;
-			// }
+			if (result.type === 'failure') {
+				$toastStore.trigger({
+					message: result.data?.content.message,
+					timeout: 9999,
+					background: 'variant-filled-error',
+					hideDismiss: false
+				});
+				return false;
+			}
 		});
 
 		api.on('set-path', ({ id }: { id: string; selected?: []; panel?: 0 | 1 }) => {
