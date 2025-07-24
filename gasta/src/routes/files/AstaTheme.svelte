@@ -7,14 +7,14 @@
 </script>
 
 {#if children}
-	<div class="wx-willow-dark-theme" style="height:100%">
+	<div class="wx-willow-dark-theme">
 		{@render children()}
 	</div>
 {/if}
 
 <svelte:head>
 	{#if fonts}
-		<link rel="preconnect" href="https://cdn.svar.dev" crossorigin />
+		<link rel="preconnect" href="https://cdn.svar.dev" />
 		<FontOpenSans />
 		<link rel="stylesheet" href="https://cdn.svar.dev/fonts/wxi/wx-icons.css" />
 	{/if}
@@ -29,7 +29,7 @@
 		--wx-fm-background: rgba(var(--color-surface-900));
 		--wx-fm-box-shadow: none;
 		--wx-fm-select-background: rgb(var(--color-primary-500) / 0.1);
-		--wx-fm-grid-border: 1px solid #384047;
+		--wx-fm-grid-border: 1px solid transparent;
 		--wx-fm-grid-header-color: var(--wx-background);
 		--wx-fm-button-font-color: #9fa1ae;
 		--wx-fm-toolbar-height: 56px;
@@ -59,7 +59,7 @@
 		--wx-color-link: var(--wx-color-primary);
 
 		--wx-background: rgba(var(--color-surface-800));
-		--wx-background-alt: #384047;
+		--wx-background-alt: rgb(var(--color-primary-500) / 0.1);
 		--wx-background-hover: #20262b;
 		/* end base colors */
 
@@ -81,12 +81,12 @@
 		/* icons */
 		--wx-icon-color: #c0c3ce;
 		--wx-icon-size: var(--wx-line-height);
-		--wx-icon-border-radius: 2px;
+		--wx-icon-border-radius: 4px;
 		/* end icons */
 
 		/* other */
-		--wx-border: 1px solid #384047;
-		--wx-border-radius: 3px;
+		--wx-border: 1px solid rgba(var(--color-surface-500));
+		--wx-border-radius: 4px;
 		--wx-radius-major: 6px;
 
 		--wx-border-light: 1px solid #384047;
@@ -119,7 +119,7 @@
 		--wx-input-border-focus: 1px solid var(--wx-color-primary);
 		--wx-input-border-disabled: var(--wx-border);
 		--wx-input-border-radius: 3px;
-		--wx-input-height: 32px;
+		--wx-input-height: auto;
 		--wx-input-width: 100%;
 		--wx-input-padding: 5px 8px;
 		--wx-input-icon-indent: 6px;
@@ -138,7 +138,7 @@
 		/* checkbox and radio */
 		--wx-checkbox-height: var(--wx-line-height);
 		--wx-checkbox-size: var(--wx-checkbox-height);
-		--wx-checkbox-border-width: 2px;
+		--wx-checkbox-border-width: 4px;
 		--wx-checkbox-border-color: var(--wx-color-font-alt);
 		--wx-checkbox-border-color-disabled: var(--wx-color-disabled);
 		--wx-checkbox-border-radius: var(--wx-input-border-radius);
@@ -167,18 +167,19 @@
 		--wx-button-font-weight: var(--wx-font-weight-md);
 		--wx-button-text-transform: none;
 		--wx-button-background: rgba(var(--color-surface-500));
+		--wx-button-pressed: rgba(var(--color-primary-500));
 		--wx-button-font-color: var(--wx-color-font);
 		--wx-button-danger-font-color: #fff;
 		--wx-button-border: 1px solid transparent;
 		--wx-button-border-radius: var(--wx-border-radius);
-		--wx-button-height: 32px;
-		--wx-button-padding: 5px 16px;
+		--wx-button-height: auto;
+		--wx-button-padding: 0.5rem 0.75rem 0.5rem 0.75rem;
 		--wx-button-icon-indent: 5px;
 		--wx-button-icon-size: 20px;
 		/* end button */
 
 		/* segmented */
-		--wx-segmented-background: rgb(var(--color-surface-800));
+		--wx-segmented-background: rgba(var(--color-surface-500));
 		--wx-segmented-background-hover: rgb(var(--color-primary-500) / 0.1);
 		--wx-segmented-border: none;
 		--wx-segmented-border-radius: 6px;
@@ -205,7 +206,7 @@
 		--wx-slider-primary: var(--wx-color-primary);
 		--wx-slider-background: var(--wx-background-alt);
 		--wx-slider-track-height: 4px;
-		--wx-slider-track-border-radius: 2px;
+		--wx-slider-track-border-radius: 4px;
 		--wx-slider-thumb-size: var(--wx-slider-height);
 		--wx-slider-thumb-border: none;
 		--wx-slider-thumb-border-disabled: 1px solid var(--wx-color-disabled);
@@ -305,16 +306,10 @@
 		--wx-calendar-controls-font-weight: var(--wx-font-weight);
 		--wx-calendar-controls-font-color: var(--wx-color-font);
 		/* end calendar */
-	}
 
-	:global(.wx-card-preview, .wx-img-wrapper img) {
-		width: 100%;
-		height: 100%;
-		max-width: 100%;
-		object-fit: contain !important;
-	}
+		--wx-table-select-background: rgb(var(--color-primary-500) / 0.05);
+		--wx-table-select-border: inset 3px 0 var(--wx-color-primary);
 
-	:global(.wx-willow-dark-theme) {
 		font-family: var(--wx-font-family);
 		font-size: var(--wx-font-size);
 		line-height: var(--wx-line-height);
@@ -324,8 +319,83 @@
 		text-align: left;
 		color: var(--wx-color-font);
 		background: var(--wx-background);
+		height: 100%;
 	}
-	:global(.wx-willow-dark-theme *, .wx-willow-dark-theme *:before, .wx-willow-dark-theme *:after) {
+
+	/* TODO: Fill instead of contain?? */
+	.wx-willow-dark-theme :global(.wx-card-preview),
+	.wx-willow-dark-theme :global(.wx-img-wrapper img) {
+		width: 100%;
+		max-width: 100%;
+		object-fit: contain !important;
+	}
+
+	.wx-willow-dark-theme :global(*),
+	.wx-willow-dark-theme :global(*:before),
+	.wx-willow-dark-theme :global(*:after) {
 		box-sizing: border-box;
+	}
+
+	:global(.wx-willow-dark-theme *) {
+		transition-property:
+			outline,
+			color,
+			background-color,
+			border-color,
+			text-decoration-color,
+			fill,
+			stroke,
+			opacity,
+			box-shadow,
+			transform,
+			filter,
+			backdrop-filter,
+			-webkit-backdrop-filter !important;
+		transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1) !important;
+		transition-duration: 200ms !important;
+	}
+
+	.wx-willow-dark-theme :global(.wx-pressed i::before) {
+		color: var(--wx-color-primary-font) !important;
+	}
+
+	.wx-willow-dark-theme :global(.wx-search-input .wx-text) {
+		padding-top: 0.5rem;
+		padding-right: 0.75rem;
+		padding-bottom: 0.5rem;
+		padding-left: 0.75rem;
+		font-size: 1rem;
+		border-radius: var(--wx-border-radius) !important;
+		background-color: rgba(var(--color-surface-700)) !important;
+	}
+
+	.wx-willow-dark-theme :global(.wx-search-input input:focus) {
+		box-shadow: none;
+	}
+	.wx-willow-dark-theme :global(.wx-search-input),
+	.wx-willow-dark-theme :global(.wx-search-input input) {
+		height: auto !important;
+	}
+	.wx-willow-dark-theme :global(.wx-search-input .wx-icon) {
+		padding-right: 0.5rem;
+	}
+
+	.wx-willow-dark-theme :global(.wx-tree .wx-folder) {
+		padding: var(--wx-button-padding);
+		height: auto !important;
+	}
+	.wx-willow-dark-theme :global(.wx-cards .wx-item) {
+		outline: 1px solid transparent;
+	}
+
+	:global(.wx-willow-dark-theme .wx-menu) {
+		padding: 0 !important;
+	}
+
+	.wx-willow-dark-theme :global(.wx-cards .wx-item.wx-selected) {
+		outline-color: var(--wx-color-primary);
+	}
+	.wx-willow-dark-theme :global(.wx-cards .wx-cell.wx-selected:first-child) {
+		box-shadow: var(--wx-table-select-border);
 	}
 </style>

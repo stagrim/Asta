@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Filemanager } from 'wx-svelte-filemanager';
+	import { Filemanager, getMenuOptions } from 'wx-svelte-filemanager';
 	import type { PageData } from './$types';
 	import { deserialize } from '$app/forms';
 	import type { ActionResult } from '@sveltejs/kit';
@@ -8,15 +8,20 @@
 	import { page } from '$app/state';
 
 	let { data }: { data: PageData } = $props();
-
-	const authorized_extensions = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg'];
-
 	let api: any;
+	type Type = {
+		date: Date;
+		ext: string;
+		id: string;
+		name: string;
+		parent: string;
+		size: number;
+		type: 'file' | 'folder';
+	};
 
 	if (!page.url.searchParams.has('p')) {
 		history.replaceState({ p: '/' }, '', '?p=/');
 	}
-
 	// TODO: Why it no work on backwards to no query parameter??
 	$effect(() => {
 		if (page.url.href) {
@@ -29,31 +34,43 @@
 		}
 	});
 
-	function previewURL(
-		file: {
-			id: string;
-			name: string;
-			date: Date;
-			type: 'file' | 'folder' | undefined;
-			size: number;
-			file: File;
-			ext: string;
-		},
-		width: number,
-		height: number
-	) {
+	function previews(file: Type, width: number, height: number) {
+		const authorized_extensions = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'];
 		const ext = file.ext;
-		if (
-			ext === 'png' ||
-			ext === 'jpg' ||
-			ext === 'jpeg' ||
-			ext === 'webp' ||
-			ext === 'gif' ||
-			ext === 'svg'
-		)
-			return `/files/${file.id}`;
+		return authorized_extensions.includes(ext) ? `/files/${file.id}` : false;
+	}
 
-		return false;
+	function menuOptions(mode: 'file' | 'folder' | 'add' | 'body' | 'multiselect', item: Type) {
+		switch (mode) {
+			case 'file':
+				return [
+					{
+						icon: 'wxi-external',
+						text: 'Open in new Tab',
+						hotkey: 'Ctrl+O',
+						id: 'open',
+						handler: ({ context }: { context: Type }) =>
+							window.open(`/files${context.id}`, '_blank')
+					},
+					...getMenuOptions(mode)
+				];
+			case 'add':
+				return [
+					{
+						icon: 'mdi mdi-file-plus-outline',
+						text: 'Add new folder',
+						id: 'add-folder'
+					},
+					{
+						icon: 'mdi mdi-file-upload-outline',
+						text: 'Upload file',
+						id: 'upload',
+						type: 'upload'
+					}
+				];
+			default:
+				return getMenuOptions(mode);
+		}
 	}
 
 	function init(api: any): void | false {
@@ -125,17 +142,30 @@
 			}
 		});
 
+		api.on('download-file', ({ id }: { id: string }) => {
+			const link = `/files/${encodeURIComponent(id)}`;
+			const anchor = document.createElement('a');
+			anchor.href = link;
+			anchor.download = link;
+			anchor.click();
+		});
+
 		api.on('set-path', ({ id }: { id: string; selected?: []; panel?: 0 | 1 }) => {
-			console.log({
-				t: page.url.searchParams.get('p') ?? '/',
-				i: id,
-				res: (page.url.searchParams.get('p') ?? '/') !== id
-			});
-			if ((page.url.searchParams.get('p') ?? '/') !== id) {
-				console.log('PUshed');
-				history.pushState({ p: id }, '', `?p=${id}`);
-				page.url.searchParams.set('p', id);
+			if (id.startsWith('/')) {
+				// console.log({
+				// 	t: page.url.searchParams.get('p') ?? '/',
+				// 	i: id,
+				// 	res: (page.url.searchParams.get('p') ?? '/') !== id
+				// });
+				if ((page.url.searchParams.get('p') ?? '/') !== id) {
+					history.pushState({ p: id }, '', `?p=${id}`);
+					page.url.searchParams.set('p', id);
+				}
 			}
+		});
+
+		api.on('open-file', ({ id }: { id: string }) => {
+			console.log('Double clicked ' + id);
 		});
 	}
 	console.log(data.payload.content);
@@ -159,7 +189,8 @@
 		data={data.payload.content}
 		{init}
 		icons={'simple'}
-		previews={previewURL}
+		{previews}
+		{menuOptions}
 		bind:this={api}
 	/>
 </AstaTheme>
