@@ -1,4 +1,5 @@
 <script lang="ts">
+	// @ts-ignore
 	import { Filemanager, getMenuOptions } from 'wx-svelte-filemanager';
 	import type { PageData } from './$types';
 	import { deserialize } from '$app/forms';

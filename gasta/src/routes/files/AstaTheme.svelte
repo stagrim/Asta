@@ -1,8 +1,7 @@
 <script>
 	import { setContext } from 'svelte';
-	import FontOpenSans from './FontOpenSans.svelte';
 
-	let { fonts = true, children } = $props();
+	let { children } = $props();
 	setContext('wx-theme', 'willow-dark');
 </script>
 
@@ -13,11 +12,7 @@
 {/if}
 
 <svelte:head>
-	{#if fonts}
-		<link rel="preconnect" href="https://cdn.svar.dev" />
-		<FontOpenSans />
-		<link rel="stylesheet" href="https://cdn.svar.dev/fonts/wxi/wx-icons.css" />
-	{/if}
+	<link rel="stylesheet" href="/wx-icons.css" />
 </svelte:head>
 
 <style>
@@ -64,7 +59,7 @@
 		/* end base colors */
 
 		/* font */
-		--wx-font-family: 'Open Sans', Arial, Helvetica, sans-serif;
+		--wx-font-family: var(--theme-font-family-heading);
 		--wx-font-size: 14px;
 		--wx-line-height: 20px;
 		--wx-font-size-md: 14px;
@@ -350,9 +345,25 @@
 			transform,
 			filter,
 			backdrop-filter,
-			-webkit-backdrop-filter !important;
+			-webkit-backdrop-filter;
 		transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1) !important;
 		transition-duration: 200ms !important;
+	}
+
+	.wx-willow-dark-theme :global(.wx-list *) {
+		transition-property:
+			outline,
+			color,
+			background-color,
+			text-decoration-color,
+			fill,
+			stroke,
+			opacity,
+			box-shadow,
+			transform,
+			filter,
+			backdrop-filter,
+			-webkit-backdrop-filter;
 	}
 
 	.wx-willow-dark-theme :global(.wx-pressed i::before) {
