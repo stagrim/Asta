@@ -7,27 +7,29 @@
 	import { toastStore } from '$lib/stores';
 	import type { PageData } from './$types';
 	import { Icon } from 'svelte-awesome';
+	import type { Display } from '$lib/api_bindings/read/Display';
 
-	export let data: PageData;
+	let { data }: { data: PageData } = $props();
 
-	$: uuid = $page.params.uuid;
+	let uuid = $derived($page.params.uuid);
 
-	let item;
+	let item: Display | undefined = $state(undefined);
+	let other_uuid = $state('');
 </script>
 
-<!-- svelte-ignore a11y-click-events-have-key-events -->
-<!-- svelte-ignore a11y-no-static-element-interactions -->
-<!-- svelte-ignore a11y-missing-attribute -->
-<UpdateForm bind:type={data.display} bind:uuid bind:item>
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<!-- svelte-ignore a11y_missing_attribute -->
+<UpdateForm bind:type={data.display} {uuid} bind:item>
 	{#if item}
 		<span class="mb-5">
 			<span>Uuid</span>
 			<abbr title="Click to copy UUID">
 				<div
 					class="input-group input-group-divider grid-cols-[1fr_auto] cursor-pointer"
-					on:click={async (_) => {
+					onclick={async (_) => {
 						try {
-							await navigator.clipboard.writeText(item.uuid);
+							await navigator.clipboard.writeText(item!.uuid);
 							$toastStore.trigger({
 								message: 'Display Uuid copied to clipboard',
 								background: 'variant-filled-primary',
@@ -61,7 +63,33 @@
 			/>
 		</label>
 
-		<TypePicker name="schedule" bind:chosen_type={item.schedule} types={data.schedule} />
+		<div class="flex items-center w-full gap-4">
+			<select
+				class="select w-32"
+				bind:value={() => item?.display_material.type,
+				(v) => {
+					if (item && v) {
+						if (item.display_material.type !== v) {
+							const temp = item.display_material.uuid;
+							item.display_material.uuid = other_uuid;
+							other_uuid = temp;
+						}
+						item.display_material.type = v;
+					}
+				}}
+			>
+				<option value="schedule">Schedule</option>
+				<option value="playlist">Playlist</option>
+			</select>
+			<div class="w-full">
+				<TypePicker
+					label={false}
+					name="display_material"
+					types={item.display_material.type === 'schedule' ? data.schedule : data.playlist}
+					bind:chosen_type={item.display_material.uuid}
+				/>
+			</div>
+		</div>
 	{/if}
 </UpdateForm>
 

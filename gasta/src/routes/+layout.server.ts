@@ -1,12 +1,20 @@
 import { env } from '$env/dynamic/private';
 import type { Payload } from '$lib/api_bindings/read/Payload';
-import type { State } from '../app';
+import type { DisplayState, PlaylistState, ScheduleState, State } from '../app';
 import type { LayoutServerLoad } from './$types';
 import type { Display } from '$lib/api_bindings/read/Display';
 import type { Playlist } from '$lib/api_bindings/read/Playlist';
 import type { Schedule } from '$lib/api_bindings/read/Schedule';
 
-export const load = (async ({ locals }) => {
+export const load = (async ({
+	locals
+}): Promise<{
+	display: DisplayState;
+	schedule: ScheduleState;
+	playlist: PlaylistState;
+	empty?: boolean;
+	user?: string;
+}> => {
 	if (!locals.user) {
 		return {
 			display: {
@@ -25,7 +33,7 @@ export const load = (async ({ locals }) => {
 		};
 	}
 
-	const get = async (api_route: string) => {
+	const get = async (api_route: string): Promise<DisplayState | PlaylistState | ScheduleState> => {
 		const payload: Payload = await fetch(`${env.SERVER_URL}/api/${api_route}`).then((d) =>
 			d.json()
 		);
@@ -38,18 +46,17 @@ export const load = (async ({ locals }) => {
 		const map = new Map();
 		payload.content.forEach((c) => map.set(c.uuid, c));
 
-		const res: State = {
+		return {
 			type: payload.type,
 			content: map
 		};
-		return res;
 	};
 
-	const display: State = await get('display');
+	const display = await get('display');
 	if (display.type != 'Display') throw Error();
-	const schedule: State = await get('schedule');
+	const schedule = await get('schedule');
 	if (schedule.type != 'Schedule') throw Error();
-	const playlist: State = await get('playlist');
+	const playlist = await get('playlist');
 	if (playlist.type != 'Playlist') throw Error();
 	return {
 		display,

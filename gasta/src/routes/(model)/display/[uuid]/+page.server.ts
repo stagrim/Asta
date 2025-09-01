@@ -7,7 +7,7 @@ export const actions = {
 	update: async ({ params, request }) => {
 		const body: UpdateDisplay = {
 			name: '',
-			schedule: ''
+			display_material: { type: 'schedule', uuid: '' }
 		};
 		return await update({
 			body,

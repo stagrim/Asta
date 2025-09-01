@@ -38,7 +38,7 @@
 
 <UpdateForm
 	bind:type={data.playlist}
-	bind:dependant_state={data.schedule}
+	dependant_state={{ schedules: data.schedule, displays: data.display }}
 	bind:uuid
 	bind:item={playlist}
 >
@@ -153,7 +153,7 @@
 										class="input"
 										placeholder="Some text..."
 										bind:value={item.settings.text}
-									/>
+									></textarea>
 								</label>
 							{:else if item.type == 'IMAGE'}
 								<label class="label mb-5">

@@ -112,7 +112,7 @@
 
 <UpdateForm
 	bind:type={data.schedule}
-	bind:dependant_state={data.display}
+	dependant_state={{ schedules: data.schedule, displays: data.display }}
 	bind:uuid
 	bind:item
 	bind:update_enabled

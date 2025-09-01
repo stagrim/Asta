@@ -5,14 +5,14 @@ import type { Payload } from '$lib/api_bindings/read/Payload';
 export type type = 'Display' | 'Playlist' | 'Schedule';
 
 interface Input {
-	body: { [key: string]: string | number };
+	body: { [key: string]: string | number | object };
 	type: type;
 	/** Must have data key containing JSON value to be sent */
 	data: FormData;
 	uuid?: string;
 }
 
-const return_handling = async ({
+export const return_handling = async ({
 	res: response,
 	type: type,
 	ret

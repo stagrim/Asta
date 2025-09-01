@@ -25,8 +25,19 @@ declare global {
 		}
 	}
 }
+export type DisplayState = {
+	type: 'Display';
+	content: Map<string, Display>;
+};
 
-export type State =
-	| { type: 'Display'; content: Map<string, Display> }
-	| { type: 'Playlist'; content: Map<string, Playlist> }
-	| { type: 'Schedule'; content: Map<string, Schedule> };
+export type PlaylistState = {
+	type: 'Playlist';
+	content: Map<string, Playlist>;
+};
+
+export type ScheduleState = {
+	type: 'Schedule';
+	content: Map<string, Schedule>;
+};
+
+type State = DisplayState | PlaylistState | ScheduleState;

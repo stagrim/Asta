@@ -5,6 +5,7 @@
 	import type { State } from '../app';
 
 	export let types: State;
+	export let label = true;
 
 	/** Bind value to react to user changes */
 	export let chosen_type: string = '';
@@ -16,7 +17,9 @@
 </script>
 
 <label class="label">
-	<span>{types.type}</span>
+	{#if label}
+		<span>{types.type}</span>
+	{/if}
 
 	<div class="flex flex-row items-center input-group input-group-divider cursor-pointer">
 		<select

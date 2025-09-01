@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use chrono::Local;
 use redis::{aio::MultiplexedConnection, Client, JsonAsyncCommands};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use tokio::{
     sync::{
         broadcast::{self, Receiver, Sender},
@@ -17,10 +17,62 @@ use uuid::Uuid;
 
 use super::schedule::{self, Moment, Schedule};
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone)]
 pub struct Display {
     pub name: String,
-    pub schedule: Uuid,
+    pub display_material: DisplayMaterial,
+}
+
+// Explicit implementation to cover for the new format to cover backward compatibility
+impl<'de> Deserialize<'de> for Display {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // 10 min of my life I will never get back...
+        #[derive(Deserialize)]
+        pub struct NewDisplay {
+            pub name: String,
+            pub display_material: DisplayMaterial,
+        }
+
+        #[derive(Deserialize)]
+        struct OldDisplay {
+            name: String,
+            schedule: Uuid,
+        }
+
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum TempDisplay {
+            New(NewDisplay),
+            Old(OldDisplay),
+        }
+
+        match TempDisplay::deserialize(deserializer)? {
+            TempDisplay::New(NewDisplay {
+                name,
+                display_material,
+            }) => Ok(Display {
+                name,
+                display_material,
+            }),
+            TempDisplay::Old(OldDisplay { name, schedule }) => Ok(Display {
+                name,
+                display_material: DisplayMaterial::Schedule(schedule),
+            }),
+        }
+    }
+}
+
+// TODO: make this the rust way instead, and do some fallback magic in the Deserialize process instead from the db... Probably much better.
+#[derive(Deserialize, Serialize, Debug, ToSchema, TS, Clone)]
+#[ts(export, export_to = "api_bindings/create/")]
+#[serde(rename_all = "snake_case")]
+#[serde(tag = "type", content = "uuid")]
+pub enum DisplayMaterial {
+    Schedule(#[ts(type = "string")] Uuid),
+    Playlist(#[ts(type = "string")] Uuid),
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -306,9 +358,20 @@ impl Store {
     /// Creates a new display
     ///
     /// Overrides existing display with same uuid
-    pub async fn create_display(&self, uuid: Uuid, name: String, schedule: Uuid) {
+    pub async fn create_display(
+        &self,
+        uuid: Uuid,
+        name: String,
+        display_material: DisplayMaterial,
+    ) {
         self.write(|mut c| {
-            c.displays.insert(uuid, Display { name, schedule });
+            c.displays.insert(
+                uuid,
+                Display {
+                    name,
+                    display_material,
+                },
+            );
             Some(Change::Display(HashSet::from([uuid])))
         })
         .await;
@@ -346,11 +409,19 @@ impl Store {
     /// Updates the display with the given Uuid
     ///
     /// Does nothing if no such display is found
-    pub async fn update_display(&self, uuid: Uuid, name: String, schedule: Uuid) {
+    pub async fn update_display(
+        &self,
+        uuid: Uuid,
+        name: String,
+        display_material: DisplayMaterial,
+    ) {
         self.write(|mut c| {
-            c.displays
-                .entry(uuid)
-                .and_modify(|d| *d = Display { name, schedule });
+            c.displays.entry(uuid).and_modify(|d| {
+                *d = Display {
+                    name,
+                    display_material,
+                }
+            });
             Some(Change::Display(HashSet::from([uuid])))
         })
         .await
@@ -424,27 +495,34 @@ impl Store {
         .await
     }
 
-    /// Get all PlaylistItem(s) from the scheduled playlist in the display's schedule
-    pub async fn get_display_playlists(&self, display: &Uuid) -> Option<Vec<PlaylistItem>> {
+    /// Get all PlaylistItem(s) from the active playlist in the display, or the playlist currently active in the display's schedule.
+    pub async fn get_display_playlist_items(&self, display: &Uuid) -> Option<Vec<PlaylistItem>> {
         let content = self.read().await;
-        let schedule = &content.displays.get(display)?.schedule;
-        Some(
-            content
-                .playlists
-                .get(&content.schedules.get(schedule)?.playlist)?
-                .items
-                .clone(),
-        )
+        match &content.displays.get(display)?.display_material {
+            DisplayMaterial::Schedule(uuid) => Some(
+                content
+                    .playlists
+                    .get(&content.schedules.get(uuid)?.playlist)?
+                    .items
+                    .clone(),
+            ),
+            DisplayMaterial::Playlist(uuid) => Some(content.playlists.get(uuid)?.items.clone()),
+        }
     }
 
     /// Get Uuids of schedule and playlist connected to Display of given Uuid
     ///
-    /// Result is a tuple containing both Uuids as `(schedule_uuid, playlist_uuid)`
-    pub async fn get_display_uuids(&self, display: &Uuid) -> Option<(Uuid, Uuid)> {
+    /// Result is a tuple containing both Uuids as `(Option<schedule_uuid>, playlist_uuid)`.
+    /// Playlist is always present if display exists, but schedule can be non if the display is assigned a playlist directly.
+    pub async fn get_display_uuids(&self, display: &Uuid) -> Option<(Option<Uuid>, Uuid)> {
         let r = self.read().await;
-        let schedule = r.displays.get(display)?.schedule;
-        let playlist = r.schedules.get(&schedule)?.playlist;
-        Some((schedule, playlist))
+        match r.displays.get(display)?.display_material {
+            DisplayMaterial::Schedule(schedule_uuid) => {
+                let playlist_uuid = r.schedules.get(&schedule_uuid)?.playlist;
+                Some((Some(schedule_uuid), playlist_uuid))
+            }
+            DisplayMaterial::Playlist(uuid) => Some((None, uuid)),
+        }
     }
 
     /// Returns String of current state

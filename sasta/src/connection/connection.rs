@@ -152,7 +152,7 @@ pub async fn client_connection(
         'outer_send_loop: loop {
             let (schedule_uuid, playlist_uuid) =
                 store.get_display_uuids(&client_uuid).await.unwrap();
-            let mut playlist = match store.get_display_playlists(&client_uuid).await {
+            let mut playlist = match store.get_display_playlist_items(&client_uuid).await {
                 Some(p) => p,
                 None => {
                     error!("[{who} ({client_name})] Error: Display playlist could not be found");
@@ -245,8 +245,8 @@ pub async fn client_connection(
                                             info!("[{who} ({client_name})] Playlist {} has changed, restarting send loop", playlist_uuid);
                                             continue 'outer_send_loop
                                         },
-                                        Change::Schedule(s) if s.contains(&schedule_uuid) => {
-                                            info!("[{who} ({client_name})] Schedule {} has changed, restarting send loop", schedule_uuid);
+                                        Change::Schedule(s) if schedule_uuid.is_some_and(|u| s.contains(&u)) => {
+                                            info!("[{who} ({client_name})] Schedule {} has changed, restarting send loop", schedule_uuid.unwrap_or_default());
                                             continue 'outer_send_loop
                                         },
                                         _ => {

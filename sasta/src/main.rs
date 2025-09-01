@@ -8,7 +8,6 @@ use axum::{
 };
 use axum_macros::debug_handler;
 use chrono::Local;
-use dotenv::dotenv;
 use hyper::StatusCode;
 use read::Payload;
 use store::{schedule::Moment, store::Store};
@@ -26,7 +25,7 @@ use crate::{
     casta::casta::{casta_index, compute_hash, minify},
     connection::connection::client_connection,
     file_server::file_server::{add_files, get_all_paths, get_file, FileServer},
-    store::schedule,
+    store::{schedule, store::DisplayMaterial},
 };
 
 mod casta;
@@ -80,7 +79,7 @@ struct ApiDoc;
 
 #[tokio::main]
 async fn main() {
-    dotenv().ok();
+    dotenvy::dotenv().ok();
     let redis_url = env::var("REDIS_URL").expect("REDIS_URL variable must be set");
     let sasta_address = env::var("ADDRESS").unwrap_or("127.0.0.1:8080".into());
     let subscriber = FmtSubscriber::builder()
@@ -185,7 +184,10 @@ mod read {
     use utoipa::ToSchema;
     use uuid::Uuid;
 
-    use crate::store::{schedule, store};
+    use crate::store::{
+        schedule,
+        store::{self, DisplayMaterial},
+    };
 
     pub type Response = Result<Json<Payload>, (StatusCode, Json<Payload>)>;
 
@@ -206,8 +208,7 @@ mod read {
         #[ts(type = "string")]
         pub uuid: Uuid,
         pub name: String,
-        #[ts(type = "string")]
-        pub schedule: Uuid,
+        pub display_material: DisplayMaterial,
     }
 
     impl From<(Uuid, store::Display)> for Display {
@@ -215,7 +216,7 @@ mod read {
             Self {
                 uuid,
                 name: d.name,
-                schedule: d.schedule,
+                display_material: d.display_material,
             }
         }
     }
@@ -286,6 +287,7 @@ mod create {
     use uuid::Uuid;
 
     pub use crate::read::Response;
+    use crate::store::store::DisplayMaterial;
 
     #[derive(Debug, Deserialize, TS)]
     #[ts(export, export_to = "api_bindings/create/", rename = "CreateDisplay")]
@@ -293,8 +295,7 @@ mod create {
         #[ts(type = "string", optional)]
         pub uuid: Option<Uuid>,
         pub name: String,
-        #[ts(type = "string")]
-        pub schedule: Uuid,
+        pub display_material: DisplayMaterial,
     }
 
     #[derive(Deserialize, TS)]
@@ -319,15 +320,17 @@ mod update {
     use uuid::Uuid;
 
     pub use crate::read::{Payload, Response};
-    use crate::store::{schedule, store};
+    use crate::store::{
+        schedule,
+        store::{self, DisplayMaterial},
+    };
 
     #[derive(Deserialize, ToSchema, TS)]
     #[ts(export, export_to = "api_bindings/update/", rename = "UpdateDisplay")]
     #[schema(title = "UpdateDisplay")]
     pub struct Display {
         pub name: String,
-        #[ts(type = "string")]
-        pub schedule: Uuid,
+        pub display_material: DisplayMaterial,
     }
 
     #[derive(Deserialize, ToSchema, TS)]
@@ -401,7 +404,9 @@ async fn create_display(
     };
     info!("[Api] Using Uuid {uuid} for new Display");
 
-    store.create_display(uuid, disp.name, disp.schedule).await;
+    store
+        .create_display(uuid, disp.name, disp.display_material)
+        .await;
 
     return if let Some(d) = store.read().await.displays.get(&uuid) {
         info!("[Api] Created Display {uuid}");
@@ -514,9 +519,9 @@ async fn create_schedule(
         (status = 200, description = "Get all Displays", body = inline(read::Payload),
             example = json!(
                 read::Payload::Display(vec![
-                        read::Display { uuid: Uuid::new_v4(), name: "name1".into(), schedule: Uuid::new_v4() },
-                        read::Display { uuid: Uuid::new_v4(), name: "name2".into(), schedule: Uuid::new_v4() },
-                        read::Display { uuid: Uuid::new_v4(), name: "name3".into(), schedule: Uuid::new_v4() }
+                        read::Display { uuid: Uuid::new_v4(), name: "name1".into(), display_material: DisplayMaterial::Schedule(Uuid::new_v4()) },
+                        read::Display { uuid: Uuid::new_v4(), name: "name2".into(), display_material: DisplayMaterial::Playlist(Uuid::new_v4()) },
+                        read::Display { uuid: Uuid::new_v4(), name: "name3".into(), display_material: DisplayMaterial::Schedule(Uuid::new_v4()) }
                 ])
             )
         ),
@@ -614,7 +619,7 @@ async fn read_schedule(State(state): State<AppState>) -> read::Response {
         (status = 200, description = "Display updated", body = inline(read::Payload),
             example = json!(
                 read::Payload::Display(vec![
-                        read::Display { uuid: Uuid::new_v4(), name: "name".into(), schedule: Uuid::new_v4() }
+                        read::Display { uuid: Uuid::new_v4(), name: "name".into(), display_material: DisplayMaterial::Schedule(Uuid::new_v4()) }
                 ])
             )
         ),
@@ -675,7 +680,7 @@ async fn update_display(
     drop(read);
 
     store
-        .update_display(uuid, display.name, display.schedule)
+        .update_display(uuid, display.name, display.display_material)
         .await;
 
     return if let Some(d) = store.read().await.displays.get(&uuid) {
@@ -853,7 +858,7 @@ async fn update_schedule(
         (status = 200, description = "Display deleted", body = Payload,
             example = json!(
                 read::Payload::Display(vec![
-                        read::Display { uuid: Uuid::new_v4(), name: "name".into(), schedule: Uuid::new_v4() }
+                        read::Display { uuid: Uuid::new_v4(), name: "name".into(), display_material: DisplayMaterial::Schedule(Uuid::new_v4()) }
                 ])
             )
         ),
@@ -954,6 +959,32 @@ pub(crate) async fn delete_playlist(
         ));
     }
 
+    let dependant_displays = read
+        .displays
+        .iter()
+        .filter_map(|(_, d)| match d.display_material {
+            DisplayMaterial::Playlist(playlist_uuid) if uuid == playlist_uuid => {
+                Some(d.name.clone())
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    if dependant_displays.len() > 0 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(
+                (
+                    2,
+                    format!(
+                        "Unable to delete playlist since the Displays ({}) depend on it",
+                        dependant_displays.join(", ")
+                    ),
+                )
+                    .into(),
+            ),
+        ));
+    }
+
     if let Some(d) = read.playlists.get(&uuid) {
         res = Ok(Json(read::Payload::Playlist(
             vec![(uuid, d.clone()).into()],
@@ -962,7 +993,7 @@ pub(crate) async fn delete_playlist(
         error!("[Api] No Playlist with {uuid} was found");
         return Err((
             StatusCode::BAD_REQUEST,
-            Json((2, format!("No Playlist with the Uuid {uuid} was found")).into()),
+            Json((3, format!("No Playlist with the Uuid {uuid} was found")).into()),
         ));
     }
 
@@ -1013,12 +1044,11 @@ async fn delete_schedule(State(state): State<AppState>, Path(uuid): Path<Uuid>) 
     let dependant_displays = read
         .displays
         .iter()
-        .filter_map(|(_, d)| {
-            if d.schedule == uuid {
+        .filter_map(|(_, d)| match d.display_material {
+            DisplayMaterial::Schedule(schedule_uuid) if uuid == schedule_uuid => {
                 Some(d.name.clone())
-            } else {
-                None
             }
+            _ => None,
         })
         .collect::<Vec<_>>();
     if dependant_displays.len() > 0 {
