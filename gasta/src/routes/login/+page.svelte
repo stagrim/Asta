@@ -2,6 +2,7 @@
 	import { enhance } from '$app/forms';
 	import type { ActionData, PageData } from './$types';
 	import { toastStore } from '$lib/stores';
+	import { SignIn } from '@auth/sveltekit/components';
 
 	export let data: PageData;
 
@@ -14,7 +15,6 @@
 			autohide: false
 		});
 	}
-	let formLoading = false;
 </script>
 
 {#if data?.banner}
@@ -24,33 +24,19 @@
 {/if}
 
 <div class="flex justify-center">
-	<form
-		class="card m-4 max-w-4xl"
-		method="POST"
-		action="?/login"
-		use:enhance={({ cancel }) => {
-			if (formLoading) {
-				cancel();
-			}
-			formLoading = true;
-			return async ({ update }) => {
-				await update();
-				formLoading = false;
-			};
-		}}
-	>
-		<section class="p-4">
-			<label class="label mb-5">
-				<span>username</span>
-				<input name="username" class="input" type="text" value={form?.username ?? ''} required />
-			</label>
-
-			<label class="label mb-5">
-				<span>password</span>
-				<input name="password" class="input" type="password" required />
-			</label>
-
-			<button class="btn variant-filled-primary" disabled={formLoading}>Log in</button>
+	<div class="card m-4 max-w-4xl">
+		<section class="p-4 text-center">
+			<h1 class="font-bold text-3xl p-3">
+				Welcome to <span
+					class="bg-gradient-to-br from-primary-500 to-primary-300 bg-clip-text text-transparent box-decoration-clone"
+				>
+					Asta
+				</span>
+			</h1>
+			<SignIn provider="authentik">
+				<span class="btn variant-filled-primary" slot="submitButton">Sign in using D-sektionen</span
+				>
+			</SignIn>
 		</section>
-	</form>
+	</div>
 </div>

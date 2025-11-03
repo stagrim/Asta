@@ -4,11 +4,9 @@
 	import SvelteMarkdown from 'svelte-markdown';
 	import Header from '$lib/markdown_renderers/Header.svelte';
 	import Link from '$lib/markdown_renderers/Link.svelte';
+	import { SignOut } from '@auth/sveltekit/components';
 
 	export let data: PageData;
-	const modalStore = getModalStore();
-
-	let logout_submit_button: HTMLButtonElement;
 </script>
 
 <div class="card m-8 max-w-4xl mx-auto p-8">
@@ -27,22 +25,12 @@
 		</span>
 	</h1>
 
-	{#if data.user}
-		<form class="mt-12" method="POST" action="/login?/logout">
-			<button
-				class="btn variant-ghost-error mx-auto block relative"
-				on:click={(e) => {
-					e.preventDefault();
-					modalStore.trigger({
-						type: 'confirm',
-						title: `Do you want to log out?`,
-						response: (r) => (r ? logout_submit_button.click() : '')
-					});
-				}}>Log out</button
+	{#if data.name}
+		<SignOut class="mx-auto text-center mt-12" provider="authentik">
+			<span slot="submitButton" class="text-center btn variant-ghost-error mx-auto block relative"
+				>Log out</span
 			>
-
-			<button class="hidden" bind:this={logout_submit_button} />
-		</form>
+		</SignOut>
 	{/if}
 
 	{#if data.markdown}

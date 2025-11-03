@@ -2,6 +2,8 @@ import { env } from '$env/dynamic/private';
 import { building } from '$app/environment';
 import { redirect, type Handle } from '@sveltejs/kit';
 import { session_display_name, session_username, valid_session } from '$lib/server/auth';
+import { authHandle } from './auth';
+import { sequence } from '@sveltejs/kit/hooks';
 
 if (env.SERVER_URL) {
 	console.log(`Listening for Server on ${env.SERVER_URL}`);
@@ -9,10 +11,10 @@ if (env.SERVER_URL) {
 	throw new Error("SERVER_URL environment variable is not defined, can't connect to Server");
 }
 
-if (env.LDAP_URL) {
-	console.log(`Listening to LDAP on ${env.LDAP_URL}`);
+if (env.AUTH_AUTHENTIK_ISSUER) {
+	console.log(`Using ODIC with endpoint on ${env.AUTH_AUTHENTIK_ISSUER}`);
 } else if (!building) {
-	throw new Error("LDAP_URL environment variable is not defined, can't connect to LDAP");
+	throw new Error("AUTH_AUTHENTIK_ISSUER environment variable is not defined, can't connect to Authentik");
 }
 
 if (env.LDAP_GROUPS) {
@@ -29,7 +31,7 @@ if (env.REDIS_URL) {
 	throw new Error("REDIS_URL environment variable is not defined, can't connect to Redis");
 }
 
-export const handle: Handle = async ({ event, resolve }) => {
+export const defaultHandle: Handle = async ({ event, resolve }) => {
 	// Ensure browser security
 	if (
 		!event.url.pathname.startsWith('/not-supported') &&
@@ -41,30 +43,6 @@ export const handle: Handle = async ({ event, resolve }) => {
 		!event.request.headers.get('SEC-CH-UA')?.includes(`"Edge"`)
 	) {
 		throw redirect(303, '/');
-	}
-
-	const valid = await valid_session(
-		event.cookies.get('session-id')!,
-		event.request.headers.get('User-Agent')!
-	);
-	if (
-		!event.url.pathname.startsWith('/login') &&
-		!event.url.pathname.startsWith('/not-supported')
-	) {
-		if (valid) {
-			event.locals.user = await session_username(event.cookies.get('session-id')!);
-			event.locals.name = await session_display_name(event.cookies.get('session-id')!);
-			// console.log("Valid req, will not redirect")
-		} else {
-			// console.log("Invalid req, will redirect to login")
-			throw redirect(303, '/login');
-		}
-	} else if (event.url.pathname.startsWith('/login') && event.request.method === 'GET') {
-		// Get requests to login sites should redirect to start page if user session is valid.
-		// Logout is a Post request to login, so only GET should be reflected
-		if (valid) {
-			throw redirect(303, '/');
-		}
 	}
 
 	if (event.request.method === 'POST') {
@@ -97,3 +75,5 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	return resolve(event);
 };
+
+export const handle = sequence(authHandle);
