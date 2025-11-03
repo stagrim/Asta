@@ -76,4 +76,4 @@ export const defaultHandle: Handle = async ({ event, resolve }) => {
 	return resolve(event);
 };
 
-export const handle = sequence(authHandle);
+export const handle = sequence(authHandle, defaultHandle);
