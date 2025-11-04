@@ -1,7 +1,6 @@
 import { env } from '$env/dynamic/private';
 import { building } from '$app/environment';
 import { redirect, type Handle } from '@sveltejs/kit';
-import { session_display_name, session_username, valid_session } from '$lib/server/auth';
 import { authHandle } from './auth';
 import { sequence } from '@sveltejs/kit/hooks';
 
@@ -17,11 +16,11 @@ if (env.AUTH_AUTHENTIK_ISSUER) {
 	throw new Error("AUTH_AUTHENTIK_ISSUER environment variable is not defined, can't connect to Authentik");
 }
 
-if (env.LDAP_GROUPS) {
-	console.log(`LDAP groups allowed to log in: ${env.LDAP_GROUPS}`);
+if (env.OAUTH_GROUPS) {
+	console.log(`OAUTH groups allowed to log in: ${env.OAUTH_GROUPS}`);
 } else if (!building) {
 	throw new Error(
-		'LDAP_GROUPS environment variable is not defined, must specify groups allowed to log in'
+		'OAUTH_GROUPS environment variable is not defined, must specify groups allowed to log in'
 	);
 }
 
@@ -53,7 +52,7 @@ export const defaultHandle: Handle = async ({ event, resolve }) => {
 			JSON.stringify(
 				{
 					type: 'POST request',
-					name: await session_username(event.cookies.get('session-id')!),
+					name: await (event.cookies.get('session-id')!),
 					url: clone.url,
 					body: entries
 						.map(([k, v]) => (k === 'password' ? [k, '[redacted]'] : [k, v]))

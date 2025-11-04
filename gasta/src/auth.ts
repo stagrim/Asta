@@ -45,7 +45,7 @@ export const {
 
 	callbacks: {
         signIn({profile}) {
-            let adminGroups = process.env.LDAP_GROUPS?.split(' ') as string[];
+            let adminGroups = process.env.OAUTH_GROUPS?.split(' ') as string[];
             let userGroups = profile?.groups as string[];
 	        let userGroupList = userGroups.map((s) => s.replace('/', '')).toString();
             console.log(adminGroups);
