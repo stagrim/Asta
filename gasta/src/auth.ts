@@ -11,12 +11,6 @@ declare module '@auth/sveltekit' {
 			name: string;
 			userId: string;
 			group_list: string[];
-			/**
-			 * By default, TypeScript merges new interface properties and overwrites existing ones.
-			 * In this case, the default session user properties will be overwritten,
-			 * with the new ones defined above. To keep the default session user properties,
-			 * you need to add them back into the newly declared interface.
-			 */
 		} & DefaultSession['user'];
 	}
 }
@@ -45,11 +39,9 @@ export const {
 
 	callbacks: {
         signIn({profile}) {
-            let adminGroups = process.env.OAUTH_GROUPS?.split(' ') as string[];
+            const adminGroups = process.env.OAUTH_GROUPS?.split(' ') as string[];
             let userGroups = profile?.groups as string[];
 	        let userGroupList = userGroups.map((s) => s.replace('/', '')).toString();
-            console.log(adminGroups);
-            console.log(userGroupList);
             return (adminGroups && adminGroups.some((g) => userGroupList.includes(g)));
         },
 		jwt({ token, user }) {
@@ -70,5 +62,8 @@ export const {
 
 			return session;
 		}
-	}
+	},
+    pages: {
+        error: "/error"
+    }
 });

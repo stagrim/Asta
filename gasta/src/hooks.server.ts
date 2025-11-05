@@ -52,10 +52,9 @@ export const defaultHandle: Handle = async ({ event, resolve }) => {
 			JSON.stringify(
 				{
 					type: 'POST request',
-					name: await (event.cookies.get('session-id')!),
+					name: (await event.locals.auth())?.user,
 					url: clone.url,
 					body: entries
-						.map(([k, v]) => (k === 'password' ? [k, '[redacted]'] : [k, v]))
 						.reduce((prev, [key, val]) => {
 							try {
 								// Try to convert value to JSON and replace val with the parsed data
