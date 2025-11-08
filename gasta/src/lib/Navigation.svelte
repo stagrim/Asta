@@ -1,26 +1,32 @@
 <script lang="ts">
-	import { Icon } from 'svelte-awesome';
-	import tv from 'svelte-awesome/icons/tv';
-	import calendar from 'svelte-awesome/icons/calendar';
-	import filter from 'svelte-awesome/icons/filter';
-	import listUl from 'svelte-awesome/icons/listUl';
-	import plus from 'svelte-awesome/icons/plus';
-	import { faDeleteLeft } from '@fortawesome/free-solid-svg-icons/faDeleteLeft';
+	import * as Sidebar from '$lib/components/ui/sidebar';
+	import * as Collapsible from '$lib/components/ui/collapsible';
+	import { useSidebar } from '$lib/components/ui/sidebar/index.js';
 
 	import { page } from '$app/state';
-	import { Accordion, AccordionItem, getDrawerStore } from '@skeletonlabs/skeleton';
 	import type { LayoutData } from '../routes/$types';
 	import { fade, slide } from 'svelte/transition';
 	import sanitizeHtml from 'sanitize-html';
 	import type { Display } from './api_bindings/read/Display';
 	import type { Schedule } from './api_bindings/read/Schedule';
 	import type { Playlist } from './api_bindings/read/Playlist';
+	import {
+		CalendarClock,
+		Camera,
+		ChevronRight,
+		Funnel,
+		ListVideo,
+		Monitor,
+		Plus,
+		SearchIcon
+	} from '@lucide/svelte';
+	import Label from './components/ui/label/label.svelte';
 
 	let { data }: { data: LayoutData } = $props();
 
-	const drawerStore = getDrawerStore();
-
-	const drawerClose = () => drawerStore.close();
+	// const drawerStore = getDrawerStore();
+	const sidebar = useSidebar();
+	const drawerClose = () => sidebar.openMobile && sidebar.toggle();
 
 	let drawer_open: [boolean, boolean, boolean] = $state([false, false, false]);
 
@@ -63,24 +69,107 @@
 		filter: string
 	) {
 		if (filter) {
+			const regex = new RegExp(`(${filter})`, 'gi');
 			return kind
-				.filter(({ title_name }) => RegExp(`(${filter})`, 'gi').test(title_name))
-				.map((k) =>
-					Object.assign(k, {
-						title_name: k.title_name.replace(
-							RegExp(`(${filter})`, 'gi'),
-							'<span class="highlight">$1</span>'
-						)
-					})
-				);
+				.filter(({ title_name }) => regex.test(title_name))
+				.map((k) => {
+					const copy = Object.assign({}, k);
+					regex.lastIndex = 0;
+
+					copy.title_name = k.title_name.replace(
+						regex,
+						(match) => `<span class="highlight">${match}</span>`
+					);
+
+					return copy;
+				});
 		}
 		return kind;
 	}
 </script>
 
-<nav class="list-nav">
-	<div class="input-group input-group-divider grid-cols-[1fr_auto] mb-1">
-		<!-- Stupid solution to avoid having mobiles autofocus and bring up the keyboard on the filter input field -->
+<Sidebar.Root>
+	<Sidebar.Header>
+		<Sidebar.Group class="py-0">
+			<Sidebar.GroupContent class="relative">
+				<Label for="search" class="sr-only">Search</Label>
+				<Sidebar.Input id="search" placeholder="Filter" class="pl-8" bind:value={filter_value} />
+				<Funnel
+					class="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 select-none opacity-50"
+				/>
+			</Sidebar.GroupContent>
+		</Sidebar.Group>
+	</Sidebar.Header>
+	<Sidebar.Content>
+		{#each kinds as kind, i (kind.type)}
+			{@const capitalized = `${kind.type.charAt(0).toUpperCase()}${kind.type.substring(1)}`}
+			{@const sanitized_values = kind.values.map((k) =>
+				Object.assign(k, { title_name: sanitize_html(k.name) })
+			)}
+			<Collapsible.Root title={capitalized} class="group/collapsible" bind:open={drawer_open[i]}>
+				<Sidebar.Group>
+					<Sidebar.GroupLabel
+						class="group/label text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground text-sm"
+					>
+						{#snippet child({ props })}
+							<Collapsible.Trigger {...props}>
+								{#if kind.type == 'display'}
+									<Monitor />
+								{:else if kind.type == 'schedule'}
+									<CalendarClock />
+								{:else}
+									<ListVideo />
+								{/if}
+								<span class="ml-1">{capitalized}</span>
+
+								<ChevronRight
+									class="ml-auto transition-transform group-data-[state=open]/collapsible:rotate-90"
+								/>
+							</Collapsible.Trigger>
+						{/snippet}
+					</Sidebar.GroupLabel>
+					<Collapsible.Content>
+						<Sidebar.GroupContent>
+							<Sidebar.MenuSub>
+								{#each filter_titles(sanitized_values, filter_value) as { uuid, title_name } (uuid)}
+									{@const href = `/${kind.type}/${uuid}`}
+									<Sidebar.MenuSubItem>
+										<Sidebar.MenuSubButton>
+											{#snippet child({ props })}
+												<a {href} onclick={drawerClose} {...props}>
+													<span>{@html title_name}</span>
+												</a>
+											{/snippet}
+										</Sidebar.MenuSubButton>
+									</Sidebar.MenuSubItem>
+								{/each}
+								<Sidebar.MenuItem>
+									<Sidebar.MenuButton>
+										{#snippet child({ props })}
+											<a href="/{kind.type}" onclick={drawerClose} {...props}>
+												<Plus />
+												<span>Add {capitalized}</span>
+											</a>
+										{/snippet}
+									</Sidebar.MenuButton>
+								</Sidebar.MenuItem>
+							</Sidebar.MenuSub>
+						</Sidebar.GroupContent>
+					</Collapsible.Content>
+				</Sidebar.Group>
+			</Collapsible.Root>
+			<!-- <Accordion.Root type="single">
+				<Accordion.Item value="item-1">
+					<Accordion.Trigger>Is it accessible?</Accordion.Trigger>
+					<Accordion.Content>Yes. It adheres to the WAI-ARIA design pattern.</Accordion.Content>
+				</Accordion.Item>
+			</Accordion.Root> -->
+		{/each}
+	</Sidebar.Content>
+</Sidebar.Root>
+
+<!-- <nav class="list-nav"> -->
+<!-- <div class="input-group input-group-divider grid-cols-[1fr_auto] mb-1">
 		<input type="hidden" autofocus={true} />
 
 		<input type="text" class="input" placeholder="filter" bind:value={filter_value} />
@@ -91,8 +180,9 @@
 				><Icon data={faDeleteLeft}></Icon></button
 			>
 		{/if}
-	</div>
-	<Accordion>
+	</div> -->
+
+<!-- <Accordion>
 		{#each kinds as kind, i (kind.type)}
 			{@const capitalized = `${kind.type.charAt(0).toUpperCase()}${kind.type.substring(1)}`}
 			{@const sanitized_values = kind.values.map((k) =>
@@ -140,19 +230,19 @@
 				</svelte:fragment>
 			</AccordionItem>
 		{/each}
-	</Accordion>
-</nav>
+	</Accordion> -->
+<!-- </nav> -->
 
-<style lang="postcss">
+<style>
 	:global(:root [data-theme='d-theme']) {
-		--highlight-color: rgba(var(--color-primary-500) / 0.5);
+		--highlight-color: #404040;
 		--highlight-color-active: rgba(var(--color-surface-500) / 0.5);
 	}
 	:global(span.highlight) {
 		background-color: var(--highlight-color);
 		box-shadow: 0 0 0 1px var(--highlight-color);
 		animation: pulse 0.2s normal;
-		border-radius: var(--theme-rounded-base);
+		border-radius: 0.15rem;
 	}
 
 	:global(.variant-filled-primary span.highlight) {

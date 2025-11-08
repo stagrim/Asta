@@ -9,7 +9,6 @@
 	import type { Playlist } from '$lib/api_bindings/read/Playlist';
 	import type { Display } from '$lib/api_bindings/read/Display';
 	import type { Schedule } from '$lib/api_bindings/read/Schedule';
-	import { getModalStore } from '@skeletonlabs/skeleton';
 	import type { DisplayState, ScheduleState, State } from '../app';
 
 	export let uuid: string;
@@ -32,8 +31,6 @@
 	// State is cloned from last committed value for
 	// changes to live independently from database
 	$: item = structuredClone(map.get(uuid));
-
-	const modalStore = getModalStore();
 
 	let delete_button: HTMLButtonElement;
 

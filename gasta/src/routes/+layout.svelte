@@ -1,43 +1,66 @@
 <script lang="ts">
-	// Finally, your application's global stylesheet (sometimes labeled 'app.css')
-	import '../app.postcss';
-	import {
-		AppBar,
-		AppShell,
-		Toast,
-		Drawer,
-		getDrawerStore,
-		Modal,
-		Avatar,
-		initializeStores,
-		getToastStore
-	} from '@skeletonlabs/skeleton';
+	import '../app.css';
+	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
+	import * as Avatar from '$lib/components/ui/avatar/index.js';
 	import type { LayoutData } from './$types';
 	import Navigation from '$lib/Navigation.svelte';
-	import { toastStore } from '$lib/stores';
+	import Separator from '$lib/components/ui/separator/separator.svelte';
+	import { ModeWatcher } from 'mode-watcher';
+	import Button from '$lib/components/ui/button/button.svelte';
+	import { MoonIcon } from '@lucide/svelte';
+	import { Toaster } from '$lib/components/ui/sonner';
+	import { toast } from 'svelte-sonner';
+	// import { toastStore } from '$lib/stores';
 
-	export let data: LayoutData;
-
-	initializeStores();
-
-	const drawerStore = getDrawerStore();
-	$toastStore = getToastStore();
+	let { children, data } = $props();
 </script>
 
-<Toast />
+<Sidebar.Provider>
+	{#if !data.empty}
+		<Navigation {data} />
+	{/if}
+	<Sidebar.Inset>
+		<header
+			class="bg-background sticky top-0 flex h-16 shrink-0 items-center justify-between gap-2 border-b px-4"
+		>
+			<div>
+				{#if !data.empty}
+					<Sidebar.Trigger class="-ml-1" />
+				{/if}
+			</div>
 
-<Modal />
+			<a href="/">
+				<Avatar.Root class="w-12 h-12">
+					<Avatar.Image src="/asta_icon.jpg" />
+					<Avatar.Fallback>AS</Avatar.Fallback>
+				</Avatar.Root>
+			</a>
 
+			<div>
+				<Button variant="outline" size="icon" onclick={() => toast('Not yet implemented')}>
+					<MoonIcon class="h-[1.2rem] w-[1.2rem] transition-all!" />
+					<span class="sr-only">May someday toggle theme</span>
+				</Button>
+			</div>
+		</header>
+
+		<main class="p-4 flex flex-col">
+			{@render children?.()}
+		</main>
+	</Sidebar.Inset>
+</Sidebar.Provider>
+
+<Toaster />
+<!--
 <Drawer>
 	<div class="p-2">
 		{#if !data.empty}
 			<Navigation {data} />
 		{/if}
 	</div>
-</Drawer>
+</Drawer> -->
 
-<!-- svelte-ignore a11y-click-events-have-key-events -->
-<AppShell
+<!-- <AppShell
 	slotSidebarLeft={!data.empty ? 'max-w-xs w-0 md:w-2/6 md:p-4 h-screen overflow-y-scroll' : ''}
 >
 	<svelte:fragment slot="pageHeader">
@@ -56,13 +79,11 @@
 				{/if}
 			</svelte:fragment>
 
-			<!-- <h4 class="h4">Asta Admin</h4> -->
 			<a href={data.user ? '/' : ''} style:cursor="pointer">
 				<Avatar rounded="rounded-full" src="/asta_icon.jpg" width="w-16" />
 			</a>
 
 			<svelte:fragment slot="trail">
-				<!-- Light switch -->
 				<div
 					class="lightswitch-track cursor-pointer transition-all duration-[200ms] w-12 h-6 ring-[1px] ring-surface-500/30 rounded-full bg-surface-900"
 					role="switch"
@@ -95,7 +116,6 @@
 					</div>
 				</div>
 
-				<!-- <LightSwitch rounded="rounded-full" /> -->
 			</svelte:fragment>
 		</AppBar>
 	</svelte:fragment>
@@ -107,4 +127,4 @@
 	</svelte:fragment>
 
 	<slot />
-</AppShell>
+</AppShell> -->

@@ -2,7 +2,6 @@
 	import { faClock } from '@fortawesome/free-solid-svg-icons/faClock';
 	import { Icon } from 'svelte-awesome';
 
-	import { getModalStore } from '@skeletonlabs/skeleton';
 	import cronstrue from 'cronstrue';
 	import cron from 'cron-validate';
 
@@ -16,8 +15,6 @@
 	 * Runs when cron valid is evaluated
 	 */
 	export let set_valid: (number, boolean) => void;
-
-	const modalStore = getModalStore();
 
 	$: valid_cron = cron(value?.trim() ?? '', {
 		override: {
