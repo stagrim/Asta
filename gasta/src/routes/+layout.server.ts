@@ -15,7 +15,9 @@ export const load = (async ({
 	empty?: boolean;
 	user?: string;
 }> => {
-	if (!locals.user) {
+	const session = await locals.auth();
+	
+	if (!session?.user) {
 		return {
 			display: {
 				type: 'Display',
@@ -62,6 +64,6 @@ export const load = (async ({
 		display,
 		schedule,
 		playlist,
-		user: locals.user
+		user: session?.user.preferred_username,
 	};
 }) satisfies LayoutServerLoad;
