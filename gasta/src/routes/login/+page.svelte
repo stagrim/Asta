@@ -1,8 +1,7 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
 	import type { ActionData, PageData } from './$types';
 	import { toastStore } from '$lib/stores';
-	import { SignIn } from '@auth/sveltekit/components';
+	import { signIn } from '@auth/sveltekit/client';
 
 	export let data: PageData;
 
@@ -33,10 +32,9 @@
 					Asta
 				</span>
 			</h1>
-			<SignIn provider="authentik">
-				<span class="btn variant-filled-primary" slot="submitButton">Sign in using D-sektionen</span
-				>
-			</SignIn>
+			<button class="btn variant-filled-primary" onclick={() => signIn('authentik')}>
+				Sign in using D-sektionen
+			</button>
 		</section>
 	</div>
 </div>
