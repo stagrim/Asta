@@ -14,18 +14,6 @@
 	import type { ActionData, PageData } from './$types';
 	import { FileSliders, GalleryVerticalEnd } from '@lucide/svelte';
 	import { signIn } from '@auth/sveltekit/client';
-
-	export let data: PageData;
-
-	export let form: ActionData;
-
-	// $: if (form?.msg) {
-	// 	$toastStore.trigger({
-	// 		message: form.msg,
-	// 		background: 'variant-filled-error',
-	// 		autohide: false
-	// 	});
-	// }
 </script>
 
 <!-- {#if data?.banner}
@@ -81,6 +69,9 @@
 										></path></svg
 									>
 									Login with Dsek
+								</Button>
+								<Button variant="outline" type="button" onclick={() => signIn('credentials')}>
+									Login with hopes and prayers
 								</Button>
 							</Field>
 						</FieldGroup>

@@ -65,7 +65,7 @@
 					class="btn-icon btn-icon-sm variant-filled-primary ml-2"
 					on:click={add_item}
 				>
-					<Icon data={plus} scale={0.75} />
+					<!-- <Icon data={plus} scale={0.75} /> -->
 				</button>
 			</div>
 			<!-- </label> -->
@@ -82,7 +82,7 @@
 								class:invisible={i <= 0}
 								on:click={() => swap_item(i, i - 1)}
 							>
-								<Icon data={arrowUp} scale={0.75} />
+								<!-- <Icon data={arrowUp} scale={0.75} /> -->
 							</button>
 							<button
 								type="button"
@@ -92,7 +92,7 @@
 									playlist.items = playlist.items;
 								}}
 							>
-								<Icon data={trash} scale={0.75} />
+								<!-- <Icon data={trash} scale={0.75} /> -->
 							</button>
 							<button
 								type="button"
@@ -100,7 +100,7 @@
 								class:invisible={i >= playlist.items.length - 1}
 								on:click={() => swap_item(i, i + 1)}
 							>
-								<Icon data={arrowDown} scale={0.75} />
+								<!-- <Icon data={arrowDown} scale={0.75} /> -->
 							</button>
 						</div>
 						<div class="w-full">

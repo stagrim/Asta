@@ -32,50 +32,24 @@
 		<span>{types.type}</span>
 	{/if}
 
-	<div class="flex flex-row items-center input-group input-group-divider cursor-pointer">
-		<!-- <select
-			required
-			{name}
-			class="select"
-			style="min-width: unset !important;"
-			bind:value={chosen_type}
-		>
-			{#each types_values as type (type.uuid)}
-				<option value={type.uuid}>{type.name}</option>
-			{/each}
-		</select> -->
-
-		<InputGroup.Root>
-			<Select.Root required {name} bind:value={chosen_type} type="single">
-				<InputGroupSelectTrigger class="w-full"
-					>{types_values.find((v) => v.uuid == chosen_type)?.name}</InputGroupSelectTrigger
-				>
-				<Select.Content>
-					<Select.Label>{types.type}s</Select.Label>
-					{#each types_values as type (type.uuid)}
-						<Select.Item value={type.uuid}>{type.name}</Select.Item>
-					{/each}
-				</Select.Content>
-			</Select.Root>
-			<InputGroup.Addon align="inline-end">
-				{#if chosen_type !== '0'}
-					<a href={`/${types.type.toLocaleLowerCase()}/${chosen_type}`}>
-						<InputGroup.Button variant="secondary"><ArrowRight /></InputGroup.Button>
-					</a>
-				{/if}
-				<!-- <a href={`/${types.type.toLocaleLowerCase()}/${chosen_type}`}>
-					<div>
-						<ArrowRight />
-					</div>
-				</a> -->
-			</InputGroup.Addon>
-		</InputGroup.Root>
-		<!-- style="min-width: unset !important;" -->
-
-		<!-- <a class="h-[40px] w-10" href={`/${types.type.toLocaleLowerCase()}/${chosen_type}`}>
-			<div>
-				<Icon data={arrowRight} scale={0.75} />
-			</div>
-		</a> -->
-	</div>
+	<InputGroup.Root>
+		<Select.Root required={true} {name} bind:value={chosen_type} type="single">
+			<InputGroupSelectTrigger class="w-full">
+				{types_values.find((v) => v.uuid == chosen_type)?.name}
+			</InputGroupSelectTrigger>
+			<Select.Content>
+				<Select.Label>{types.type}s</Select.Label>
+				{#each types_values as type (type.uuid)}
+					<Select.Item value={type.uuid}>{type.name}</Select.Item>
+				{/each}
+			</Select.Content>
+		</Select.Root>
+		<InputGroup.Addon align="inline-end">
+			{#if chosen_type !== '0'}
+				<a href={`/${types.type.toLocaleLowerCase()}/${chosen_type}`}>
+					<InputGroup.Button variant="secondary"><ArrowRight /></InputGroup.Button>
+				</a>
+			{/if}
+		</InputGroup.Addon>
+	</InputGroup.Root>
 </label>

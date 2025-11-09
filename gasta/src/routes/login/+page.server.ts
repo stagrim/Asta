@@ -1,18 +1,10 @@
 import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import process from "node:process";
 
 export const load: PageServerLoad = async (event) => {
 	const session = await event.locals.auth();
-	let banner;
-	if (process.env.NODE_ENV === 'development') {
-		banner = `Development mode in use, admin account with password 'admin' is usable`;
-	}
 
 	if (session?.user) {
-		redirect(302, "/");
+		redirect(302, '/');
 	}
-
-	return {banner, session}
-
 };

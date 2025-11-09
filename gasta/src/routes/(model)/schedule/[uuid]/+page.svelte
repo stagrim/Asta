@@ -11,7 +11,6 @@
 	import { onMount } from 'svelte';
 
 	export let data: PageData;
-
 	$: uuid = page.params.uuid;
 
 	let item: Schedule;
@@ -51,7 +50,6 @@
 	const clear_timeout = () => (timeout_handle ? timeout_handle.cancel() : null);
 	// Clear current timeout if server load function has changed schedule_info on navigation
 	$: (data.schedule_info, clear_timeout());
-
 	/**
 	 * Cancelable delay object
 	 * @param delay delay in milliseconds
@@ -143,7 +141,7 @@
 				class="btn-icon btn-icon-sm variant-filled-primary ml-2"
 				on:click={add_item}
 			>
-				<Icon data={plus} scale="0.75" />
+				<!-- <Icon data={plus} scale="0.75" /> -->
 			</button>
 		</div>
 
@@ -157,8 +155,9 @@
 						{#if next_playlist}
 							Will change to
 							<a class="mx-1 top-2 align-text-top" href={`/playlist/${next_playlist.uuid}`}>
-								<span class="chip variant-ghost-primary gap-1"
-									><Icon data={listUl}></Icon> &nbsp;{next_playlist.name}</span
+								<span class="chip variant-ghost-primary gap-1">
+									<!-- <Icon data={listUl}></Icon> -->
+									&nbsp;{next_playlist.name}</span
 								>
 							</a>
 							at {change_date.toLocaleString()}
@@ -188,7 +187,7 @@
 								class:invisible={i <= 0}
 								on:click={() => swap_item(i, i - 1)}
 							>
-								<Icon data={arrowUp} scale="0.75" />
+								<!-- <Icon data={arrowUp} scale="0.75" /> -->
 							</button>
 							<button
 								type="button"
@@ -198,7 +197,7 @@
 									item.scheduled = item.scheduled;
 								}}
 							>
-								<Icon data={trash} />
+								<!-- <Icon data={trash} /> -->
 							</button>
 							<button
 								type="button"
@@ -206,7 +205,7 @@
 								class:invisible={i >= item.scheduled.length - 1}
 								on:click={() => swap_item(i, i + 1)}
 							>
-								<Icon data={arrowDown} scale="0.75" />
+								<!-- <Icon data={arrowDown} scale="0.75" /> -->
 							</button>
 						</div>
 

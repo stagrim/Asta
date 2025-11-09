@@ -11,9 +11,9 @@
 	export let data: PageData;
 </script>
 
-<Card.Root class="w-sm self-center">
-	<Card.Header>
-		<Card.Title>Welcome back {data.name.split(' ')[0]}</Card.Title>
+<Card.Root class="max-w-sm w-full">
+	<Card.Header class="text-center">
+		<Card.Title class="text-xl">Welcome back {data.name}</Card.Title>
 	</Card.Header>
 	<Card.Content>
 		<Button onclick={() => signOut()}>Log out</Button>

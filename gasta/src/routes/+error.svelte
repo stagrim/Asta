@@ -16,7 +16,7 @@
 	}
 </script>
 
-<Card.Root class="w-lg self-center">
+<Card.Root class="max-w-lg self-center">
 	<Card.Header>
 		<Card.Title>{errorTitle}</Card.Title>
 		<Card.Description>{errorDesc}</Card.Description>

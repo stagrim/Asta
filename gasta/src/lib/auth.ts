@@ -3,6 +3,9 @@ import Authentik, { type AuthentikProfile } from '@auth/sveltekit/providers/auth
 import * as dotenv from 'dotenv';
 import { env } from '$env/dynamic/private';
 import process from 'node:process';
+import Credentials from '@auth/sveltekit/providers/credentials';
+import type { Provider } from '@auth/sveltekit/providers';
+import { isInDevEnvironment } from './utils';
 
 dotenv.config();
 
@@ -17,6 +20,37 @@ declare module '@auth/sveltekit' {
 	}
 }
 
+let providers: Provider[] = [
+	Authentik({
+		clientId: process.env.AUTH_AUTHENTIK_ID,
+		clientSecret: process.env.AUTH_AUTHENTIK_SECRET,
+		issuer: process.env.AUTH_AUTHENTIK_ISSUER,
+		profile: (profile: AuthentikProfile) => {
+			return {
+				userId: profile.preferred_username,
+				name: profile.name,
+				group_list: profile['groups'] ?? []
+			};
+		}
+	})
+];
+
+// Activate Mock login
+if (isInDevEnvironment) {
+	providers.push(
+		Credentials({
+			async authorize() {
+				return {
+					preferred_username: 'rosapantern',
+					userId: 'rosapantern',
+					name: 'Rosa Pantern',
+					group_list: []
+				};
+			}
+		})
+	);
+}
+
 export const {
 	handle: authHandle,
 	signIn,
@@ -24,21 +58,7 @@ export const {
 } = SvelteKitAuth({
 	trustHost: true,
 	secret: process.env.AUTH_SECRET,
-	providers: [
-		Authentik({
-			clientId: process.env.AUTH_AUTHENTIK_ID,
-			clientSecret: process.env.AUTH_AUTHENTIK_SECRET,
-			issuer: process.env.AUTH_AUTHENTIK_ISSUER,
-			profile: (profile: AuthentikProfile) => {
-				return {
-					userId: profile.preferred_username,
-					name: profile.name,
-					group_list: profile['groups'] ?? []
-				};
-			}
-		})
-	],
-
+	providers,
 	callbacks: {
 		signIn({ profile }) {
 			console.log({ action: 'Tries to login', profile });

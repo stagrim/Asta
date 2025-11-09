@@ -1,7 +1,7 @@
 import { env } from '$env/dynamic/private';
 import { building } from '$app/environment';
 import { redirect, type Handle } from '@sveltejs/kit';
-import { authHandle } from './auth.ts';
+import { authHandle } from '$lib/auth';
 import { sequence } from '@sveltejs/kit/hooks';
 
 if (env.SERVER_URL) {
