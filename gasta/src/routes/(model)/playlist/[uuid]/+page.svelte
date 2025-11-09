@@ -1,12 +1,6 @@
 <script lang="ts">
-	import { Icon } from 'svelte-awesome';
-	import plus from 'svelte-awesome/icons/plus';
-	import arrowDown from 'svelte-awesome/icons/arrowDown';
-	import arrowUp from 'svelte-awesome/icons/arrowUp';
-	import trash from 'svelte-awesome/icons/trash';
-
 	import { generate } from 'random-words';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import type { PageData } from './$types';
 	import { flip } from 'svelte/animate';
 	import UpdateForm from '$lib/UpdateForm.svelte';
@@ -14,7 +8,7 @@
 
 	export let data: PageData;
 
-	$: uuid = $page.params.uuid;
+	$: uuid = page.params.uuid;
 
 	let playlist: Playlist;
 

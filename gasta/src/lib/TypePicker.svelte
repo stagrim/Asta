@@ -1,9 +1,7 @@
 <script lang="ts">
-	import arrowRight from 'svelte-awesome/icons/arrowRight';
 	import * as Select from '$lib/components/ui/select';
 	import * as InputGroup from '$lib/components/ui/input-group';
 
-	import { Icon } from 'svelte-awesome';
 	import type { State } from '../app';
 	import { ArrowRight, SearchIcon } from '@lucide/svelte';
 	import InputGroupSelectTrigger from './components/ui/InputGroupSelectTrigger.svelte';

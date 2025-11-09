@@ -16,7 +16,7 @@
 </script>
 
 <form
-	class="card m-4"
+	class="m-4"
 	method="POST"
 	action="?/create"
 	use:enhance={() => {

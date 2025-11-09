@@ -1,12 +1,9 @@
 <script lang="ts">
-	import copy from 'svelte-awesome/icons/copy';
-
 	import { page } from '$app/stores';
 	import TypePicker from '$lib/TypePicker.svelte';
 	import UpdateForm from '$lib/UpdateForm.svelte';
 	import { toastStore } from '$lib/stores';
 	import type { PageData } from './$types';
-	import { Icon } from 'svelte-awesome';
 	import type { Display } from '$lib/api_bindings/read/Display';
 
 	let { data }: { data: PageData } = $props();
@@ -66,17 +63,19 @@
 		<div class="flex items-center w-full gap-4">
 			<select
 				class="select w-32"
-				bind:value={() => item?.display_material.type,
-				(v) => {
-					if (item && v) {
-						if (item.display_material.type !== v) {
-							const temp = item.display_material.uuid;
-							item.display_material.uuid = other_uuid;
-							other_uuid = temp;
+				bind:value={
+					() => item?.display_material.type,
+					(v) => {
+						if (item && v) {
+							if (item.display_material.type !== v) {
+								const temp = item.display_material.uuid;
+								item.display_material.uuid = other_uuid;
+								other_uuid = temp;
+							}
+							item.display_material.type = v;
 						}
-						item.display_material.type = v;
 					}
-				}}
+				}
 			>
 				<option value="schedule">Schedule</option>
 				<option value="playlist">Playlist</option>

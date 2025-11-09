@@ -1,7 +1,4 @@
 <script lang="ts">
-	import { faClock } from '@fortawesome/free-solid-svg-icons/faClock';
-	import { Icon } from 'svelte-awesome';
-
 	import cronstrue from 'cronstrue';
 	import cron from 'cron-validate';
 

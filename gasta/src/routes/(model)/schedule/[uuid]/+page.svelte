@@ -1,12 +1,5 @@
 <script lang="ts">
-	import { Icon } from 'svelte-awesome';
-	import plus from 'svelte-awesome/icons/plus';
-	import arrowDown from 'svelte-awesome/icons/arrowDown';
-	import arrowUp from 'svelte-awesome/icons/arrowUp';
-	import trash from 'svelte-awesome/icons/trash';
-	import listUl from 'svelte-awesome/icons/listUl';
-
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import type { PageData } from './$types';
 	import type { PlaylistItem } from '$lib/api_bindings/update/PlaylistItem';
 	import type { Playlist } from '$lib/api_bindings/read/Playlist';
@@ -19,7 +12,7 @@
 
 	export let data: PageData;
 
-	$: uuid = $page.params.uuid;
+	$: uuid = page.params.uuid;
 
 	let item: Schedule;
 
@@ -57,7 +50,7 @@
 
 	const clear_timeout = () => (timeout_handle ? timeout_handle.cancel() : null);
 	// Clear current timeout if server load function has changed schedule_info on navigation
-	$: data.schedule_info, clear_timeout();
+	$: (data.schedule_info, clear_timeout());
 
 	/**
 	 * Cancelable delay object

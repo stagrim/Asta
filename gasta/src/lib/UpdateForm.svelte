@@ -1,8 +1,4 @@
 <script lang="ts">
-	import { Icon } from 'svelte-awesome';
-	import calendar from 'svelte-awesome/icons/calendar';
-	import tv from 'svelte-awesome/icons/tv';
-
 	import { form_action } from '$lib/form_action';
 	import { enhance } from '$app/forms';
 	import lodash from 'lodash';

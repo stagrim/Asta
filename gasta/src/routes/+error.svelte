@@ -1,36 +1,36 @@
 <script>
-	import { page } from '$app/stores';
-	import { SignOut } from '@auth/sveltekit/components';
+	import { page } from '$app/state';
+	import { Button } from '$lib/components/ui/button';
+	import * as Card from '$lib/components/ui/card';
+	import { signOut } from '@auth/sveltekit/client';
 
-	const params = $page.url.searchParams;
+	const pathname = page.url.pathname;
 	let errorTitle = $state('Page not Found');
 	let errorDesc = $state('Sorry, it looks like the requested page could not be found.');
 	let showReturn = $state(false);
 
-	switch (params.get('error')) {
-		case 'AccessDenied':
-			errorTitle = 'Access Denied';
-			errorDesc = 'You do not have permission to sign in to Asta.';
-			showReturn = true;
-			break;
-		default:
-			break;
+	if (pathname.startsWith('/not-authorized')) {
+		errorTitle = 'Access Denied';
+		errorDesc = 'You do not have permission to sign in to Asta.';
+		showReturn = true;
 	}
 </script>
 
-<div class="flex justify-center">
-	<section class="p-4 card m-4 max-w-4xl">
-		<h1 class="h1 py-4 font-semibold">{errorTitle}</h1>
-		<div class="flex basis-0 gap-3 flex-col sm:flex-row">
-			<div class="sm:w-1/2">
-				<img src="/404.jpg" class="rounded-md" alt="" />
-			</div>
-			<div class="sm:w-1/2">{errorDesc}</div>
-			{#if showReturn}
-				<a href="/" class="block">
-					<span class="text-center btn variant-ghost-primary block relative">Return</span>
-				</a>
-			{/if}
+<Card.Root class="w-lg self-center">
+	<Card.Header>
+		<Card.Title>{errorTitle}</Card.Title>
+		<Card.Description>{errorDesc}</Card.Description>
+	</Card.Header>
+	<Card.Content>
+		<div>
+			<img src="/404.jpg" class="rounded-md" alt="" />
 		</div>
-	</section>
-</div>
+	</Card.Content>
+	<Card.Footer>
+		{#if showReturn}
+			<a href="/login">
+				<Button>Return</Button>
+			</a>
+		{/if}
+	</Card.Footer>
+</Card.Root>
