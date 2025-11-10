@@ -10,6 +10,7 @@
 	import * as InputGroup from '$lib/components/ui/input-group';
 	import { CheckIcon, CopyIcon } from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
+	import * as Select from '$lib/components/ui/select';
 
 	let { data }: { data: PageData } = $props();
 
@@ -68,9 +69,11 @@
 			/>
 		</div>
 
-		<div class="flex items-center w-full gap-4">
-			<select
-				class="select w-32"
+		<h1 class="text-2xl mb-4">Display Material</h1>
+
+		<div class="flex md:items-center w-full gap-4 sm:flex-row flex-col">
+			<Select.Root
+				type="single"
 				bind:value={
 					() => item?.display_material.type,
 					(v) => {
@@ -85,9 +88,17 @@
 					}
 				}
 			>
-				<option value="schedule">Schedule</option>
-				<option value="playlist">Playlist</option>
-			</select>
+				<Select.Trigger class="w-32">
+					{item?.display_material.type
+						.charAt(0)
+						.toUpperCase()}{item?.display_material.type.substring(1)}
+				</Select.Trigger>
+				<Select.Content>
+					<Select.Label>Types</Select.Label>
+					<Select.Item value="schedule">Schedule</Select.Item>
+					<Select.Item value="playlist">Playlist</Select.Item>
+				</Select.Content>
+			</Select.Root>
 			<div class="w-full">
 				<TypePicker
 					label={false}
@@ -99,9 +110,3 @@
 		</div>
 	{/if}
 </UpdateForm>
-
-<style>
-	input[readonly] {
-		cursor: unset !important;
-	}
-</style>

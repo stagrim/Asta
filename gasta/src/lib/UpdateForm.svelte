@@ -138,7 +138,7 @@
 				return form_action;
 			}}
 		>
-			<section class="p-4">
+			<Card.Content>
 				{@render children?.()}
 
 				<div class="flex w-full justify-center gap-4 mt-5">
@@ -168,10 +168,10 @@
 						formaction="?/update">Apply</Button
 					>
 				</div>
+			</Card.Content>
 
-				<!-- svelte-ignore a11y_consider_explicit_label -->
-				<button class="hidden" formaction="?/delete" bind:this={delete_button}></button>
-			</section>
+			<!-- svelte-ignore a11y_consider_explicit_label -->
+			<button class="hidden" formaction="?/delete" bind:this={delete_button}></button>
 		</form>
 	</Card.Root>
 {/if}
