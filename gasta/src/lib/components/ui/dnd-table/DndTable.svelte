@@ -69,8 +69,6 @@
 	import { dragHandle, dragHandleZone, type DndEvent } from 'svelte-dnd-action';
 	import { GripVerticalIcon } from '@lucide/svelte';
 	import { cn } from '$lib/utils';
-	import type { PlaylistItem } from '$lib/api_bindings/update/PlaylistItem';
-	import DataTableCellEditor from './DataTableCellEditor.svelte';
 	import type { Snippet } from 'svelte';
 
 	type Item = TData & { id: string };
@@ -78,15 +76,11 @@
 	let {
 		data = $bindable(),
 		columns,
-		flipDurationMs = 150,
-		editorOpen = $bindable(false),
-		editorItem = $bindable(undefined)
+		flipDurationMs = 150
 	}: {
 		data: Item[];
 		columns: ColumnDef<Item>[];
 		flipDurationMs?: number;
-		editorOpen: boolean;
-		editorItem: PlaylistItem | undefined;
 	} = $props();
 
 	function handleDndConsider(e: CustomEvent<DndEvent<Item>>) {
@@ -97,8 +91,6 @@
 		data = e.detail.items;
 	}
 </script>
-
-<DataTableCellEditor bind:open={editorOpen} bind:item={editorItem} />
 
 <div class="w-full overflow-auto border rounded-lg shadow-sm bg-card text-card-foreground">
 	<table class="w-full caption-bottom text-sm">
@@ -137,7 +129,7 @@
 					>
 						<td
 							use:dragHandle
-							class="whitespace-nowrap bg-clip-padding p-2 align-middle [&:has([role=checkbox])]:pr-0"
+							class="whitespace-nowrap bg-clip-padding pl-2 align-middle [&:has([role=checkbox])]:pr-0"
 						>
 							<div
 								class="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground flex items-center justify-center w-8 h-8 rounded transition-colors hover:bg-muted"

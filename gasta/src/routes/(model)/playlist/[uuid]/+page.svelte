@@ -15,6 +15,7 @@
 		renderSnippet,
 		type ColumnDef
 	} from '$lib/components/ui/dnd-table/DndTable.svelte';
+	import EditDrawer from './EditDrawer.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -187,7 +188,9 @@
 		</div>
 
 		{#if playlist.items}
-			<DndTable bind:data={playlist.items} {columns} bind:editorOpen bind:editorItem />
+			<EditDrawer bind:open={editorOpen} bind:item={editorItem} />
+
+			<DndTable bind:data={playlist.items} {columns} />
 		{/if}
 	{/if}
 </UpdateForm>
