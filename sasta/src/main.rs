@@ -569,7 +569,7 @@ async fn read_display(State(state): State<AppState>) -> read::Response {
                 read::Payload::Playlist(vec![
                         read::Playlist { uuid: Uuid::new_v4(), name: "name1".into(), items: vec![
                             store::store::PlaylistItem::Website {
-                                name: "item_name".into(),
+                                id: "item_name".into(),
                                 settings: store::store::WebsiteData {
                                     url: "example.com".into(),
                                     duration: 60u64

@@ -71,16 +71,14 @@
 	import { cn } from '$lib/utils';
 	import type { PlaylistItem } from '$lib/api_bindings/update/PlaylistItem';
 	import DataTableCellEditor from './DataTableCellEditor.svelte';
-	import { overrideItemIdKeyNameBeforeInitialisingDndZones } from 'svelte-dnd-action';
 	import type { Snippet } from 'svelte';
-	overrideItemIdKeyNameBeforeInitialisingDndZones('name');
 
-	type Item = TData & { name: string };
+	type Item = TData & { id: string };
 
 	let {
 		data = $bindable(),
 		columns,
-		flipDurationMs = 300,
+		flipDurationMs = 150,
 		editorOpen = $bindable(false),
 		editorItem = $bindable(undefined)
 	}: {
@@ -126,48 +124,51 @@
 		</thead>
 
 		<tbody
-			class="[&_tr:last-child]:border-0"
+			class="[&_tr:last-child]:border-0 bg-background"
 			use:dragHandleZone={{ items: data, flipDurationMs, dropTargetStyle: {} }}
 			onconsider={handleDndConsider}
 			onfinalize={handleDndFinalize}
 		>
-			{#each data as item (item.name)}
-				<tr
-					animate:flip={{ duration: flipDurationMs }}
-					class="hover:[&,&>svelte-css-wrapper]:[&>th,td]:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors"
-				>
-					<!-- Drag Handle Cell -->
-					<td
-						use:dragHandle
-						class="whitespace-nowrap bg-clip-padding p-2 align-middle [&:has([role=checkbox])]:pr-0"
+			{#if data.length}
+				{#each data as item (item.id)}
+					<tr
+						animate:flip={{ duration: flipDurationMs }}
+						class="hover:[&,&>svelte-css-wrapper]:[&>th,td]:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors"
 					>
-						<div
-							class="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground flex items-center justify-center w-8 h-8 rounded hover:bg-muted"
-						>
-							<GripVerticalIcon class="text-muted-foreground size-3" />
-						</div>
-					</td>
-
-					{#each columns as col}
 						<td
-							class={cn(
-								'whitespace-nowrap bg-clip-padding p-2 align-middle [&:has([role=checkbox])]:pr-0',
-								col.class
-							)}
+							use:dragHandle
+							class="whitespace-nowrap bg-clip-padding p-2 align-middle [&:has([role=checkbox])]:pr-0"
 						>
-							{#if col.render}
-								{@const result = col.render(item) as any}
-								{#if result instanceof RenderSnippetConfig}
-									{@const { snippet, params } = result}
-									{@render snippet(params)}
-								{/if}
-							{:else}
-								{(item as any)[col.accessorKey]}
-							{/if}
+							<div
+								class="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground flex items-center justify-center w-8 h-8 rounded transition-colors hover:bg-muted"
+							>
+								<GripVerticalIcon class="text-muted-foreground size-3" />
+							</div>
 						</td>
-					{/each}
-				</tr>
-			{/each}
+
+						{#each columns as col}
+							<td
+								class={cn(
+									'whitespace-nowrap bg-clip-padding p-2 align-middle [&:has([role=checkbox])]:pr-0',
+									col.class
+								)}
+							>
+								{#if col.render}
+									{@const result = col.render(item) as any}
+									{#if result instanceof RenderSnippetConfig}
+										{@const { snippet, params } = result}
+										{@render snippet(params)}
+									{/if}
+								{:else}
+									{(item as any)[col.accessorKey]}
+								{/if}
+							</td>
+						{/each}
+					</tr>
+				{/each}
+			{:else}
+				<tr><td colspan="100" class="h-24 text-center">No Playlist Items added</td></tr>
+			{/if}
 		</tbody>
 	</table>
 </div>

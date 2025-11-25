@@ -163,7 +163,7 @@ pub async fn client_connection(
             // If playlist is empty, add text stating such to display loop
             if playlist.is_empty() {
                 playlist.push(PlaylistItem::Text {
-                    name: "pending".into(),
+                    id: "pending".into(),
                     settings: TextData {
                         text: "No Playlist added".into(),
                         duration: 0,
@@ -175,7 +175,7 @@ pub async fn client_connection(
                 let sleep_duration;
                 let payload = match item {
                     PlaylistItem::Website {
-                        name,
+                        id: name,
                         settings: WebsiteData { url, duration },
                     } => {
                         info!("[{who} ({client_name})] Sending Website '{name}'");
@@ -183,7 +183,7 @@ pub async fn client_connection(
                         DisplayPayload::Website(WebsitePayload { content: url })
                     }
                     PlaylistItem::Text {
-                        name,
+                        id: name,
                         settings: TextData { text, duration },
                     } => {
                         info!("[{who} ({client_name})] Sending Text '{name}'");
@@ -191,7 +191,7 @@ pub async fn client_connection(
                         DisplayPayload::Text(WebsitePayload { content: text })
                     }
                     PlaylistItem::Image {
-                        name,
+                        id: name,
                         settings: ImageData { src, duration },
                     } => {
                         info!("[{who} ({client_name})] Sending Image '{name}'");

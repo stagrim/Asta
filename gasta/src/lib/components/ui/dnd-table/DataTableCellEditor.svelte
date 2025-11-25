@@ -18,14 +18,15 @@
 <Drawer.Root bind:open direction={isMobile.current ? 'bottom' : 'right'}>
 	<Drawer.Content>
 		<Drawer.Header class="gap-1">
-			<Drawer.Title>Edit Item</Drawer.Title>
+			<Drawer.Title>Edit Playlist Item</Drawer.Title>
 		</Drawer.Header>
 		<div class="flex flex-col gap-4 overflow-y-auto px-4 text-sm">
 			{#if item}
 				<Label>Duration</Label>
 				<Input
 					required
-					class="input"
+					class="no-spinner"
+					type="number"
 					placeholder="Duration in seconds"
 					bind:value={item.settings.duration}
 				/>

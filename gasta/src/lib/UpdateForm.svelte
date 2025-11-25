@@ -109,73 +109,76 @@
 		</div>
 	</div> -->
 
-	<Card.Root class="w-full max-w-7xl">
+	<Card.Root class="w-full max-w-7xl m-4">
 		<Card.Content></Card.Content>
 	</Card.Root>
 {/if}
 
 {#if item}
-	<Card.Root class="w-full max-w-7xl">
-		<form
-			method="POST"
-			use:enhance={({ formData }) => {
-				if (!item) {
-					console.error("Cannot submit form: 'item' is undefined.");
-					return () => {};
-				}
-				// Ignore how forms work and send a stringified JSON of state to server route
-				// A clear function on formData would have simplified things...
-				[...formData.keys()].forEach((k) => formData.delete(k));
+	<form
+		method="POST"
+		class="w-full max-w-7xl"
+		use:enhance={({ formData }) => {
+			if (!item) {
+				console.error("Cannot submit form: 'item' is undefined.");
+				return () => {};
+			}
+			// Ignore how forms work and send a stringified JSON of state to server route
+			// A clear function on formData would have simplified things...
+			[...formData.keys()].forEach((k) => formData.delete(k));
 
-				const remove_keys = ['uuid'];
+			const remove_keys = ['uuid'];
 
-				formData.append(
-					'data',
-					// Destruct, filter and recreate object
-					JSON.stringify(
-						Object.entries(item)
-							.filter(([key, value]) => !remove_keys.includes(key))
-							.reduce((prev, [k, v]) => Object.assign(prev, { [k]: v }), {})
-					)
-				);
+			formData.append(
+				'data',
+				// Destruct, filter and recreate object
+				JSON.stringify(
+					Object.entries(item)
+						.filter(([key, value]) => !remove_keys.includes(key))
+						.reduce((prev, [k, v]) => Object.assign(prev, { [k]: v }), {})
+				)
+			);
 
-				return form_action;
-			}}
-		>
-			<Card.Content>
-				{@render children?.()}
-
-				<div class="flex w-full justify-center gap-4 mt-5">
-					<AlertDialog.Root>
-						<AlertDialog.Trigger type="button" class={buttonVariants({ variant: 'destructive' })}>
+			return form_action;
+		}}
+	>
+		{@render children?.()}
+		<!-- <Card.Root class="mt-4">
+			<Card.Content> -->
+		<div class="flex w-full gap-4 mt-8">
+			<AlertDialog.Root>
+				<AlertDialog.Trigger type="button" class={buttonVariants({ variant: 'destructive' })}>
+					Delete
+				</AlertDialog.Trigger>
+				<AlertDialog.Content>
+					<AlertDialog.Header>
+						<AlertDialog.Title>Delete '{item.name}'?</AlertDialog.Title>
+						<AlertDialog.Description>
+							Are your sure you want to delete {type?.type} '{item.name}'?
+						</AlertDialog.Description>
+					</AlertDialog.Header>
+					<AlertDialog.Footer>
+						<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+						<AlertDialog.Action
+							class={buttonVariants({ variant: 'destructive' })}
+							onclick={() => delete_button?.click()}
+						>
 							Delete
-						</AlertDialog.Trigger>
-						<AlertDialog.Content>
-							<AlertDialog.Header>
-								<AlertDialog.Title>Delete '{item.name}'?</AlertDialog.Title>
-								<AlertDialog.Description>
-									Are your sure you want to delete {type?.type} '{item.name}'?
-								</AlertDialog.Description>
-							</AlertDialog.Header>
-							<AlertDialog.Footer>
-								<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
-								<AlertDialog.Action onclick={() => delete_button?.click()}>
-									Continue
-								</AlertDialog.Action>
-							</AlertDialog.Footer>
-						</AlertDialog.Content>
-					</AlertDialog.Root>
+						</AlertDialog.Action>
+					</AlertDialog.Footer>
+				</AlertDialog.Content>
+			</AlertDialog.Root>
 
-					<Button
-						disabled={(map && uuid && lodash.isEqual(item, map.get(uuid))) || !update_enabled}
-						type="submit"
-						formaction="?/update">Apply</Button
-					>
-				</div>
-			</Card.Content>
+			<Button
+				disabled={(map && uuid && lodash.isEqual(item, map.get(uuid))) || !update_enabled}
+				type="submit"
+				formaction="?/update">Update</Button
+			>
+		</div>
+		<!-- </Card.Content>
+		</Card.Root> -->
 
-			<!-- svelte-ignore a11y_consider_explicit_label -->
-			<button class="hidden" formaction="?/delete" bind:this={delete_button}></button>
-		</form>
-	</Card.Root>
+		<!-- svelte-ignore a11y_consider_explicit_label -->
+		<button class="hidden" formaction="?/delete" bind:this={delete_button}></button>
+	</form>
 {/if}

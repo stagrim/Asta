@@ -86,13 +86,29 @@ pub struct Playlist {
 #[ts(export, export_to = "api_bindings/update/")]
 pub enum PlaylistItem {
     #[serde(rename = "WEBSITE")]
-    Website { name: String, settings: WebsiteData },
+    Website {
+        #[serde(alias = "name")]
+        id: String,
+        settings: WebsiteData,
+    },
     #[serde(rename = "TEXT")]
-    Text { name: String, settings: TextData },
+    Text {
+        #[serde(alias = "name")]
+        id: String,
+        settings: TextData,
+    },
     #[serde(rename = "IMAGE")]
-    Image { name: String, settings: ImageData },
+    Image {
+        #[serde(alias = "name")]
+        id: String,
+        settings: ImageData,
+    },
     #[serde(rename = "BACKGROUND_AUDIO")]
-    BackgroundAudio { name: String, settings: ImageData },
+    BackgroundAudio {
+        #[serde(alias = "name")]
+        id: String,
+        settings: ImageData,
+    },
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, ToSchema, TS)]

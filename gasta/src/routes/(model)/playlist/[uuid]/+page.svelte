@@ -11,7 +11,10 @@
 	import { Textarea } from '$lib/components/ui/textarea';
 	import * as Select from '$lib/components/ui/select';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-	import DndTable, { renderSnippet, type ColumnDef } from './DndTable.svelte';
+	import DndTable, {
+		renderSnippet,
+		type ColumnDef
+	} from '$lib/components/ui/dnd-table/DndTable.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -20,15 +23,12 @@
 	const add_item = () => {
 		if (!playlist) return;
 
-		const name = crypto.randomUUID();
-		playlist.items = [
-			...playlist.items,
-			{
-				type: 'WEBSITE',
-				name,
-				settings: { duration: 60 as unknown as bigint, url: '' }
-			}
-		];
+		const id = crypto.randomUUID();
+		playlist.items.push({
+			type: 'WEBSITE',
+			id,
+			settings: { duration: 60 as unknown as bigint, url: '' }
+		});
 	};
 
 	const swap_item = (a: number, b: number) => {
@@ -38,10 +38,6 @@
 			playlist.items[b] = tmp;
 		}
 	};
-
-	$effect(() => {
-		console.log(JSON.stringify(playlist?.items, null, 2));
-	});
 
 	let columns: ColumnDef<PlaylistItem>[] = [
 		{
@@ -106,7 +102,7 @@
 {#snippet DataTableDuration({ item }: { item: PlaylistItem })}
 	<Label class="sr-only">Duration</Label>
 	<Input
-		class="hover:bg-input/30 focus-visible:bg-background dark:hover:bg-input/30 dark:focus-visible:bg-input/30 h-8 w-16 border-transparent bg-transparent text-right shadow-none focus-visible:border dark:bg-transparent"
+		class="no-spinner hover:bg-input/30 focus-visible:bg-background dark:hover:bg-input/30 dark:focus-visible:bg-input/30 h-8 w-16 border-transparent bg-transparent text-right shadow-none focus-visible:border dark:bg-transparent"
 		type="number"
 		bind:value={item.settings.duration}
 	/>
@@ -131,14 +127,24 @@
 			>
 				Edit
 			</DropdownMenu.Item>
-			<DropdownMenu.Item>Make a copy</DropdownMenu.Item>
+			<!-- <DropdownMenu.Item
+				onclick={() => {
+					if (playlist) {
+						const index = playlist.items.findIndex((i) => i === item);
+						console.log(item);
+						const newItem = structuredClone(item);
+						newItem.id = crypto.randomUUID();
+						playlist.items.push(newItem);
+					}
+				}}>Make a copy</DropdownMenu.Item
+			> -->
 			<DropdownMenu.Separator />
 			<DropdownMenu.Item
 				onclick={() => {
 					if (playlist) {
-						playlist.items = playlist.items.filter((i) => i.name !== item.name);
+						playlist.items = playlist.items.filter((i) => i.id !== item.id);
 
-						if (editorItem?.name === item.name) {
+						if (editorItem?.id === item.id) {
 							editorOpen = false;
 							editorItem = undefined;
 						}
