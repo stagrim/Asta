@@ -1,7 +1,5 @@
 import { applyAction } from '$app/forms';
 import { goto, invalidateAll } from '$app/navigation';
-import { get } from 'svelte/store';
-import { toastStore } from './stores';
 import { toast } from 'svelte-sonner';
 
 // Set type is only to stop TS from complaining, could not find types for the function in SvelteKit
