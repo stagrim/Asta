@@ -1,8 +1,6 @@
 <script lang="ts">
-	import { page } from '$app/stores';
 	import TypePicker from '$lib/TypePicker.svelte';
 	import UpdateForm from '$lib/UpdateForm.svelte';
-	import { toastStore } from '$lib/stores';
 	import type { PageData } from './$types';
 	import type { Display } from '$lib/api_bindings/read/Display';
 	import { Label } from '$lib/components/ui/label';
@@ -14,8 +12,6 @@
 
 	let { data }: { data: PageData } = $props();
 
-	let uuid = $derived($page.params.uuid);
-
 	let item: Display | undefined = $state(undefined);
 	let other_uuid = $state('');
 
@@ -26,7 +22,7 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <!-- svelte-ignore a11y_missing_attribute -->
 
-<UpdateForm bind:type={data.display} {uuid} bind:item>
+<UpdateForm bind:type={data.display} uuid={data.uuid} bind:item>
 	{#if item}
 		<div class="grid gap-2 mb-5">
 			<Label>Uuid</Label>

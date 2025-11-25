@@ -20,15 +20,15 @@
 	type HasDependencies = Exclude<Types, DisplayType>;
 
 	let {
-		uuid,
-		type = $bindable(undefined),
+		uuid = $bindable(),
+		type = $bindable(),
 		item = $bindable(undefined),
-		update_enabled = true,
+		update_enabled = $bindable(true),
 		dependant_state = null,
 		children
 	}: {
-		uuid: string | undefined;
-		type: State | undefined;
+		uuid: string;
+		type: State;
 		item: Display | Schedule | Playlist | undefined;
 		update_enabled?: boolean;
 		/** Map with entries where current type could have an item depending on it; for example a Schedule that may depend on the current Playlist */
@@ -119,6 +119,10 @@
 		<form
 			method="POST"
 			use:enhance={({ formData }) => {
+				if (!item) {
+					console.error("Cannot submit form: 'item' is undefined.");
+					return () => {};
+				}
 				// Ignore how forms work and send a stringified JSON of state to server route
 				// A clear function on formData would have simplified things...
 				[...formData.keys()].forEach((k) => formData.delete(k));

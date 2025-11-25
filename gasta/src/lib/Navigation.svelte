@@ -5,7 +5,6 @@
 
 	import { page } from '$app/state';
 	import type { LayoutData } from '../routes/$types';
-	import { fade, slide } from 'svelte/transition';
 	import sanitizeHtml from 'sanitize-html';
 	import type { Display } from './api_bindings/read/Display';
 	import type { Schedule } from './api_bindings/read/Schedule';
@@ -21,6 +20,7 @@
 		SearchIcon
 	} from '@lucide/svelte';
 	import Label from './components/ui/label/label.svelte';
+	import { capitalize } from './utils';
 
 	let { data }: { data: LayoutData } = $props();
 
@@ -102,7 +102,7 @@
 	</Sidebar.Header>
 	<Sidebar.Content>
 		{#each kinds as kind, i (kind.type)}
-			{@const capitalized = `${kind.type.charAt(0).toUpperCase()}${kind.type.substring(1)}`}
+			{@const capitalized = capitalize(kind.type)}
 			{@const sanitized_values = kind.values.map((k) =>
 				Object.assign(k, { title_name: sanitize_html(k.name) })
 			)}
@@ -136,7 +136,13 @@
 									<Sidebar.MenuSubItem>
 										<Sidebar.MenuSubButton>
 											{#snippet child({ props })}
+												{@const active = href === page.url.pathname}
 												<a {href} onclick={drawerClose} {...props}>
+													<div
+														class="w-1 h-7/12 rounded-2xl bg-foreground transition-transform"
+														class:scale-y-100={active}
+														class:scale-y-0={!active}
+													></div>
 													<span>{@html title_name}</span>
 												</a>
 											{/snippet}
@@ -146,7 +152,14 @@
 								<Sidebar.MenuItem>
 									<Sidebar.MenuButton>
 										{#snippet child({ props })}
-											<a href="/{kind.type}" onclick={drawerClose} {...props}>
+											{@const href = `/${kind.type}`}
+											{@const active = href === page.url.pathname}
+											<a {href} onclick={drawerClose} {...props}>
+												<div
+													class="w-1 h-full rounded-2xl bg-foreground transition-transform"
+													class:scale-y-100={active}
+													class:scale-y-0={!active}
+												></div>
 												<Plus />
 												<span>Add {capitalized}</span>
 											</a>

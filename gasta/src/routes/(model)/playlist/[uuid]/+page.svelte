@@ -1,45 +1,165 @@
 <script lang="ts">
-	import { generate } from 'random-words';
-	import { page } from '$app/state';
 	import type { PageData } from './$types';
-	import { flip } from 'svelte/animate';
 	import UpdateForm from '$lib/UpdateForm.svelte';
 	import type { Playlist } from '$lib/api_bindings/read/Playlist';
+	import Label from '$lib/components/ui/label/label.svelte';
+	import Input from '$lib/components/ui/input/input.svelte';
+	import { Button } from '$lib/components/ui/button';
+	import { PlusIcon, EllipsisVertical } from '@lucide/svelte';
+	import { capitalize, cn } from '$lib/utils';
+	import type { PlaylistItem } from '$lib/api_bindings/update/PlaylistItem';
+	import { Textarea } from '$lib/components/ui/textarea';
+	import * as Select from '$lib/components/ui/select';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+	import DndTable, { renderSnippet, type ColumnDef } from './DndTable.svelte';
 
-	export let data: PageData;
+	let { data }: { data: PageData } = $props();
 
-	$: uuid = page.params.uuid;
+	let playlist: Playlist | undefined = $state(undefined);
 
-	let playlist: Playlist;
+	const add_item = () => {
+		if (!playlist) return;
 
-	let add_value: 'WEBSITE' | 'IMAGE' | 'TEXT';
-	const add_item = () =>
-		(playlist.items = [
+		const name = crypto.randomUUID();
+		playlist.items = [
 			...playlist.items,
 			{
-				type: add_value,
-				name: generate({ exactly: 1, wordsPerString: 2, separator: '-' })[0],
-				settings: { duration: 60 }
+				type: 'WEBSITE',
+				name,
+				settings: { duration: 60 as unknown as bigint, url: '' }
 			}
-		]);
+		];
+	};
 
 	const swap_item = (a: number, b: number) => {
-		const tmp = playlist.items[a];
-		playlist.items[a] = playlist.items[b];
-		playlist.items[b] = tmp;
+		if (playlist) {
+			const tmp = playlist.items[a];
+			playlist.items[a] = playlist.items[b];
+			playlist.items[b] = tmp;
+		}
 	};
+
+	$effect(() => {
+		console.log(JSON.stringify(playlist?.items, null, 2));
+	});
+
+	let columns: ColumnDef<PlaylistItem>[] = [
+		{
+			id: 'type',
+			label: 'Type',
+			render: (item) => renderSnippet(DataTableType, { item })
+		},
+		{
+			id: 'value',
+			label: 'Value',
+			render: (item) => renderSnippet(DataTableValue, { item }),
+			class: 'w-full min-w-[300px]'
+		},
+		{
+			id: 'duration',
+			label: 'Duration',
+			render: (item) => renderSnippet(DataTableDuration, { item })
+		},
+		{
+			id: 'actions',
+			label: '',
+			render: (item) => renderSnippet(DataTableActions, { item })
+		}
+	];
+
+	let editorOpen = $state(false);
+	let editorItem: PlaylistItem | undefined = $state(undefined);
 </script>
+
+{#snippet DataTableType({ item }: { item: PlaylistItem })}
+	<Label class="sr-only">Type</Label>
+	<Select.Root type="single" bind:value={item.type}>
+		<Select.Trigger
+			class="w-28 **:data-[slot=select-value]:block **:data-[slot=select-value]:truncate"
+			size="sm"
+		>
+			<span data-slot="select-value">
+				{capitalize(item.type)}
+			</span>
+		</Select.Trigger>
+		<Select.Content>
+			{#each ['WEBSITE', 'IMAGE', 'TEXT'] as t}
+				<Select.Item value={t}>{capitalize(t)}</Select.Item>
+			{/each}
+		</Select.Content>
+	</Select.Root>
+{/snippet}
+
+{#snippet DataTableValue({ item }: { item: PlaylistItem })}
+	{@const base =
+		'hover:bg-input/30 focus-visible:bg-background dark:hover:bg-input/30 dark:focus-visible:bg-input/30 border-transparent bg-transparent shadow-none focus-visible:border dark:bg-transparent'}
+	<Label class="sr-only">Value</Label>
+	{#if item.type == 'WEBSITE'}
+		<Input class={cn(base, 'w-full')} bind:value={item.settings.url} />
+	{:else if item.type == 'TEXT'}
+		<Textarea class={base} bind:value={item.settings.text} />
+	{:else if item.type == 'IMAGE'}
+		<Input class={cn(base, 'w-full')} bind:value={item.settings.src} />
+	{/if}
+{/snippet}
+
+{#snippet DataTableDuration({ item }: { item: PlaylistItem })}
+	<Label class="sr-only">Duration</Label>
+	<Input
+		class="hover:bg-input/30 focus-visible:bg-background dark:hover:bg-input/30 dark:focus-visible:bg-input/30 h-8 w-16 border-transparent bg-transparent text-right shadow-none focus-visible:border dark:bg-transparent"
+		type="number"
+		bind:value={item.settings.duration}
+	/>
+{/snippet}
+
+{#snippet DataTableActions({ item }: { item: PlaylistItem })}
+	<DropdownMenu.Root>
+		<DropdownMenu.Trigger class="data-[state=open]:bg-muted text-muted-foreground flex size-8">
+			{#snippet child({ props })}
+				<Button variant="ghost" size="icon" {...props}>
+					<EllipsisVertical />
+					<span class="sr-only">Open menu</span>
+				</Button>
+			{/snippet}
+		</DropdownMenu.Trigger>
+		<DropdownMenu.Content align="end" class="w-32">
+			<DropdownMenu.Item
+				onclick={() => {
+					editorOpen = true;
+					editorItem = item;
+				}}
+			>
+				Edit
+			</DropdownMenu.Item>
+			<DropdownMenu.Item>Make a copy</DropdownMenu.Item>
+			<DropdownMenu.Separator />
+			<DropdownMenu.Item
+				onclick={() => {
+					if (playlist) {
+						playlist.items = playlist.items.filter((i) => i.name !== item.name);
+
+						if (editorItem?.name === item.name) {
+							editorOpen = false;
+							editorItem = undefined;
+						}
+					}
+				}}
+				variant="destructive">Delete</DropdownMenu.Item
+			>
+		</DropdownMenu.Content>
+	</DropdownMenu.Root>
+{/snippet}
 
 <UpdateForm
 	bind:type={data.playlist}
 	dependant_state={{ schedules: data.schedule, displays: data.display }}
-	bind:uuid
+	bind:uuid={data.uuid}
 	bind:item={playlist}
 >
 	{#if playlist}
-		<label class="label mb-5">
-			<span>Name</span>
-			<input
+		<div class="grid gap-2 mb-5">
+			<Label>Name</Label>
+			<Input
 				required
 				name="name"
 				class="input"
@@ -47,124 +167,21 @@
 				placeholder="Name must be unique"
 				bind:value={playlist.name}
 			/>
-		</label>
+		</div>
 
 		<div class="flex items-center justify-between w-full my-5">
-			<h3 class="h3">Items</h3>
+			<h3 class="h3">Playlist Items</h3>
 
 			<div class="flex justify-end items-center w-1/2">
-				<!-- <label class="label mb-2 flex justify-center items-center"> -->
-				<!-- <span class="mr-2">Add</span> -->
-				<select class="select w-3/4" bind:value={add_value}>
-					<option value="WEBSITE">Website</option>
-					<option value="TEXT">Text</option>
-					<option value="IMAGE">Image</option>
-				</select>
-				<button
-					type="button"
-					class="btn-icon btn-icon-sm variant-filled-primary ml-2"
-					on:click={add_item}
-				>
-					<!-- <Icon data={plus} scale={0.75} /> -->
-				</button>
+				<Button variant="outline" size="sm" onclick={add_item}>
+					<PlusIcon />
+					<span class="hidden lg:inline">Add Playlist Item</span>
+				</Button>
 			</div>
-			<!-- </label> -->
 		</div>
 
 		{#if playlist.items}
-			{#each playlist.items as item, i (item.name)}
-				<div class="card mb-4 transition-all" animate:flip={{ duration: 300 }}>
-					<section class="p-4 lg:flex lg:flex-row-reverse">
-						<div class="flex justify-center gap-4 lg:flex-col lg:ml-4">
-							<button
-								type="button"
-								class="btn-icon btn-icon-sm variant-filled-primary"
-								class:invisible={i <= 0}
-								on:click={() => swap_item(i, i - 1)}
-							>
-								<!-- <Icon data={arrowUp} scale={0.75} /> -->
-							</button>
-							<button
-								type="button"
-								class="btn-icon btn-icon-sm variant-filled-error"
-								on:click={() => {
-									playlist.items.splice(i, 1);
-									playlist.items = playlist.items;
-								}}
-							>
-								<!-- <Icon data={trash} scale={0.75} /> -->
-							</button>
-							<button
-								type="button"
-								class="btn-icon btn-icon-sm variant-filled-primary"
-								class:invisible={i >= playlist.items.length - 1}
-								on:click={() => swap_item(i, i + 1)}
-							>
-								<!-- <Icon data={arrowDown} scale={0.75} /> -->
-							</button>
-						</div>
-						<div class="w-full">
-							<div class="flex items-center gap-3">
-								<label class="label mb-5">
-									<span>Name</span>
-									<input
-										required
-										class="input"
-										type="text"
-										placeholder="Name must be unique"
-										bind:value={item.name}
-									/>
-								</label>
-
-								<label class="label mb-5">
-									<span>Duration (s)</span>
-									<input
-										required
-										class="input"
-										type="number"
-										placeholder="Duration in seconds"
-										bind:value={item.settings.duration}
-									/>
-								</label>
-							</div>
-
-							{#if item.type == 'WEBSITE'}
-								<label class="label mb-5">
-									<span>URL</span>
-									<input
-										required
-										class="input"
-										type="text"
-										placeholder="https://example.com"
-										bind:value={item.settings.url}
-									/>
-								</label>
-							{:else if item.type == 'TEXT'}
-								<label class="label mb-5">
-									<span>Text</span>
-									<textarea
-										required
-										class="input"
-										placeholder="Some text..."
-										bind:value={item.settings.text}
-									></textarea>
-								</label>
-							{:else if item.type == 'IMAGE'}
-								<label class="label mb-5">
-									<span>Image source</span>
-									<input
-										required
-										class="input"
-										type="text"
-										placeholder="https://example.com/src.png"
-										bind:value={item.settings.src}
-									/>
-								</label>
-							{/if}
-						</div>
-					</section>
-				</div>
-			{/each}
+			<DndTable bind:data={playlist.items} {columns} bind:editorOpen bind:editorItem />
 		{/if}
 	{/if}
 </UpdateForm>
