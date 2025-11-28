@@ -1,25 +1,19 @@
 <script lang="ts">
 	import cronstrue from 'cronstrue';
 	import cron from 'cron-validate';
-	import { watch } from 'runed';
 	import * as InputGroup from '$lib/components/ui/input-group';
 	import { Clock } from '@lucide/svelte';
 	import { Label } from '$lib/components/ui/label';
+	import * as Dialog from '$lib/components/ui/dialog';
+	import { Button, buttonVariants } from '$lib/components/ui/button';
+	import { Input } from '$lib/components/ui/input';
 
 	let {
 		value = $bindable(''),
-		title,
-		index,
-		set_valid
+		title
 	}: {
 		value: string;
-		title: string;
-		/**
-		 * Index to give set_valid
-		 */ index: number;
-		/**
-		 * Runs when cron valid is evaluated
-		 */ set_valid: (index: number, valid: boolean) => void;
+		title?: string;
 	} = $props();
 
 	const valid_cron: boolean = $derived(
@@ -32,13 +26,6 @@
 		}).isValid()
 	);
 
-	watch(
-		() => valid_cron,
-		() => {
-			set_valid(index, valid_cron);
-		}
-	);
-
 	const cron_readable = $derived.by(() => {
 		try {
 			return cronstrue.toString(value, {
@@ -48,30 +35,69 @@
 			return '';
 		}
 	});
-
-	// const modal: ModalSettings = {
-	// 	type: 'prompt',
-	// 	title: 'Date time please!',
-	// 	body: 'Enter a date and time to be translated to a cron expression',
-	// 	valueAttr: { type: 'datetime-local', required: true },
-	// 	response: (r: string) => {
-	// 		if (r) {
-	// 			const d = new Date(r);
-	// 			value = `${d.getSeconds()} ${d.getMinutes()} ${d.getHours()} ${d.getDate()} ${d.getMonth() + 1} * ${d.getFullYear()}`;
-	// 		}
-	// 	}
-	// };
+	let datetime = $state('');
+	let open = $state(false);
 </script>
 
-<div class="grid gap-2 mb-5">
-	<Label>{title}</Label>
-	<InputGroup.Root>
-		<InputGroup.Input placeholder="Type to search..." />
-		<InputGroup.Addon align="inline-end">
-			<InputGroup.Button variant="secondary"><Clock /></InputGroup.Button>
-		</InputGroup.Addon>
-	</InputGroup.Root>
-	{#if valid_cron}
-		<span class="variant-soft-primary rounded-container-token p-[0.075rem]">{cron_readable}</span>
+{#snippet Test()}
+	<Dialog.Root bind:open>
+		<Dialog.Trigger type="button">
+			<Clock />
+		</Dialog.Trigger>
+		<Dialog.Content>
+			<Dialog.Header>
+				<Dialog.Title>Date time please!</Dialog.Title>
+				<Dialog.Description>
+					Enter a date and time to be translated to a cron expression
+				</Dialog.Description>
+			</Dialog.Header>
+			<Input class="w-full" type="datetime-local" bind:value={datetime} />
+			<Dialog.Footer>
+				<Dialog.Close class={buttonVariants({ variant: 'outline' })}>Cancel</Dialog.Close>
+				<Button
+					class={buttonVariants({ variant: 'default' })}
+					onclick={() => {
+						const d = new Date(datetime);
+						value = `${d.getSeconds()} ${d.getMinutes()} ${d.getHours()} ${d.getDate()} ${d.getMonth() + 1} * ${d.getFullYear()}`;
+						open = false;
+					}}
+				>
+					Submit
+				</Button>
+			</Dialog.Footer>
+		</Dialog.Content>
+	</Dialog.Root>
+{/snippet}
+
+<div class="grid gap-2">
+	{#if title}
+		<Label>{title}</Label>
 	{/if}
+
+	<div class="relative w-full group">
+		<InputGroup.Root>
+			<InputGroup.Input
+				class="peer"
+				aria-invalid={!valid_cron}
+				placeholder="cron format"
+				bind:value
+			/>
+			<div
+				class="absolute bottom-full mb-2 left-0 z-50 w-fit text-balance rounded-md px-3 py-1.5 bg-foreground text-background shadow-md invisible opacity-0 transition-all peer-focus:visible peer-focus:opacity-100"
+			>
+				<p class="text-xs">
+					{#if valid_cron}
+						{cron_readable}
+					{:else}
+						Cron expression is not valid
+					{/if}
+				</p>
+			</div>
+			<InputGroup.Addon align="inline-end">
+				<InputGroup.Button variant="secondary">
+					{@render Test()}
+				</InputGroup.Button>
+			</InputGroup.Addon>
+		</InputGroup.Root>
+	</div>
 </div>

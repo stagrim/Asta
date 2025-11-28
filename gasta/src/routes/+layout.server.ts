@@ -60,6 +60,9 @@ export const load = (async ({
 	if (schedule.type != 'Schedule') throw Error();
 	const playlist = await get('playlist');
 	if (playlist.type != 'Playlist') throw Error();
+
+	schedule.content.forEach((v) => v.scheduled?.forEach((s) => (s.id = crypto.randomUUID())));
+
 	return {
 		display,
 		schedule,

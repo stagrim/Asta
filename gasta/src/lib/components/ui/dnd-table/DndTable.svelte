@@ -76,11 +76,15 @@
 	let {
 		data = $bindable(),
 		columns,
-		flipDurationMs = 150
+		flipDurationMs = 150,
+		emptyMessage = 'No items',
+		preRows
 	}: {
 		data: Item[];
 		columns: ColumnDef<Item>[];
 		flipDurationMs?: number;
+		emptyMessage?: string;
+		preRows?: Snippet;
 	} = $props();
 
 	function handleDndConsider(e: CustomEvent<DndEvent<Item>>) {
@@ -92,7 +96,9 @@
 	}
 </script>
 
-<div class="w-full overflow-auto border rounded-lg shadow-sm bg-card text-card-foreground">
+<div
+	class="relative w-full max-w-full overflow-x-auto border rounded-lg shadow-sm bg-card text-card-foreground"
+>
 	<table class="w-full caption-bottom text-sm">
 		<thead class="[&_tr]:border-b bg-muted">
 			<tr class="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
@@ -113,6 +119,7 @@
 					</th>
 				{/each}
 			</tr>
+			{@render preRows?.()}
 		</thead>
 
 		<tbody
@@ -159,7 +166,7 @@
 					</tr>
 				{/each}
 			{:else}
-				<tr><td colspan="100" class="h-24 text-center">No Playlist Items added</td></tr>
+				<tr><td colspan="100" class="h-24 text-center">{emptyMessage}</td></tr>
 			{/if}
 		</tbody>
 	</table>

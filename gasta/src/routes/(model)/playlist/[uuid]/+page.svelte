@@ -177,7 +177,7 @@
 		</div>
 
 		<div class="flex items-center justify-between w-full my-5">
-			<h3 class="h3">Playlist Items</h3>
+			<h3>Playlist Items</h3>
 
 			<div class="flex justify-end items-center w-1/2">
 				<Button variant="outline" size="sm" onclick={add_item}>
@@ -190,7 +190,7 @@
 		{#if playlist.items}
 			<EditDrawer bind:open={editorOpen} bind:item={editorItem} />
 
-			<DndTable bind:data={playlist.items} {columns} />
+			<DndTable bind:data={playlist.items} {columns} emptyMessage={'No Playlist Items added'} />
 		{/if}
 	{/if}
 </UpdateForm>

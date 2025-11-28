@@ -6,10 +6,13 @@
 	import type { Display } from '$lib/api_bindings/read/Display';
 	import type { Schedule } from '$lib/api_bindings/read/Schedule';
 	import type { DisplayState, ScheduleState, State } from '../app';
-	import * as Card from './components/ui/card';
+	import * as Card from '$lib/components/ui/card';
 	import { Button, buttonVariants } from './components/ui/button';
-	import * as AlertDialog from './components/ui/alert-dialog';
+	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import type { Snippet } from 'svelte';
+	import { watch } from 'runed';
+	import { Badge } from './components/ui/badge';
+	import { CalendarClock, ListVideo, Monitor } from '@lucide/svelte';
 
 	type DisplayType = { type: 'Display'; content: Display };
 	type ScheduleType = { type: 'Schedule'; content: Schedule };
@@ -23,6 +26,7 @@
 		uuid = $bindable(),
 		type = $bindable(),
 		item = $bindable(undefined),
+		bind_update_enabled = $bindable(),
 		update_enabled = $bindable(true),
 		dependant_state = null,
 		children
@@ -30,6 +34,8 @@
 		uuid: string;
 		type: State;
 		item: Display | Schedule | Playlist | undefined;
+		bind_update_enabled?: boolean;
+		/** If update is allowed to be activated */
 		update_enabled?: boolean;
 		/** Map with entries where current type could have an item depending on it; for example a Schedule that may depend on the current Playlist */
 		dependant_state?: { displays: DisplayState; schedules: ScheduleState } | null;
@@ -90,27 +96,41 @@
 			dependents = test({ type: 'Playlist', content: item as Playlist });
 		}
 	});
+
+	watch(
+		() => disabled,
+		() => {
+			bind_update_enabled = !disabled;
+		}
+	);
+
+	let disabled = $derived((map && uuid && lodash.isEqual(item, map.get(uuid))) || !update_enabled);
 </script>
 
 <!--  Give fields linked to id of uuid to highlight how they are dependant on link -->
 {#if dependant_state && dependents}
-	<!-- <div class="card m-4 p-4">
-		<div class="flex overflow-scroll hide-scrollbar gap-2">
-			{#if dependents.length < 1}
-				<i class="text-surface-300">No dependents... :(</i>
-			{/if}
-			{#each dependents as { content: { name, uuid }, type } (name + uuid)}
-				<a href={`/${type.toLowerCase()}/${uuid}`}>
-					<span class="chip variant-ghost-primary gap-1">
-						&nbsp;{name}</span
-					>
-				</a>
-			{/each}
-		</div>
-	</div> -->
-
-	<Card.Root class="w-full max-w-7xl m-4">
-		<Card.Content></Card.Content>
+	<Card.Root class="relative w-full max-w-7xl mb-4 py-4 px-0">
+		<Card.Content class="overflow-x-auto">
+			<div class="flex overflow-x-auto hide-scrollbar gap-2">
+				{#if !dependents.length}
+					<i class="text-foreground/60">No dependents... :(</i>
+				{:else}
+					<p class="mr-2">In use by</p>
+				{/if}
+				{#each dependents as { content: { name, uuid }, type } (name + uuid)}
+					<a href={`/${type.toLowerCase()}/${uuid}`}>
+						<Badge>
+							{#if type === 'Display'}
+								<Monitor />
+							{:else}
+								<CalendarClock />
+							{/if}
+							&nbsp;{name}
+						</Badge>
+					</a>
+				{/each}
+			</div>
+		</Card.Content>
 	</Card.Root>
 {/if}
 
@@ -143,11 +163,11 @@
 		}}
 	>
 		{@render children?.()}
-		<!-- <Card.Root class="mt-4">
-			<Card.Content> -->
-		<div class="flex w-full gap-4 mt-8">
+		<div class="flex w-full gap-2 mt-8">
+			<Button {disabled} type="submit" formaction="?/update">Update</Button>
+
 			<AlertDialog.Root>
-				<AlertDialog.Trigger type="button" class={buttonVariants({ variant: 'destructive' })}>
+				<AlertDialog.Trigger type="button" class={buttonVariants({ variant: 'outline' })}>
 					Delete
 				</AlertDialog.Trigger>
 				<AlertDialog.Content>
@@ -168,15 +188,7 @@
 					</AlertDialog.Footer>
 				</AlertDialog.Content>
 			</AlertDialog.Root>
-
-			<Button
-				disabled={(map && uuid && lodash.isEqual(item, map.get(uuid))) || !update_enabled}
-				type="submit"
-				formaction="?/update">Update</Button
-			>
 		</div>
-		<!-- </Card.Content>
-		</Card.Root> -->
 
 		<!-- svelte-ignore a11y_consider_explicit_label -->
 		<button class="hidden" formaction="?/delete" bind:this={delete_button}></button>
