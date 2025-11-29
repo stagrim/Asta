@@ -59,11 +59,17 @@ pub async fn client_connection(
 
     // Wait for a hello response from connected client to get its UUID
     let (client_uuid, htmx) = loop {
-        if let Some(Ok(Message::Text(msg))) = client_receive.next().await {
-            match serde_json::from_str::<RequestPayload>(&msg) {
-                Ok(RequestPayload::Hello { uuid, htmx }) => break (uuid, htmx),
-                _ => error!("[{who}] {msg:?} was not a HelloRequest"),
-            };
+        match client_receive.next().await {
+            Some(Ok(Message::Text(msg))) => {
+                match serde_json::from_str::<RequestPayload>(&msg) {
+                    Ok(RequestPayload::Hello { uuid, htmx }) => break (uuid, htmx),
+                    _ => error!("[{who}] {msg:?} was not a HelloRequest"),
+                };
+            }
+            err => {
+                error!("[{who}] Received '{err:?}' instead of HelloRequest, exiting");
+                return;
+            }
         }
     };
 
@@ -116,14 +122,25 @@ pub async fn client_connection(
                                 .into(),
                         )
                     };
-                    client_send.lock().await.send(msg).await.unwrap();
+
+                    if let Err(e) = client_send.lock().await.send(msg).await {
+                        error!("[{who}] Could not send Pending message because '{e:?}', exiting");
+                        return;
+                    };
 
                     // Wait until display is updated change, then try again
                     loop {
-                        match rx.recv().await.unwrap() {
-                            Change::Display(m) if m.contains(&client_uuid) => break,
-                            _ => (),
+                        match rx.recv().await {
+                            Ok(msg) => match msg {
+                                Change::Display(m) if m.contains(&client_uuid) => break,
+                                _ => (),
+                            },
+                            Err(err) => {
+                                error!("[{who}] received error '{err:?}', exiting");
+                                return;
+                            }
                         };
+                        trace!("loop 2");
                     }
                     continue;
                 }
@@ -144,7 +161,13 @@ pub async fn client_connection(
             .unwrap()
             .into(),
         );
-        client_send.lock().await.send(msg).await.unwrap();
+
+        if let Err(e) = client_send.lock().await.send(msg).await {
+            error!(
+                "[{who} ({client_name})] Could not send Welcome message because '{e:?}', exiting"
+            );
+            return;
+        };
 
         info!("[{who}] was given the name {client_name}");
 
@@ -210,7 +233,10 @@ pub async fn client_connection(
                             .into(),
                     )
                 };
-                client_send.lock().await.send(msg).await.unwrap();
+                if let Err(e) = client_send.lock().await.send(msg).await {
+                    error!("[{who} ({client_name})] Could not send playlist message because '{e:?}', exiting");
+                    return;
+                };
 
                 let now = Instant::now();
                 // Sleep for an infinite time if duration of the PlaylistItem is zero.
