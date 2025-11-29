@@ -16,6 +16,6 @@
 		<Card.Title class="text-xl">Welcome back {data.name}</Card.Title>
 	</Card.Header>
 	<Card.Content>
-		<Button onclick={() => signOut()}>Log out</Button>
+		<Button variant="destructive" onclick={() => signOut()}>Log out</Button>
 	</Card.Content>
 </Card.Root>

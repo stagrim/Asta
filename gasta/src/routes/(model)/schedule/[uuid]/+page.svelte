@@ -301,6 +301,5 @@
 				<i class="text-foreground/60">No playlist change is scheduled</i>
 			{/if}
 		</div>
-		<!-- {/if} -->
 	{/if}
 </UpdateForm>
