@@ -24,7 +24,7 @@
 
 <UpdateForm bind:type={data.display} uuid={data.uuid} bind:item>
 	{#if item}
-		<div class="grid gap-2 mb-5">
+		<div class="grid gap-2 mb-4">
 			<Label>Uuid</Label>
 			<InputGroup.Root>
 				<InputGroup.Input value={item.uuid} class="text-zinc-500" readonly />
@@ -53,7 +53,7 @@
 			</InputGroup.Root>
 		</div>
 
-		<div class="grid gap-2 mb-5">
+		<div class="grid gap-2 mb-4">
 			<Label>Name</Label>
 			<Input
 				required
@@ -65,7 +65,7 @@
 			/>
 		</div>
 
-		<h1 class="text-2xl mb-4">Display Material</h1>
+		<h3 class="mb-2">Display Material</h3>
 
 		<div class="flex md:items-center w-full gap-4 sm:flex-row flex-col">
 			<Select.Root
