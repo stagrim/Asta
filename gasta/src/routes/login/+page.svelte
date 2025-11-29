@@ -1,44 +1,12 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Card from '$lib/components/ui/card/index.js';
-	import {
-		FieldGroup,
-		Field,
-		FieldLabel,
-		FieldDescription,
-		FieldSeparator
-	} from '$lib/components/ui/field/index.js';
-	import { Input } from '$lib/components/ui/input/index.js';
-	import { cn } from '$lib/utils.js';
-	import type { HTMLAttributes } from 'svelte/elements';
-	import type { ActionData, PageData } from './$types';
-	import { FileSliders, GalleryVerticalEnd } from '@lucide/svelte';
+	import { FieldGroup, Field, FieldDescription } from '$lib/components/ui/field/index.js';
+	import { FileSliders } from '@lucide/svelte';
 	import { signIn } from '@auth/sveltekit/client';
+
+	let { data } = $props();
 </script>
-
-<!-- {#if data?.banner}
-	<div class="variant-filled-warning text-center">
-		{data.banner}
-	</div>
-{/if} -->
-
-<!-- <div class="flex justify-center">
-	<div class="card m-4 max-w-4xl">
-		<section class="p-4 text-center">
-			<h1 class="font-bold text-3xl p-3">
-				Welcome to <span
-					class="bg-gradient-to-br from-primary-500 to-primary-300 bg-clip-text text-transparent box-decoration-clone"
-				>
-					Asta
-				</span>
-			</h1>
-			<SignIn provider="authentik">
-				<span class="btn variant-filled-primary" slot="submitButton">Sign in using D-sektionen</span
-				>
-			</SignIn>
-		</section>
-	</div>
-</div> -->
 
 <div class="flex h-full flex-col items-center md:p-10">
 	<div class="flex w-full max-w-sm flex-col gap-6">
@@ -70,9 +38,11 @@
 									>
 									Login with Dsek
 								</Button>
-								<Button variant="outline" type="button" onclick={() => signIn('credentials')}>
-									Login with hopes and prayers
-								</Button>
+								{#if data.isInDevEnvironment}
+									<Button variant="outline" type="button" onclick={() => signIn('credentials')}>
+										Login with hopes and prayers
+									</Button>
+								{/if}
 							</Field>
 						</FieldGroup>
 					</form>

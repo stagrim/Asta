@@ -29,7 +29,7 @@
 	<Card.Footer>
 		{#if showReturn}
 			<a href="/login">
-				<Button>Return</Button>
+				<Button variant="outline">Return</Button>
 			</a>
 		{/if}
 	</Card.Footer>
