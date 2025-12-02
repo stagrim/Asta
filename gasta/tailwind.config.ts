@@ -3,32 +3,28 @@ import type { Config } from 'tailwindcss';
 import forms from '@tailwindcss/forms';
 import { DTheme } from './d-theme';
 
-// 1. Import the Skeleton plugin
-import { skeleton } from '@skeletonlabs/tw-plugin';
-
 const config = {
-	// 2. Opt for dark mode to be handled via the class method
 	darkMode: 'class',
-	content: [
-		'./src/**/*.{html,js,svelte,ts}',
-		// 3. Append the path to the Skeleton package
-		join(require.resolve(
-			'@skeletonlabs/skeleton'),
-			'../**/*.{html,js,svelte,ts}'
-		)
-	],
+	content: ['./src/**/*.{html,js,svelte,ts}', join('../**/*.{html,js,svelte,ts}')],
 	theme: {
-		extend: {},
-	},
-	plugins: [
-		// 4. Append the Skeleton plugin (after other plugins)
-		forms,
-		skeleton({
-			themes: {
-				custom: [ DTheme ]
+		extend: {
+			keyframes: {
+				'collapsible-down': {
+					from: { height: '0' },
+					to: { height: 'var(--radix-collapsible-content-height)' } // or var(--bits-accordion-content-height)
+				},
+				'collapsible-up': {
+					from: { height: 'var(--radix-collapsible-content-height)' }, // or var(--bits-accordion-content-height)
+					to: { height: '0' }
+				}
+			},
+			animation: {
+				'collapsible-down': 'collapsible-down 0.2s ease-out',
+				'collapsible-up': 'collapsible-up 0.2s ease-out'
 			}
-		})
-	]
+		}
+	},
+	plugins: [forms]
 } satisfies Config;
 
 export default config;

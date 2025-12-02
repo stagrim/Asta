@@ -2,7 +2,6 @@ use itertools::Itertools;
 use std::{fs::File, io::Write, net::TcpListener};
 
 use indoc::{printdoc, writedoc};
-use uuid::Uuid;
 
 fn main() {
     let (sasta_db_port, gasta_db_port, sasta_port) =
@@ -19,9 +18,8 @@ fn main() {
     writedoc! {env_file, "
         SERVER_URL=http://127.0.0.1:{sasta_port}
         LDAP_URL=ldap://localhost
-        UUID5_NAMESPACE={}
         REDIS_URL=redis://127.0.0.1:{gasta_db_port}
-    ", Uuid::new_v4()}
+    "}
     .unwrap();
 
     let mut env_file = File::create("../sasta/.env").unwrap();

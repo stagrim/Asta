@@ -15,7 +15,6 @@ declare global {
 			SERVER_URL: string;
 			LDAP_URL: string;
 			LDAP_GROUPS: string;
-			UUID5_NAMESPACE: string;
 			REDIS_URL: string;
 		}
 
@@ -25,8 +24,19 @@ declare global {
 		}
 	}
 }
+export type DisplayState = {
+	type: 'Display';
+	content: Map<string, Display>;
+};
 
-export type State =
-	| { type: 'Display'; content: Map<string, Display> }
-	| { type: 'Playlist'; content: Map<string, Playlist> }
-	| { type: 'Schedule'; content: Map<string, Schedule> };
+export type PlaylistState = {
+	type: 'Playlist';
+	content: Map<string, Playlist>;
+};
+
+export type ScheduleState = {
+	type: 'Schedule';
+	content: Map<string, Schedule>;
+};
+
+type State = DisplayState | PlaylistState | ScheduleState;

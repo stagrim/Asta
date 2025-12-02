@@ -3,4 +3,4 @@ import type { ImageData } from "./ImageData";
 import type { TextData } from "./TextData";
 import type { WebsiteData } from "./WebsiteData";
 
-export type PlaylistItem = { "type": "WEBSITE", name: string, settings: WebsiteData, } | { "type": "TEXT", name: string, settings: TextData, } | { "type": "IMAGE", name: string, settings: ImageData, } | { "type": "BACKGROUND_AUDIO", name: string, settings: ImageData, };
+export type PlaylistItem = { "type": "WEBSITE", id: string, settings: WebsiteData, } | { "type": "TEXT", id: string, settings: TextData, } | { "type": "IMAGE", id: string, settings: ImageData, } | { "type": "BACKGROUND_AUDIO", id: string, settings: ImageData, };

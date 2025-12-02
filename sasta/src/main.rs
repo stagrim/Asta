@@ -8,7 +8,6 @@ use axum::{
 };
 use axum_macros::debug_handler;
 use chrono::Local;
-use dotenv::dotenv;
 use file_server::file_server::delete_files;
 use hyper::StatusCode;
 use read::Payload;
@@ -27,7 +26,7 @@ use crate::{
     casta::casta::{casta_index, compute_hash, minify},
     connection::connection::client_connection,
     file_server::file_server::{add_files, get_all_paths, get_file, FileServer},
-    store::schedule,
+    store::{schedule, store::DisplayMaterial},
 };
 
 mod casta;
@@ -81,7 +80,7 @@ struct ApiDoc;
 
 #[tokio::main]
 async fn main() {
-    dotenv().ok();
+    dotenvy::dotenv().ok();
     let redis_url = env::var("REDIS_URL").expect("REDIS_URL variable must be set");
     let sasta_address = env::var("ADDRESS").unwrap_or("127.0.0.1:8080".into());
     let subscriber = FmtSubscriber::builder()
@@ -187,7 +186,10 @@ mod read {
     use utoipa::ToSchema;
     use uuid::Uuid;
 
-    use crate::store::{schedule, store};
+    use crate::store::{
+        schedule,
+        store::{self, DisplayMaterial},
+    };
 
     pub type Response = Result<Json<Payload>, (StatusCode, Json<Payload>)>;
 
@@ -208,8 +210,7 @@ mod read {
         #[ts(type = "string")]
         pub uuid: Uuid,
         pub name: String,
-        #[ts(type = "string")]
-        pub schedule: Uuid,
+        pub display_material: DisplayMaterial,
     }
 
     impl From<(Uuid, store::Display)> for Display {
@@ -217,7 +218,7 @@ mod read {
             Self {
                 uuid,
                 name: d.name,
-                schedule: d.schedule,
+                display_material: d.display_material,
             }
         }
     }
@@ -288,6 +289,7 @@ mod create {
     use uuid::Uuid;
 
     pub use crate::read::Response;
+    use crate::store::store::DisplayMaterial;
 
     #[derive(Debug, Deserialize, TS)]
     #[ts(export, export_to = "api_bindings/create/", rename = "CreateDisplay")]
@@ -295,8 +297,7 @@ mod create {
         #[ts(type = "string", optional)]
         pub uuid: Option<Uuid>,
         pub name: String,
-        #[ts(type = "string")]
-        pub schedule: Uuid,
+        pub display_material: DisplayMaterial,
     }
 
     #[derive(Deserialize, TS)]
@@ -321,15 +322,17 @@ mod update {
     use uuid::Uuid;
 
     pub use crate::read::{Payload, Response};
-    use crate::store::{schedule, store};
+    use crate::store::{
+        schedule,
+        store::{self, DisplayMaterial},
+    };
 
     #[derive(Deserialize, ToSchema, TS)]
     #[ts(export, export_to = "api_bindings/update/", rename = "UpdateDisplay")]
     #[schema(title = "UpdateDisplay")]
     pub struct Display {
         pub name: String,
-        #[ts(type = "string")]
-        pub schedule: Uuid,
+        pub display_material: DisplayMaterial,
     }
 
     #[derive(Deserialize, ToSchema, TS)]
@@ -403,7 +406,15 @@ async fn create_display(
     };
     info!("[Api] Using Uuid {uuid} for new Display");
 
-    store.create_display(uuid, disp.name, disp.schedule).await;
+    if let Err(e) = store
+        .create_display(uuid, disp.name, disp.display_material)
+        .await
+    {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json((5, format!("Could not write changes to db ({e})")).into()),
+        ));
+    }
 
     return if let Some(d) = store.read().await.displays.get(&uuid) {
         info!("[Api] Created Display {uuid}");
@@ -447,7 +458,13 @@ async fn create_playlist(
     drop(read);
     let uuid = Uuid::new_v4();
     info!("[Api] Generated Uuid {uuid} for new Playlist");
-    store.create_playlist(uuid, playlist.name).await;
+
+    if let Err(e) = store.create_playlist(uuid, playlist.name).await {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json((5, format!("Could not write changes to db ({e})")).into()),
+        ));
+    }
 
     return if let Some(p) = store.read().await.playlists.get(&uuid) {
         info!("[Api] Created Playlist {uuid}");
@@ -490,9 +507,16 @@ async fn create_schedule(
     drop(read);
     let uuid = Uuid::new_v4();
     info!("[Api] Generated Uuid {uuid} for new Schedule");
-    store
+
+    if let Err(e) = store
         .create_schedule(uuid, schedule.name, schedule.playlist)
-        .await;
+        .await
+    {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json((5, format!("Could not write changes to db ({e})")).into()),
+        ));
+    }
 
     return if let Some(s) = store.read().await.schedules.get(&uuid) {
         info!("[Api] Created Schedule {uuid}");
@@ -516,9 +540,9 @@ async fn create_schedule(
         (status = 200, description = "Get all Displays", body = inline(read::Payload),
             example = json!(
                 read::Payload::Display(vec![
-                        read::Display { uuid: Uuid::new_v4(), name: "name1".into(), schedule: Uuid::new_v4() },
-                        read::Display { uuid: Uuid::new_v4(), name: "name2".into(), schedule: Uuid::new_v4() },
-                        read::Display { uuid: Uuid::new_v4(), name: "name3".into(), schedule: Uuid::new_v4() }
+                        read::Display { uuid: Uuid::new_v4(), name: "name1".into(), display_material: DisplayMaterial::Schedule(Uuid::new_v4()) },
+                        read::Display { uuid: Uuid::new_v4(), name: "name2".into(), display_material: DisplayMaterial::Playlist(Uuid::new_v4()) },
+                        read::Display { uuid: Uuid::new_v4(), name: "name3".into(), display_material: DisplayMaterial::Schedule(Uuid::new_v4()) }
                 ])
             )
         ),
@@ -547,7 +571,7 @@ async fn read_display(State(state): State<AppState>) -> read::Response {
                 read::Payload::Playlist(vec![
                         read::Playlist { uuid: Uuid::new_v4(), name: "name1".into(), items: vec![
                             store::store::PlaylistItem::Website {
-                                name: "item_name".into(),
+                                id: "item_name".into(),
                                 settings: store::store::WebsiteData {
                                     url: "example.com".into(),
                                     duration: 60u64
@@ -616,7 +640,7 @@ async fn read_schedule(State(state): State<AppState>) -> read::Response {
         (status = 200, description = "Display updated", body = inline(read::Payload),
             example = json!(
                 read::Payload::Display(vec![
-                        read::Display { uuid: Uuid::new_v4(), name: "name".into(), schedule: Uuid::new_v4() }
+                        read::Display { uuid: Uuid::new_v4(), name: "name".into(), display_material: DisplayMaterial::Schedule(Uuid::new_v4()) }
                 ])
             )
         ),
@@ -676,9 +700,15 @@ async fn update_display(
     }
     drop(read);
 
-    store
-        .update_display(uuid, display.name, display.schedule)
-        .await;
+    if let Err(e) = store
+        .update_display(uuid, display.name, display.display_material)
+        .await
+    {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json((5, format!("Could not write changes to db ({e})")).into()),
+        ));
+    }
 
     return if let Some(d) = store.read().await.displays.get(&uuid) {
         info!("[Api] Updated and read Display {uuid}");
@@ -738,9 +768,15 @@ async fn update_playlist(
 
     drop(read);
 
-    store
+    if let Err(e) = store
         .update_playlist(uuid, playlist.name, playlist.items)
-        .await;
+        .await
+    {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json((5, format!("Could not write changes to db ({e})")).into()),
+        ));
+    }
 
     return if let Some(p) = store.read().await.playlists.get(&uuid) {
         info!("[Api] Updated and read Playlist {uuid}");
@@ -855,7 +891,7 @@ async fn update_schedule(
         (status = 200, description = "Display deleted", body = Payload,
             example = json!(
                 read::Payload::Display(vec![
-                        read::Display { uuid: Uuid::new_v4(), name: "name".into(), schedule: Uuid::new_v4() }
+                        read::Display { uuid: Uuid::new_v4(), name: "name".into(), display_material: DisplayMaterial::Schedule(Uuid::new_v4()) }
                 ])
             )
         ),
@@ -884,7 +920,13 @@ async fn delete_display(State(state): State<AppState>, Path(uuid): Path<Uuid>) -
         ));
     }
 
-    store.delete_display(uuid).await;
+    if let Err(e) = store.delete_display(uuid).await {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json((5, format!("Could not write changes to db ({e})")).into()),
+        ));
+    }
+
     info!("[Api] Deleted Display {uuid}");
     res
 }
@@ -956,6 +998,32 @@ pub(crate) async fn delete_playlist(
         ));
     }
 
+    let dependant_displays = read
+        .displays
+        .iter()
+        .filter_map(|(_, d)| match d.display_material {
+            DisplayMaterial::Playlist(playlist_uuid) if uuid == playlist_uuid => {
+                Some(d.name.clone())
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    if dependant_displays.len() > 0 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(
+                (
+                    2,
+                    format!(
+                        "Unable to delete playlist since the Displays ({}) depend on it",
+                        dependant_displays.join(", ")
+                    ),
+                )
+                    .into(),
+            ),
+        ));
+    }
+
     if let Some(d) = read.playlists.get(&uuid) {
         res = Ok(Json(read::Payload::Playlist(
             vec![(uuid, d.clone()).into()],
@@ -964,13 +1032,19 @@ pub(crate) async fn delete_playlist(
         error!("[Api] No Playlist with {uuid} was found");
         return Err((
             StatusCode::BAD_REQUEST,
-            Json((2, format!("No Playlist with the Uuid {uuid} was found")).into()),
+            Json((3, format!("No Playlist with the Uuid {uuid} was found")).into()),
         ));
     }
 
     drop(read);
 
-    store.delete_playlist(uuid).await;
+    if let Err(e) = store.delete_playlist(uuid).await {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json((5, format!("Could not write changes to db ({e})")).into()),
+        ));
+    }
+
     info!("[Api] Deleted Playlist {uuid}");
     res
 }
@@ -1015,12 +1089,11 @@ async fn delete_schedule(State(state): State<AppState>, Path(uuid): Path<Uuid>) 
     let dependant_displays = read
         .displays
         .iter()
-        .filter_map(|(_, d)| {
-            if d.schedule == uuid {
+        .filter_map(|(_, d)| match d.display_material {
+            DisplayMaterial::Schedule(schedule_uuid) if uuid == schedule_uuid => {
                 Some(d.name.clone())
-            } else {
-                None
             }
+            _ => None,
         })
         .collect::<Vec<_>>();
     if dependant_displays.len() > 0 {
@@ -1053,7 +1126,13 @@ async fn delete_schedule(State(state): State<AppState>, Path(uuid): Path<Uuid>) 
 
     drop(read);
 
-    store.delete_schedule(uuid).await;
+    if let Err(e) = store.delete_schedule(uuid).await {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json((5, format!("Could not write changes to db ({e})")).into()),
+        ));
+    }
+
     info!("[Api] Deleted Schedule {uuid}");
     res
 }

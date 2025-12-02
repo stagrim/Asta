@@ -59,11 +59,17 @@ pub async fn client_connection(
 
     // Wait for a hello response from connected client to get its UUID
     let (client_uuid, htmx) = loop {
-        if let Some(Ok(Message::Text(msg))) = client_receive.next().await {
-            match serde_json::from_str::<RequestPayload>(&msg) {
-                Ok(RequestPayload::Hello { uuid, htmx }) => break (uuid, htmx),
-                _ => error!("[{who}] {msg:?} was not a HelloRequest"),
-            };
+        match client_receive.next().await {
+            Some(Ok(Message::Text(msg))) => {
+                match serde_json::from_str::<RequestPayload>(&msg) {
+                    Ok(RequestPayload::Hello { uuid, htmx }) => break (uuid, htmx),
+                    _ => error!("[{who}] {msg:?} was not a HelloRequest"),
+                };
+            }
+            err => {
+                error!("[{who}] Received '{err:?}' instead of HelloRequest, exiting");
+                return;
+            }
         }
     };
 
@@ -116,14 +122,25 @@ pub async fn client_connection(
                                 .into(),
                         )
                     };
-                    client_send.lock().await.send(msg).await.unwrap();
+
+                    if let Err(e) = client_send.lock().await.send(msg).await {
+                        error!("[{who}] Could not send Pending message because '{e:?}', exiting");
+                        return;
+                    };
 
                     // Wait until display is updated change, then try again
                     loop {
-                        match rx.recv().await.unwrap() {
-                            Change::Display(m) if m.contains(&client_uuid) => break,
-                            _ => (),
+                        match rx.recv().await {
+                            Ok(msg) => match msg {
+                                Change::Display(m) if m.contains(&client_uuid) => break,
+                                _ => (),
+                            },
+                            Err(err) => {
+                                error!("[{who}] received error '{err:?}', exiting");
+                                return;
+                            }
                         };
+                        trace!("loop 2");
                     }
                     continue;
                 }
@@ -144,7 +161,13 @@ pub async fn client_connection(
             .unwrap()
             .into(),
         );
-        client_send.lock().await.send(msg).await.unwrap();
+
+        if let Err(e) = client_send.lock().await.send(msg).await {
+            error!(
+                "[{who} ({client_name})] Could not send Welcome message because '{e:?}', exiting"
+            );
+            return;
+        };
 
         info!("[{who}] was given the name {client_name}");
 
@@ -152,7 +175,7 @@ pub async fn client_connection(
         'outer_send_loop: loop {
             let (schedule_uuid, playlist_uuid) =
                 store.get_display_uuids(&client_uuid).await.unwrap();
-            let mut playlist = match store.get_display_playlists(&client_uuid).await {
+            let mut playlist = match store.get_display_playlist_items(&client_uuid).await {
                 Some(p) => p,
                 None => {
                     error!("[{who} ({client_name})] Error: Display playlist could not be found");
@@ -163,7 +186,7 @@ pub async fn client_connection(
             // If playlist is empty, add text stating such to display loop
             if playlist.is_empty() {
                 playlist.push(PlaylistItem::Text {
-                    name: "pending".into(),
+                    id: "pending".into(),
                     settings: TextData {
                         text: "No Playlist added".into(),
                         duration: 0,
@@ -175,7 +198,7 @@ pub async fn client_connection(
                 let sleep_duration;
                 let payload = match item {
                     PlaylistItem::Website {
-                        name,
+                        id: name,
                         settings: WebsiteData { url, duration },
                     } => {
                         info!("[{who} ({client_name})] Sending Website '{name}'");
@@ -183,7 +206,7 @@ pub async fn client_connection(
                         DisplayPayload::Website(WebsitePayload { content: url })
                     }
                     PlaylistItem::Text {
-                        name,
+                        id: name,
                         settings: TextData { text, duration },
                     } => {
                         info!("[{who} ({client_name})] Sending Text '{name}'");
@@ -191,7 +214,7 @@ pub async fn client_connection(
                         DisplayPayload::Text(WebsitePayload { content: text })
                     }
                     PlaylistItem::Image {
-                        name,
+                        id: name,
                         settings: ImageData { src, duration },
                     } => {
                         info!("[{who} ({client_name})] Sending Image '{name}'");
@@ -210,7 +233,10 @@ pub async fn client_connection(
                             .into(),
                     )
                 };
-                client_send.lock().await.send(msg).await.unwrap();
+                if let Err(e) = client_send.lock().await.send(msg).await {
+                    error!("[{who} ({client_name})] Could not send playlist message because '{e:?}', exiting");
+                    return;
+                };
 
                 let now = Instant::now();
                 // Sleep for an infinite time if duration of the PlaylistItem is zero.
@@ -245,8 +271,8 @@ pub async fn client_connection(
                                             info!("[{who} ({client_name})] Playlist {} has changed, restarting send loop", playlist_uuid);
                                             continue 'outer_send_loop
                                         },
-                                        Change::Schedule(s) if s.contains(&schedule_uuid) => {
-                                            info!("[{who} ({client_name})] Schedule {} has changed, restarting send loop", schedule_uuid);
+                                        Change::Schedule(s) if schedule_uuid.is_some_and(|u| s.contains(&u)) => {
+                                            info!("[{who} ({client_name})] Schedule {} has changed, restarting send loop", schedule_uuid.unwrap_or_default());
                                             continue 'outer_send_loop
                                         },
                                         _ => {
