@@ -43,46 +43,52 @@ pub enum Payload {
 
 #[derive(Serialize, Debug, ToSchema, TS)]
 #[ts(export, export_to = "api_bindings/files/")]
-pub struct TreeView {
-    content: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    /// children is Some if content is a dir, None if content is a file
-    children: Option<Vec<TreeView>>,
+pub struct TreeFile {
+    id: String,
+    name: String,
+    size: usize,
+    date: String,
 }
 
-impl From<&File> for TreeView {
+#[derive(Serialize, Debug, ToSchema, TS)]
+#[ts(export, export_to = "api_bindings/files/")]
+pub struct TreeDirectory {
+    id: String,
+    name: String,
+    files: Vec<TreeFile>,
+    directories: Vec<TreeDirectory>,
+}
+
+impl From<&File> for TreeFile {
     fn from(value: &File) -> Self {
-        TreeView {
-            content: value.name.clone(),
-            children: None,
+        TreeFile {
+            id: value.path.clone(),
+            name: value.name.clone(),
+            size: value.size,
+            date: value.date.to_rfc3339(),
         }
     }
 }
 
-impl From<&Directory> for TreeView {
+impl From<&Directory> for TreeDirectory {
     fn from(value: &Directory) -> Self {
-        let mut children = Vec::new();
-        children.append(
-            &mut value
-                .children
-                .lock()
-                .unwrap()
-                .iter()
-                .map(|f| f.into())
-                .collect::<Vec<TreeView>>(),
-        );
-        children.append(
-            &mut value
+        TreeDirectory {
+            id: value.path.clone(),
+            name: value.name.clone(),
+            files: value
                 .files
                 .lock()
                 .unwrap()
                 .iter()
                 .map(|f| f.into())
-                .collect::<Vec<TreeView>>(),
-        );
-        TreeView {
-            content: value.name.clone(),
-            children: Some(children),
+                .collect::<Vec<_>>(),
+            directories: value
+                .children
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|f| f.into())
+                .collect::<Vec<_>>(),
         }
     }
 }
@@ -97,11 +103,12 @@ pub struct ListViewItem {
     id: String,
     size: usize,
     date: String,
-    r#type: Type,
+    r#type: ListViewItemType,
 }
 
 #[derive(Serialize, Deserialize, Debug, ToSchema, TS)]
-enum Type {
+#[ts(export, export_to = "api_bindings/files/")]
+enum ListViewItemType {
     #[serde(rename = "folder")]
     Directory,
     #[serde(rename = "file")]
@@ -141,7 +148,7 @@ impl From<&File> for ListViewItem {
             id: value.path.clone(),
             size: value.size,
             date: value.date.to_rfc3339(),
-            r#type: Type::File,
+            r#type: ListViewItemType::File,
         }
     }
 }
@@ -149,17 +156,25 @@ impl From<&Directory> for ListViewItem {
     fn from(value: &Directory) -> Self {
         ListViewItem {
             id: value.path.clone(),
+            // TODO: show sum of size of files here, or items
             size: 0,
+            // TODO: show latest file change here
             date: "1996-12-19T16:39:57-08:00".to_string(),
-            r#type: Type::Directory,
+            r#type: ListViewItemType::Directory,
         }
     }
 }
 
 #[debug_handler]
-pub async fn get_all_paths(State(state): State<AppState>) -> Response<Payload> {
+pub async fn get_all_paths_list(State(state): State<AppState>) -> Response<Payload> {
     let files = state.file_server.lock().await.get_paths_list().await;
     Ok(Json(Payload::FilePaths(files)))
+}
+
+#[debug_handler]
+pub async fn get_all_paths_tree(State(state): State<AppState>) -> Response<TreeDirectory> {
+    let files = state.file_server.lock().await.get_paths_tree().await;
+    Ok(Json(files))
 }
 
 #[debug_handler]
@@ -431,8 +446,7 @@ impl FileServer {
         (&self.root).into()
     }
 
-    #[allow(unused)]
-    pub async fn get_paths_tree(&self) -> TreeView {
+    pub async fn get_paths_tree(&self) -> TreeDirectory {
         (&self.root).into()
     }
 

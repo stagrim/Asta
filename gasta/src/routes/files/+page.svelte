@@ -1,11 +1,11 @@
 <script lang="ts">
 	// @ts-ignore
-	import { Filemanager, getMenuOptions } from 'wx-svelte-filemanager';
+	import { Filemanager, getMenuOptions, WillowDark } from 'wx-svelte-filemanager';
 	import type { PageData } from './$types';
 	import { deserialize } from '$app/forms';
 	import type { ActionResult } from '@sveltejs/kit';
 	import { toastStore } from '$lib/stores';
-	import AstaTheme from './AstaTheme.svelte';
+	// import AstaTheme from './AstaTheme.svelte';
 	import { page } from '$app/state';
 
 	let { data }: { data: PageData } = $props();
@@ -51,7 +51,7 @@
 						hotkey: 'Ctrl+O',
 						id: 'open',
 						handler: ({ context }: { context: Type }) =>
-							window.open(`/files${context.id}`, '_blank')
+							window.open(`/files/${context.id}`, '_blank')
 					},
 					...getMenuOptions(mode)
 				];
@@ -184,14 +184,15 @@
 {#each data.payload.content as c}
 	{c}
 {/each} -->
-
-<AstaTheme>
-	<Filemanager
-		data={data.payload.content}
-		{init}
-		icons={'simple'}
-		{previews}
-		{menuOptions}
-		bind:this={api}
-	/>
-</AstaTheme>
+<div class="w-full">
+	<WillowDark>
+		<Filemanager
+			data={data.payload.content}
+			{init}
+			icons={'simple'}
+			{previews}
+			{menuOptions}
+			bind:this={api}
+		/>
+	</WillowDark>
+</div>

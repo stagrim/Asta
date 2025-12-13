@@ -1,20 +1,22 @@
 import { env } from '$env/dynamic/private';
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import type { Payload } from '$lib/api_bindings/files/Payload';
 import type { DeleteFilesRequest } from '$lib/api_bindings/files/DeleteFilesRequest';
+import type { TreeDirectory } from '$lib/api_bindings/files/TreeDirectory';
 
 export const load: PageServerLoad = async () => {
-	const payload: Payload = await fetch(`${env.SERVER_URL}/api/files/list`).then((d) => d.json());
+	const fileTree: TreeDirectory = await fetch(`${env.SERVER_URL}/api/files/tree`).then((d) =>
+		d.json()
+	);
 
-	if (payload.type == 'Error') {
-		console.error(`Error: ${payload}`);
-		throw Error();
-	}
+	// if (payload.type == 'Error') {
+	// 	console.error(`Error: ${payload}`);
+	// 	throw Error();
+	// }
 
-	console.log(payload);
+	console.log(fileTree);
 
-	return { payload };
+	return { fileTree };
 };
 
 export const actions = {
@@ -31,7 +33,7 @@ export const actions = {
 		// const { file } = formData as { file: File };
 		console.log(formData);
 
-		const test = await fetch(`${env.SERVER_URL}/api/files`, {
+		const test = await fetch(`${env.SERVER_URL}/api/files/tree`, {
 			method: 'POST',
 			body: formData
 		});

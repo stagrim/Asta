@@ -25,7 +25,9 @@ use uuid::Uuid;
 use crate::{
     casta::casta::{casta_index, compute_hash, minify},
     connection::connection::client_connection,
-    file_server::file_server::{add_files, get_all_paths, get_file, FileServer},
+    file_server::file_server::{
+        add_files, get_all_paths_list, get_all_paths_tree, get_file, FileServer,
+    },
     store::{schedule, store::DisplayMaterial},
 };
 
@@ -153,7 +155,9 @@ async fn main() {
                 .nest(
                     "/files",
                     Router::new()
-                        .route("/", get(get_all_paths).delete(delete_files))
+                        .route("/tree", get(get_all_paths_tree))
+                        .route("/list", get(get_all_paths_list))
+                        .route("/", delete(delete_files))
                         .route("/", post(add_files))
                         .layer(DefaultBodyLimit::max(10_000_000)),
                 ),
