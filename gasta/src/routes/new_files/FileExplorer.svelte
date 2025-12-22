@@ -23,6 +23,7 @@
 		viewMode,
 		showPreview,
 		onFileSelect,
+		onFolderSelect,
 		onTogglePreview,
 		onViewModeChange
 	}: {
@@ -33,6 +34,7 @@
 		viewMode: 'grid' | 'list';
 		showPreview: boolean;
 		onFileSelect: (file: TreeFile | TreeDirectory | null) => void;
+		onFolderSelect: (folder: string | TreeDirectory) => void;
 		onTogglePreview: () => void;
 		onViewModeChange: (mode: 'grid' | 'list') => void;
 	} = $props();
@@ -49,8 +51,10 @@
 			<Separator orientation="vertical" class="h-4 mx-2" />
 			<nav class="flex items-center gap-1 text-sm">
 				<span class="text-muted-foreground">Home</span>
-				<ChevronRightIcon class="w-4 h-4 text-muted-foreground" />
-				<span class="text-foreground font-medium">{selectedFolder}</span>
+				{#each selectedFolder.split('/').filter((s) => s) as dir}
+					<ChevronRightIcon class="w-4 h-4 text-muted-foreground" />
+					<span class="text-foreground font-medium">{dir}</span>
+				{/each}
 			</nav>
 		</div>
 
@@ -105,7 +109,7 @@
 				}
 			}}
 		>
-			{#if files.length === 0}
+			{#if files.length === 0 && directories.length === 0}
 				<div class="flex flex-col items-center justify-center h-64 text-muted-foreground">
 					<FolderIcon class="w-16 h-16 mb-4 stroke-1" />
 					<p>This folder is empty</p>
@@ -114,27 +118,34 @@
 				{@const buttonClasses =
 					'flex flex-col items-center p-4 rounded-lg border transition-all cursor-pointer'}
 				<div
-					class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3"
+					class="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3"
+					onclick={(e) => {
+						if (e.target === e.currentTarget) {
+							onFileSelect(null);
+						}
+					}}
 				>
-					{#each directories as directory}
+					{#each directories as dir}
 						<button
 							class={cn(
 								buttonClasses,
-								selectedItem?.name === directory.name
+								selectedItem?.name === dir.name
 									? 'border-primary bg-primary/5'
 									: 'border-transparent hover:bg-muted'
 							)}
-							onclick={() => onFileSelect(directory)}
+							onclick={() => onFileSelect(dir)}
+							ondblclick={() => onFolderSelect(dir)}
 						>
 							<Folder class="w-12 h-12" />
 							<span class="mt-2 text-sm text-foreground text-center truncate w-full"
-								>{directory.name}</span
+								>{dir.name}</span
 							>
 							<!-- <span class="text-xs text-muted-foreground">{filesize(file.size)}</span> -->
 						</button>
 					{/each}
 					{#each files as file}
 						<button
+							draggable="true"
 							class={cn(
 								buttonClasses,
 								selectedItem?.name === file.name
@@ -144,9 +155,9 @@
 							onclick={() => onFileSelect(file)}
 						>
 							<FileIcon extension={file.name.split('.').at(-1)} size="lg" />
-							<span class="mt-2 text-sm text-foreground text-center truncate w-full"
-								>{file.name}</span
-							>
+							<span class="mt-2 text-sm text-foreground text-center break-all w-full">
+								{file.name}
+							</span>
 							<span class="text-xs text-muted-foreground">{filesize(file.size)}</span>
 						</button>
 					{/each}
@@ -157,16 +168,32 @@
 						<thead>
 							<tr class="bg-muted/50 text-left text-sm text-muted-foreground">
 								<th class="px-4 py-3 font-medium">Name</th>
-								<th class="px-4 py-3 font-medium w-24">Size</th>
-								<th class="px-4 py-3 font-medium w-36">Modified</th>
+								<th class="px-4 py-3 font-medium w-32">Size</th>
+								<th class="px-4 py-3 font-medium w-46">Modified</th>
 							</tr>
 						</thead>
 						<tbody>
 							{#each directories as directory}
-								<tr>
-									<td>
-										{directory.name}
+								<tr
+									class="border-t border-border transition-colors cursor-pointer {selectedItem?.name ===
+									directory.name
+										? 'bg-primary/5'
+										: 'hover:bg-muted/50'}"
+									onclick={() => onFileSelect(directory)}
+									onkeydown={(e) => e.key === 'Enter' && onFileSelect(directory)}
+									tabindex="0"
+									role="button"
+								>
+									<td class="px-4 py-3">
+										<div class="flex items-center gap-3">
+											<Folder class="w-5 h-5" />
+											<span class="text-sm text-foreground">{directory.name}</span>
+										</div>
 									</td>
+									<td class="px-4 py-3 text-sm text-muted-foreground"
+										>{directory.directories.length} item(s)</td
+									>
+									<td class="px-4 py-3 text-sm text-muted-foreground"></td>
 								</tr>
 							{/each}
 							{#each files as file}
@@ -187,7 +214,9 @@
 										</div>
 									</td>
 									<td class="px-4 py-3 text-sm text-muted-foreground">{filesize(file.size)}</td>
-									<td class="px-4 py-3 text-sm text-muted-foreground">{file.date}</td>
+									<td class="px-4 py-3 text-sm text-muted-foreground">
+										{new Date(file.date).toLocaleString()}
+									</td>
 								</tr>
 							{/each}
 						</tbody>

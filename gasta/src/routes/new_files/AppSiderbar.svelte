@@ -1,23 +1,29 @@
 <script lang="ts">
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import HardDriveIcon from '@lucide/svelte/icons/hard-drive';
-	import * as TreeView from '$lib/components/ui/tree-view';
 	import * as Sidebar from '$lib/components/ui/sidebar';
 	import { Label } from '$lib/components/ui/label';
 	import type { TreeDirectory } from '$lib/api_bindings/files/TreeDirectory';
 	import { History, House } from '@lucide/svelte';
+	import * as TreeView from '$lib/components/ui/tree-view';
 
 	let {
 		fileTree,
-		selectedFolder,
+		currentPath,
 		onFolderSelect
 	}: {
 		fileTree: TreeDirectory;
-		selectedFolder: string;
-		onFolderSelect: (folder: string) => void;
+		currentPath: string;
+		onFolderSelect: (directory: string | TreeDirectory) => void;
 	} = $props();
 
 	let searchQuery = $state('');
+
+	// function handleDragOver(e: DragEvent) {
+	// 	e.preventDefault(); // Essential to allow dropping
+	// 	e.stopPropagation();
+	// 	isDragOver = true;
+	// }
 </script>
 
 <Sidebar.Root
@@ -34,7 +40,7 @@
 	</Sidebar.Header>
 
 	<Sidebar.Content>
-		<Sidebar.Group class="py-0">
+		<Sidebar.Group class="py-1">
 			<Sidebar.GroupContent class="relative">
 				<Label for="search" class="sr-only">Search</Label>
 				<Sidebar.Input id="search" placeholder="search" class="pl-8" bind:value={searchQuery} />
@@ -53,7 +59,7 @@
 					<Sidebar.MenuItem>
 						<Sidebar.MenuButton
 							onclick={() => onFolderSelect('')}
-							class="gap-3 {selectedFolder === ''
+							class="gap-3 {currentPath === '/'
 								? 'bg-sidebar-accent text-sidebar-accent-foreground'
 								: ''}"
 						>
@@ -64,7 +70,7 @@
 					<Sidebar.MenuItem>
 						<Sidebar.MenuButton
 							onclick={() => onFolderSelect('Recent')}
-							class="gap-3 {selectedFolder === 'Recent'
+							class="gap-3 {currentPath === 'Recent'
 								? 'bg-sidebar-accent text-sidebar-accent-foreground'
 								: ''}"
 						>
@@ -82,7 +88,7 @@
 			</Sidebar.GroupLabel>
 			<Sidebar.GroupContent>
 				<Sidebar.Menu>
-					<TreeView.Root>
+					<TreeView.Root bind:selectedId={currentPath}>
 						{#each fileTree.directories ?? [] as child}
 							{@render recursiveNode(child)}
 						{/each}
@@ -94,9 +100,13 @@
 </Sidebar.Root>
 
 {#snippet recursiveNode(node: TreeDirectory)}
-	<TreeView.Folder name={node.name}>
-		{#each node.directories as child}
-			{@render recursiveNode(child)}
-		{/each}
-	</TreeView.Folder>
+	{#if node.directories.length}
+		<TreeView.Folder open={false} name={node.name} id={node.id}>
+			{#each node.directories as child}
+				{@render recursiveNode(child)}
+			{/each}
+		</TreeView.Folder>
+	{:else}
+		<TreeView.Folder open={false} name={node.name} id={node.id} />
+	{/if}
 {/snippet}

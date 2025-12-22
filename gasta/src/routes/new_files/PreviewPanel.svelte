@@ -82,6 +82,18 @@
 								</div>
 							</dl>
 						</div>
+					{:else}
+						<div>
+							<h4 class="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+								Details
+							</h4>
+							<dl class="space-y-2">
+								<div class="flex justify-between">
+									<dt class="text-sm text-muted-foreground">Size</dt>
+									<dd class="text-sm text-foreground">{item.directories.length} item(s)</dd>
+								</div>
+							</dl>
+						</div>
 					{/if}
 
 					<Separator />

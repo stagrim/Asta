@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { FileButton } from '@skeletonlabs/skeleton';
 	import { Filemanager } from 'wx-svelte-filemanager';
 	import type { PageData } from './$types';
 	import { enhance } from '$app/forms';

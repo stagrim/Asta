@@ -8,23 +8,65 @@
 
 	let { fileTree }: { fileTree: TreeDirectory } = $props();
 
-	let selectedFolder = $state('');
+	let currentPath = $state('/');
 	let selectedItem = $state<TreeFile | TreeDirectory | null>(null);
 	let showPreview = $state(true);
 	let viewMode = $state<'grid' | 'list'>('grid');
 
-	const currentFiles = $derived(fileTree.files || []);
-	const currentDirectories = $derived(fileTree.directories || []);
+	let currentFiles = $state<TreeFile[]>([]);
+	let currentDirectories = $state<TreeDirectory[]>([]);
 
-	function handleFolderSelect(folder: string) {
-		selectedFolder = folder;
-		selectedItem = null;
+	$effect(() => {
+		currentFiles = fileTree.files;
+		currentDirectories = fileTree.directories;
+	});
+
+	function handleFolderSelect(directory: TreeDirectory | string) {
+		if (typeof directory === 'string') {
+			const dir = traverseTree(directory);
+			if (dir) {
+				currentPath = dir.id;
+				selectedItem = null;
+
+				currentFiles = dir.files;
+				currentDirectories = dir.directories;
+			} else {
+				console.error(`${directory} was not found`);
+			}
+		} else {
+			currentPath = directory.id;
+			selectedItem = null;
+
+			currentFiles = directory.files;
+			currentDirectories = directory.directories;
+		}
+	}
+
+	function traverseTree(path: string): TreeDirectory | null {
+		const dirs = path.split('/').filter((s) => s);
+
+		if (dirs.length === 0) {
+			return fileTree;
+		}
+
+		let dir = fileTree;
+		for (const x of dirs) {
+			const res = dir.directories.find((d) => d.name === x);
+
+			if (res) {
+				dir = res;
+			} else {
+				return null;
+			}
+		}
+
+		return dir;
 	}
 
 	function handleFileSelect(item: TreeFile | TreeDirectory | null) {
 		selectedItem = item;
 		if (!showPreview) {
-			showPreview = true;
+			// showPreview = true;
 		}
 	}
 
@@ -41,18 +83,20 @@
 	class="group/filemanager relative flex w-full border rounded-xl overflow-hidden isolation-isolate bg-background"
 >
 	<Sidebar.Provider style="--sidebar-width-icon: 0px;">
-		<AppSidebar {fileTree} {selectedFolder} onFolderSelect={handleFolderSelect} />
+		<AppSidebar {fileTree} {currentPath} onFolderSelect={handleFolderSelect} />
 
 		<Sidebar.Inset>
 			<main class="flex flex-1 overflow-hidden h-screen w-full">
+				<!-- TODO: Only give the current directory item instead of passing the containing directories and files separately -->
 				<FileExplorer
 					files={currentFiles}
 					directories={currentDirectories}
 					{selectedItem}
-					{selectedFolder}
+					selectedFolder={currentPath}
 					{viewMode}
 					{showPreview}
 					onFileSelect={handleFileSelect}
+					onFolderSelect={handleFolderSelect}
 					onTogglePreview={togglePreview}
 					onViewModeChange={setViewMode}
 				/>

@@ -1,14 +1,13 @@
-import TreeView from './tree-view.svelte';
-import TreeViewFile from './tree-view-file.svelte';
-import TreeViewFolder from './tree-view-folder.svelte';
+import Root from './tree-view-root.svelte';
+import Folder from './tree-view-folder.svelte';
+import Item from './tree-view-item.svelte';
 
 export {
-	TreeView,
-	TreeViewFile,
-	TreeViewFolder,
-
-	// ...
-	TreeView as Root,
-	TreeViewFile as File,
-	TreeViewFolder as Folder
+	Root,
+	Folder,
+	Item,
+	//
+	Root as TreeViewRoot,
+	Folder as TreeViewFolder,
+	Item as TreeViewItem
 };
