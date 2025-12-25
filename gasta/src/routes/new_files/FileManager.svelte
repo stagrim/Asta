@@ -1,16 +1,18 @@
 <script lang="ts">
 	import type { TreeDirectory } from '$lib/api_bindings/files/TreeDirectory';
 	import type { TreeFile } from '$lib/api_bindings/files/TreeFile';
-	import * as Sidebar from '$lib/components/ui/sidebar';
+	import * as Resizable from '$lib/components/ui/resizable';
+	import { IsMobile } from '$lib/hooks/is-mobile.svelte';
 	import AppSidebar from './AppSiderbar.svelte';
 	import FileExplorer from './FileExplorer.svelte';
 	import PreviewPanel from './PreviewPanel.svelte';
+
+	const isMobile = new IsMobile();
 
 	let { fileTree }: { fileTree: TreeDirectory } = $props();
 
 	let currentPath = $state('/');
 	let selectedItem = $state<TreeFile | TreeDirectory | null>(null);
-	let showPreview = $state(true);
 	let viewMode = $state<'grid' | 'list'>('grid');
 
 	let currentFiles = $state<TreeFile[]>([]);
@@ -65,46 +67,50 @@
 
 	function handleFileSelect(item: TreeFile | TreeDirectory | null) {
 		selectedItem = item;
-		if (!showPreview) {
-			// showPreview = true;
-		}
-	}
-
-	function togglePreview() {
-		showPreview = !showPreview;
 	}
 
 	function setViewMode(mode: 'grid' | 'list') {
 		viewMode = mode;
 	}
+
+	let appSideBarOpen = $state(!isMobile.current);
+	let previewPanelOpen = $state(false);
 </script>
 
 <div
-	class="group/filemanager relative flex w-full border rounded-xl overflow-hidden isolation-isolate bg-background"
+	class="group/filemanager relative flex w-full h-full border rounded-xl overflow-hidden isolation-isolate bg-background"
 >
-	<Sidebar.Provider style="--sidebar-width-icon: 0px;">
-		<AppSidebar {fileTree} {currentPath} onFolderSelect={handleFolderSelect} />
+	<Resizable.PaneGroup direction="horizontal">
+		<AppSidebar
+			{fileTree}
+			{currentPath}
+			onFolderSelect={handleFolderSelect}
+			bind:open={appSideBarOpen}
+		/>
 
-		<Sidebar.Inset>
-			<main class="flex flex-1 overflow-hidden h-screen w-full">
+		<Resizable.Handle />
+
+		<Resizable.Pane>
+			<main class="flex flex-1 overflow-hidden h-full w-full">
 				<!-- TODO: Only give the current directory item instead of passing the containing directories and files separately -->
+
 				<FileExplorer
 					files={currentFiles}
 					directories={currentDirectories}
 					{selectedItem}
 					selectedFolder={currentPath}
 					{viewMode}
-					{showPreview}
 					onFileSelect={handleFileSelect}
 					onFolderSelect={handleFolderSelect}
-					onTogglePreview={togglePreview}
 					onViewModeChange={setViewMode}
+					bind:appSideBarOpen
+					bind:previewPanelOpen
 				/>
-
-				{#if showPreview}
-					<PreviewPanel file={selectedItem} onClose={togglePreview} />
-				{/if}
 			</main>
-		</Sidebar.Inset>
-	</Sidebar.Provider>
+		</Resizable.Pane>
+
+		<Resizable.Handle />
+
+		<PreviewPanel file={selectedItem} bind:open={previewPanelOpen} />
+	</Resizable.PaneGroup>
 </div>

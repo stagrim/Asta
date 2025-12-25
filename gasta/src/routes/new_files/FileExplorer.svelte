@@ -1,19 +1,18 @@
 <script lang="ts">
 	import FileIcon from './FileIcon.svelte';
-	import { Trigger as SidebarTrigger, useSidebar } from '$lib/components/ui/sidebar';
 	import { Button } from '$lib/components/ui/button';
 	import { ScrollArea } from '$lib/components/ui/scroll-area';
 	import { Separator } from '$lib/components/ui/separator';
 	import LayoutGridIcon from '@lucide/svelte/icons/layout-grid';
 	import ListIcon from '@lucide/svelte/icons/list';
 	import PanelRightIcon from '@lucide/svelte/icons/panel-right';
-	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import FolderIcon from '@lucide/svelte/icons/folder';
 	import { Folder, FolderTree } from '@lucide/svelte';
 	import type { TreeDirectory } from '$lib/api_bindings/files/TreeDirectory';
 	import type { TreeFile } from '$lib/api_bindings/files/TreeFile';
 	import { filesize } from 'filesize';
 	import { cn } from '$lib/utils';
+	import * as Breadcrumb from '$lib/components/ui/breadcrumb';
 
 	let {
 		files,
@@ -21,41 +20,70 @@
 		selectedItem,
 		selectedFolder,
 		viewMode,
-		showPreview,
 		onFileSelect,
 		onFolderSelect,
-		onTogglePreview,
-		onViewModeChange
+		onViewModeChange,
+		appSideBarOpen = $bindable(),
+		previewPanelOpen = $bindable()
 	}: {
 		files: TreeFile[];
 		directories: TreeDirectory[];
 		selectedItem: TreeFile | TreeDirectory | null;
 		selectedFolder: string;
 		viewMode: 'grid' | 'list';
-		showPreview: boolean;
 		onFileSelect: (file: TreeFile | TreeDirectory | null) => void;
 		onFolderSelect: (folder: string | TreeDirectory) => void;
-		onTogglePreview: () => void;
 		onViewModeChange: (mode: 'grid' | 'list') => void;
+		appSideBarOpen: boolean | undefined;
+		previewPanelOpen: boolean | undefined;
 	} = $props();
 
-	const sidebar = useSidebar();
+	let path = $derived(
+		selectedFolder
+			.split('/')
+			.filter((s) => s)
+			.reduce(
+				(pre, cur, i) => [...pre, { href: `${pre.at(-1)?.href ?? ''}/${cur}`, name: cur }],
+				[] as { href: string; name: string }[]
+			)
+	);
+	$inspect(path);
+	onFolderSelect('/Test');
 </script>
 
 <div class="flex-1 flex flex-col min-w-0 bg-background">
 	<header class="flex items-center justify-between px-4 py-3 border-b border-border">
 		<div class="flex items-center gap-2">
-			<Button variant="ghost" size="icon" onclick={() => sidebar.toggle()}>
+			<Button
+				variant="ghost"
+				size="icon"
+				onclick={() => (appSideBarOpen = !appSideBarOpen)}
+				class={appSideBarOpen
+					? 'bg-primary/10 text-primary'
+					: 'text-muted-foreground hover:text-foreground'}
+			>
 				<FolderTree />
 			</Button>
+
 			<Separator orientation="vertical" class="h-4 mx-2" />
-			<nav class="flex items-center gap-1 text-sm">
-				<span class="text-muted-foreground">Home</span>
-				{#each selectedFolder.split('/').filter((s) => s) as dir}
-					<ChevronRightIcon class="w-4 h-4 text-muted-foreground" />
-					<span class="text-foreground font-medium">{dir}</span>
-				{/each}
-			</nav>
+			<Breadcrumb.Root>
+				<Breadcrumb.List>
+					{#each [{ name: 'Home', href: '/' }, ...path] as dir, i}
+						<Breadcrumb.Item>
+							{#if i === path.length}
+								<Breadcrumb.Page>
+									{dir.name}
+								</Breadcrumb.Page>
+							{:else}
+								<Breadcrumb.Link class="cursor-pointer" onclick={() => onFolderSelect(dir.href)}>
+									{dir.name}
+								</Breadcrumb.Link>
+								<Breadcrumb.Separator />
+							{/if}
+						</Breadcrumb.Item>
+					{/each}
+				</Breadcrumb.List>
+			</Breadcrumb.Root>
 		</div>
 
 		<div class="flex items-center gap-2">
@@ -87,10 +115,10 @@
 			<Button
 				variant="ghost"
 				size="sm"
-				class="h-8 w-8 p-0 {showPreview
+				class="h-8 w-8 p-0 {previewPanelOpen
 					? 'bg-primary/10 text-primary'
 					: 'text-muted-foreground hover:text-foreground'}"
-				onclick={onTogglePreview}
+				onclick={() => (previewPanelOpen = !previewPanelOpen)}
 				aria-label="Toggle preview panel"
 			>
 				<PanelRightIcon class="w-4 h-4" />
@@ -116,7 +144,7 @@
 				</div>
 			{:else if viewMode === 'grid'}
 				{@const buttonClasses =
-					'flex flex-col items-center p-4 rounded-lg border transition-all cursor-pointer'}
+					'flex h-fit flex-col items-center p-4 rounded-lg border transition-all cursor-pointer'}
 				<div
 					class="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3"
 					onclick={(e) => {

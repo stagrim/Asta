@@ -4,6 +4,7 @@
 	import { getTreeContext } from './ctx.svelte';
 	import * as Collapsible from '../collapsible';
 	import type { CollapsibleRootProps } from 'bits-ui';
+	import { buttonVariants } from '../button';
 
 	type Props = CollapsibleRootProps & {
 		/** Optional: If folders are selectable */
@@ -21,18 +22,17 @@
 
 <Collapsible.Root bind:open class={cn('w-full', className)} {...props}>
 	<Collapsible.Trigger
-		class="flex items-center justify-center p-0.5 hover:bg-muted/50 rounded-sm w-full"
+		class={cn(
+			'flex items-center justify-center p-0.5 rounded-sm w-full',
+			buttonVariants({ variant: 'ghost', size: 'sm' }),
+			isSelected && 'bg-accent text-accent-foreground',
+			!isSelected && 'text-foreground/80'
+		)}
 	>
-		<div
-			class={cn(
-				'relative flex h-8 w-full select-none items-center gap-2 rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground',
-				isSelected && 'bg-accent text-accent-foreground',
-				!isSelected && 'text-foreground/80'
-			)}
-		>
+		<div class="relative flex w-full select-none items-center gap-2 transition-colors">
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div class="flex flex-1 items-center gap-2 ml-2 cursor-pointer">
+			<div class="flex flex-1 gap-2 cursor-pointer">
 				<IconComponent class="size-4 shrink-0 text-muted-foreground" />
 
 				<span class="truncate mr-5">{name}</span>
