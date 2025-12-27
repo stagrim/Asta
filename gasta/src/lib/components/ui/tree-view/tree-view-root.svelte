@@ -8,7 +8,7 @@
 		selectedId?: string;
 	};
 
-	let { selectedId = $bindable(), class: className, children, ...props }: Props = $props();
+	let { selectedId, class: className, children, ...props }: Props = $props();
 
 	const treeState = setTreeContext(selectedId);
 

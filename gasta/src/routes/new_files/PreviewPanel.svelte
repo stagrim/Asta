@@ -10,47 +10,26 @@
 	import type { TreeFile } from '$lib/api_bindings/files/TreeFile';
 	import { filesize } from 'filesize';
 	import { Folder } from '@lucide/svelte';
-	import type { TreeDirectory } from '$lib/api_bindings/files/TreeDirectory';
 	import * as Resizable from '$lib/components/ui/resizable';
-	import { IsMobile } from '$lib/hooks/is-mobile.svelte';
 	import { watch } from 'runed';
 	import * as Sheet from '$lib/components/ui/sheet';
+	import { useFileManager } from './file-manager.svelte';
 
-	const isMobile = new IsMobile();
-
-	let sheetOpen = $state<boolean>(false);
 	// svelte-ignore non_reactive_update
 	let pane: ReturnType<typeof Resizable.Pane>;
 
-	let {
-		file: item,
-		open = $bindable()
-	}: {
-		file: TreeFile | TreeDirectory | null;
-		open?: boolean;
-	} = $props();
+	const fm = useFileManager();
 
 	watch(
-		() => open,
+		() => fm.previewOpen,
 		() => {
-			if (open !== undefined) {
-				sheetOpen = open;
-			}
-
 			if (pane) {
-				if (open && pane.isCollapsed()) {
+				if (fm.previewOpen && pane.isCollapsed()) {
 					pane.expand();
-				} else if (!open && pane.isExpanded()) {
+				} else if (!fm.previewOpen && pane.isExpanded()) {
 					pane.collapse();
 				}
 			}
-		}
-	);
-
-	watch(
-		() => sheetOpen,
-		() => {
-			open = sheetOpen;
 		}
 	);
 
@@ -68,30 +47,34 @@
 			<h2 class="font-medium text-foreground">Preview</h2>
 		</header>
 
-		{#if item}
+		{#if fm.selectedItem}
 			<ScrollArea class="flex-1">
 				<div class="p-4">
 					<div class="flex flex-col items-center mb-6">
 						<div class="rounded-lg bg-muted flex items-center justify-center mb-3">
-							{#if 'directories' in item}
+							<!-- TODO: Make this a util function? -->
+							<!-- Check if a TreeDirectory -->
+							{#if 'directories' in fm.selectedItem}
 								<Folder class="w-12 h-12" />
 							{:else}
-								{@const previewURL = previews(item)}
+								{@const previewURL = previews(fm.selectedItem)}
 								{#if previewURL}
 									<img class="mb-4" src={previewURL} alt="" />
 								{:else}
-									<FileIcon extension="{item.name.split('.').at(-1)}}" size="lg" />
+									<FileIcon extension="{fm.selectedItem.name.split('.').at(-1)}}" size="lg" />
 								{/if}
 							{/if}
 						</div>
-						<h3 class="text-sm font-medium text-foreground text-center break-all">{item.name}</h3>
+						<h3 class="text-sm font-medium text-foreground text-center break-all">
+							{fm.selectedItem.name}
+						</h3>
 						<!-- <p class="text-xs text-muted-foreground mt-1">{file.type.toUpperCase()}</p> -->
 					</div>
 
 					<Separator class="my-4" />
 
 					<div class="space-y-4">
-						{#if 'size' in item}
+						{#if 'size' in fm.selectedItem}
 							<div>
 								<h4 class="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
 									Details
@@ -99,11 +82,13 @@
 								<dl class="space-y-2">
 									<div class="flex justify-between">
 										<dt class="text-sm text-muted-foreground">Size</dt>
-										<dd class="text-sm text-foreground">{filesize(item.size)}</dd>
+										<dd class="text-sm text-foreground">{filesize(fm.selectedItem.size)}</dd>
 									</div>
 									<div class="flex justify-between">
 										<dt class="text-sm text-muted-foreground">Modified</dt>
-										<dd class="text-sm text-foreground">{new Date(item.date).toLocaleString()}</dd>
+										<dd class="text-sm text-foreground">
+											{new Date(fm.selectedItem.date).toLocaleString()}
+										</dd>
 									</div>
 								</dl>
 							</div>
@@ -115,7 +100,9 @@
 								<dl class="space-y-2">
 									<div class="flex justify-between">
 										<dt class="text-sm text-muted-foreground">Size</dt>
-										<dd class="text-sm text-foreground">{item.directories.length} item(s)</dd>
+										<dd class="text-sm text-foreground">
+											{fm.selectedItem.directories.length + fm.selectedItem.files.length} item(s)
+										</dd>
 									</div>
 								</dl>
 							</div>
@@ -158,14 +145,24 @@
 	</aside>
 {/snippet}
 
-{#if isMobile.current}
-	<Sheet.Root bind:open={sheetOpen}>
+{#if fm.isMobile}
+	<Sheet.Root bind:open={fm.previewOpen}>
 		<Sheet.Content side="right" class="p-0 w-[300px]">
 			{@render previewContent()}
 		</Sheet.Content>
 	</Sheet.Root>
 {:else}
-	<Resizable.Pane bind:this={pane} collapsible={true} defaultSize={0} minSize={15} maxSize={40}>
-		{@render previewContent()}
+	<Resizable.Pane
+		bind:this={pane}
+		collapsible={true}
+		onCollapse={() => (fm.previewOpen = false)}
+		onExpand={() => (fm.previewOpen = true)}
+		defaultSize={0}
+		minSize={15}
+		maxSize={40}
+	>
+		{#if fm.previewOpen}
+			{@render previewContent()}
+		{/if}
 	</Resizable.Pane>
 {/if}

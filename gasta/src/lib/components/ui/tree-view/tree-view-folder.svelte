@@ -13,7 +13,7 @@
 		open?: boolean;
 	};
 
-	let { id, name, open = $bindable(false), class: className, children, ...props }: Props = $props();
+	let { id, name, open, class: className, children, ...props }: Props = $props();
 
 	const ctx = getTreeContext();
 	let isSelected = $derived(id && ctx.selectedId === id);

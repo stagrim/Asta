@@ -8,38 +8,15 @@
 	import PanelRightIcon from '@lucide/svelte/icons/panel-right';
 	import FolderIcon from '@lucide/svelte/icons/folder';
 	import { Folder, FolderTree } from '@lucide/svelte';
-	import type { TreeDirectory } from '$lib/api_bindings/files/TreeDirectory';
-	import type { TreeFile } from '$lib/api_bindings/files/TreeFile';
 	import { filesize } from 'filesize';
 	import { cn } from '$lib/utils';
 	import * as Breadcrumb from '$lib/components/ui/breadcrumb';
+	import { useFileManager } from './file-manager.svelte';
 
-	let {
-		files,
-		directories,
-		selectedItem,
-		selectedFolder,
-		viewMode,
-		onFileSelect,
-		onFolderSelect,
-		onViewModeChange,
-		appSideBarOpen = $bindable(),
-		previewPanelOpen = $bindable()
-	}: {
-		files: TreeFile[];
-		directories: TreeDirectory[];
-		selectedItem: TreeFile | TreeDirectory | null;
-		selectedFolder: string;
-		viewMode: 'grid' | 'list';
-		onFileSelect: (file: TreeFile | TreeDirectory | null) => void;
-		onFolderSelect: (folder: string | TreeDirectory) => void;
-		onViewModeChange: (mode: 'grid' | 'list') => void;
-		appSideBarOpen: boolean | undefined;
-		previewPanelOpen: boolean | undefined;
-	} = $props();
+	const fm = useFileManager();
 
-	let path = $derived(
-		selectedFolder
+	let recursivePath = $derived(
+		fm.currentPath
 			.split('/')
 			.filter((s) => s)
 			.reduce(
@@ -47,8 +24,6 @@
 				[] as { href: string; name: string }[]
 			)
 	);
-	$inspect(path);
-	onFolderSelect('/Test');
 </script>
 
 <div class="flex-1 flex flex-col min-w-0 bg-background">
@@ -57,8 +32,8 @@
 			<Button
 				variant="ghost"
 				size="icon"
-				onclick={() => (appSideBarOpen = !appSideBarOpen)}
-				class={appSideBarOpen
+				onclick={() => fm.toggleSidebar()}
+				class={fm.sidebarOpen
 					? 'bg-primary/10 text-primary'
 					: 'text-muted-foreground hover:text-foreground'}
 			>
@@ -68,14 +43,14 @@
 			<Separator orientation="vertical" class="h-4 mx-2" />
 			<Breadcrumb.Root>
 				<Breadcrumb.List>
-					{#each [{ name: 'Home', href: '/' }, ...path] as dir, i}
+					{#each [{ name: 'Home', href: '/' }, ...recursivePath] as dir, i}
 						<Breadcrumb.Item>
-							{#if i === path.length}
+							{#if i === recursivePath.length}
 								<Breadcrumb.Page>
 									{dir.name}
 								</Breadcrumb.Page>
 							{:else}
-								<Breadcrumb.Link class="cursor-pointer" onclick={() => onFolderSelect(dir.href)}>
+								<Breadcrumb.Link class="cursor-pointer" onclick={() => fm.navigate(dir.href)}>
 									{dir.name}
 								</Breadcrumb.Link>
 								<Breadcrumb.Separator />
@@ -91,10 +66,10 @@
 				<Button
 					variant="ghost"
 					size="sm"
-					class="h-7 w-7 p-0 {viewMode === 'grid'
+					class="h-7 w-7 p-0 {fm.viewMode === 'grid'
 						? 'bg-background text-foreground shadow-sm'
 						: 'text-muted-foreground hover:text-foreground hover:bg-transparent'}"
-					onclick={() => onViewModeChange('grid')}
+					onclick={() => (fm.viewMode = 'grid')}
 					aria-label="Grid view"
 				>
 					<LayoutGridIcon class="w-4 h-4" />
@@ -102,10 +77,10 @@
 				<Button
 					variant="ghost"
 					size="sm"
-					class="h-7 w-7 p-0 {viewMode === 'list'
+					class="h-7 w-7 p-0 {fm.viewMode === 'list'
 						? 'bg-background text-foreground shadow-sm'
 						: 'text-muted-foreground hover:text-foreground hover:bg-transparent'}"
-					onclick={() => onViewModeChange('list')}
+					onclick={() => (fm.viewMode = 'list')}
 					aria-label="List view"
 				>
 					<ListIcon class="w-4 h-4" />
@@ -115,10 +90,10 @@
 			<Button
 				variant="ghost"
 				size="sm"
-				class="h-8 w-8 p-0 {previewPanelOpen
+				class="h-8 w-8 p-0 {fm.previewOpen
 					? 'bg-primary/10 text-primary'
 					: 'text-muted-foreground hover:text-foreground'}"
-				onclick={() => (previewPanelOpen = !previewPanelOpen)}
+				onclick={() => fm.togglePreview()}
 				aria-label="Toggle preview panel"
 			>
 				<PanelRightIcon class="w-4 h-4" />
@@ -133,36 +108,36 @@
 			class="p-4 h-full"
 			onclick={(e) => {
 				if (e.target === e.currentTarget) {
-					onFileSelect(null);
+					fm.selectedItem = null;
 				}
 			}}
 		>
-			{#if files.length === 0 && directories.length === 0}
+			{#if fm.currentEmpty()}
 				<div class="flex flex-col items-center justify-center h-64 text-muted-foreground">
 					<FolderIcon class="w-16 h-16 mb-4 stroke-1" />
 					<p>This folder is empty</p>
 				</div>
-			{:else if viewMode === 'grid'}
+			{:else if fm.viewMode === 'grid'}
 				{@const buttonClasses =
 					'flex h-fit flex-col items-center p-4 rounded-lg border transition-all cursor-pointer'}
 				<div
 					class="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3"
 					onclick={(e) => {
 						if (e.target === e.currentTarget) {
-							onFileSelect(null);
+							fm.selectedItem = null;
 						}
 					}}
 				>
-					{#each directories as dir}
+					{#each fm.currentSubDirectories as dir}
 						<button
 							class={cn(
 								buttonClasses,
-								selectedItem?.name === dir.name
+								fm.selectedItem?.name === dir.name
 									? 'border-primary bg-primary/5'
 									: 'border-transparent hover:bg-muted'
 							)}
-							onclick={() => onFileSelect(dir)}
-							ondblclick={() => onFolderSelect(dir)}
+							onclick={() => (fm.selectedItem = dir)}
+							ondblclick={() => fm.navigate(dir)}
 						>
 							<Folder class="w-12 h-12" />
 							<span class="mt-2 text-sm text-foreground text-center truncate w-full"
@@ -171,16 +146,16 @@
 							<!-- <span class="text-xs text-muted-foreground">{filesize(file.size)}</span> -->
 						</button>
 					{/each}
-					{#each files as file}
+					{#each fm.currentFiles as file}
 						<button
 							draggable="true"
 							class={cn(
 								buttonClasses,
-								selectedItem?.name === file.name
+								fm.selectedItem?.name === file.name
 									? 'border-primary bg-primary/5'
 									: 'border-transparent hover:bg-muted'
 							)}
-							onclick={() => onFileSelect(file)}
+							onclick={() => (fm.selectedItem = file)}
 						>
 							<FileIcon extension={file.name.split('.').at(-1)} size="lg" />
 							<span class="mt-2 text-sm text-foreground text-center break-all w-full">
@@ -201,14 +176,14 @@
 							</tr>
 						</thead>
 						<tbody>
-							{#each directories as directory}
+							{#each fm.currentSubDirectories as directory}
 								<tr
-									class="border-t border-border transition-colors cursor-pointer {selectedItem?.name ===
-									directory.name
+									class="border-t border-border transition-colors cursor-pointer {fm.selectedItem
+										?.name === directory.name
 										? 'bg-primary/5'
 										: 'hover:bg-muted/50'}"
-									onclick={() => onFileSelect(directory)}
-									onkeydown={(e) => e.key === 'Enter' && onFileSelect(directory)}
+									onclick={() => (fm.selectedItem = directory)}
+									onkeydown={(e) => e.key === 'Enter' && (fm.selectedItem = directory)}
 									tabindex="0"
 									role="button"
 								>
@@ -224,14 +199,14 @@
 									<td class="px-4 py-3 text-sm text-muted-foreground"></td>
 								</tr>
 							{/each}
-							{#each files as file}
+							{#each fm.currentFiles as file}
 								<tr
-									class="border-t border-border transition-colors cursor-pointer {selectedItem?.name ===
-									file.name
+									class="border-t border-border transition-colors cursor-pointer {fm.selectedItem
+										?.name === file.name
 										? 'bg-primary/5'
 										: 'hover:bg-muted/50'}"
-									onclick={() => onFileSelect(file)}
-									onkeydown={(e) => e.key === 'Enter' && onFileSelect(file)}
+									onclick={() => (fm.selectedItem = file)}
+									onkeydown={(e) => e.key === 'Enter' && (fm.selectedItem = file)}
 									tabindex="0"
 									role="button"
 								>

@@ -6,54 +6,29 @@
 	import * as Resizable from '$lib/components/ui/resizable';
 	import { ScrollArea } from '$lib/components/ui/scroll-area';
 	import { Button } from '$lib/components/ui/button';
-	import { IsMobile } from '$lib/hooks/is-mobile.svelte';
 	import * as Sheet from '$lib/components/ui/sheet';
-	import { watch } from 'runed';
 	import * as InputGroup from '$lib/components/ui/input-group';
 	import * as ButtonGroup from '$lib/components/ui/button-group';
+	import { useFileManager } from './file-manager.svelte';
+	import { watch } from 'runed';
 
-	const isMobile = new IsMobile();
-
-	let sheetOpen = $state<boolean>(false);
 	// svelte-ignore non_reactive_update
 	let pane: ReturnType<typeof Resizable.Pane>;
 
-	let {
-		fileTree,
-		currentPath,
-		onFolderSelect,
-		open = $bindable()
-	}: {
-		fileTree: TreeDirectory;
-		currentPath: string;
-		onFolderSelect: (directory: string | TreeDirectory) => void;
-		open?: boolean;
-	} = $props();
+	const fm = useFileManager();
 
 	let searchQuery = $state('');
 
-	// TODO: Probably should replace this with contexts instead...
 	watch(
-		() => open,
+		() => fm.sidebarOpen,
 		() => {
-			if (open !== undefined) {
-				sheetOpen = open;
-			}
-
 			if (pane) {
-				if (open && pane.isCollapsed()) {
+				if (fm.sidebarOpen && pane.isCollapsed()) {
 					pane.expand();
-				} else if (!open && pane.isExpanded()) {
+				} else if (!fm.sidebarOpen && pane.isExpanded()) {
 					pane.collapse();
 				}
 			}
-		}
-	);
-
-	watch(
-		() => sheetOpen,
-		() => {
-			open = sheetOpen;
 		}
 	);
 
@@ -97,17 +72,17 @@
 					<h4 class="my-2 rounded-md px-4 text-xs text-muted-foreground">Quick Access</h4>
 					<div class="grid gap-1">
 						<Button
-							variant={currentPath === '/' ? 'secondary' : 'ghost'}
+							variant={fm.currentPath === '/' ? 'secondary' : 'ghost'}
 							class="w-full justify-start h-8"
-							onclick={() => onFolderSelect('/')}
+							onclick={() => fm.navigate('/')}
 						>
 							<House class="h-4 w-4" />
 							Home
 						</Button>
 						<Button
-							variant={currentPath === 'Recent' ? 'secondary' : 'ghost'}
+							variant={fm.currentPath === 'Recent' ? 'secondary' : 'ghost'}
 							class="w-full justify-start h-8"
-							onclick={() => onFolderSelect('Recent')}
+							onclick={() => fm.navigate('Recent')}
 						>
 							<History class="h-4 w-4" />
 							Recent
@@ -118,8 +93,8 @@
 				<div class="mt-4">
 					<h4 class="mb-1 rounded-md px-4 text-xs text-muted-foreground">Filesystem</h4>
 					<div class="grid gap-1">
-						<TreeView.Root bind:selectedId={currentPath}>
-							{#each fileTree.directories ?? [] as child}
+						<TreeView.Root selectedId={fm.currentPath}>
+							{#each fm.root.directories ?? [] as child}
 								{@render recursiveNode(child)}
 							{/each}
 						</TreeView.Root>
@@ -130,15 +105,25 @@
 	</div>
 {/snippet}
 
-{#if isMobile.current}
-	<Sheet.Root bind:open={sheetOpen}>
+{#if fm.isMobile}
+	<Sheet.Root bind:open={fm.sidebarOpen}>
 		<Sheet.Content side="left" class="p-0 w-[80vw]">
 			{@render sidebarContent()}
 		</Sheet.Content>
 	</Sheet.Root>
 {:else}
-	<Resizable.Pane bind:this={pane} collapsible={true} defaultSize={20} minSize={15} maxSize={40}>
-		{@render sidebarContent()}
+	<Resizable.Pane
+		bind:this={pane}
+		collapsible={true}
+		onCollapse={() => (fm.sidebarOpen = false)}
+		onExpand={() => (fm.sidebarOpen = true)}
+		defaultSize={20}
+		minSize={15}
+		maxSize={40}
+	>
+		{#if fm.sidebarOpen}
+			{@render sidebarContent()}
+		{/if}
 	</Resizable.Pane>
 {/if}
 
