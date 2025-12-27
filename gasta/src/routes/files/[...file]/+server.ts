@@ -1,19 +1,12 @@
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
+import { env } from '$env/dynamic/private';
+import type { RequestHandler } from '@sveltejs/kit';
 
-export async function GET({ params }) {
+export const GET: RequestHandler = async ({ params, fetch }) => {
 	const { file } = params;
-	const normalized_file = path.normalize(file).replace(/^(\.\.(\/|\\|$))+/, '');
-	const filePath = path.join('./files/', normalized_file);
-
-	try {
-		const data = await fs.readFile(filePath);
-		// Determine the Content-Type from the file extension
-		// const contentType = 'determine the content type here';
-
-		return new Response(data, { status: 200 });
-	} catch {
-		// Handle errors, like file not found
-		return new Response('File not found', { status: 404 });
-	}
-}
+	const response = await fetch(`${env.SERVER_URL}/files/${file}`);
+	return new Response(response.body, {
+		status: response.status,
+		statusText: response.statusText,
+		headers: response.headers
+	});
+};

@@ -40,7 +40,7 @@
 			</div>
 		</header>
 
-		<main class="p-4 flex flex-col items-center">
+		<main class="p-4 flex flex-col items-center h-full">
 			{@render children?.()}
 		</main>
 	</Sidebar.Inset>

@@ -1,13 +1,14 @@
 use std::{collections::HashSet, env, net::SocketAddr, str::FromStr, sync::Arc, vec};
 
 use axum::{
-    extract::{ConnectInfo, Path, State, WebSocketUpgrade},
+    extract::{ConnectInfo, DefaultBodyLimit, Path, State, WebSocketUpgrade},
     response::IntoResponse,
     routing::{delete, get, post, put},
     Json, Router,
 };
 use axum_macros::debug_handler;
 use chrono::Local;
+use file_server::file_server::delete_files;
 use hyper::StatusCode;
 use read::Payload;
 use store::{schedule::Moment, store::Store};
@@ -24,7 +25,9 @@ use uuid::Uuid;
 use crate::{
     casta::casta::{casta_index, compute_hash, minify},
     connection::connection::client_connection,
-    file_server::file_server::{add_files, get_all_paths, get_file, FileServer},
+    file_server::file_server::{
+        add_files, get_all_paths_list, get_all_paths_tree, get_file, FileServer,
+    },
     store::{schedule, store::DisplayMaterial},
 };
 
@@ -152,8 +155,11 @@ async fn main() {
                 .nest(
                     "/files",
                     Router::new()
-                        .route("/", get(get_all_paths))
-                        .route("/", post(add_files)),
+                        .route("/tree", get(get_all_paths_tree))
+                        .route("/list", get(get_all_paths_list))
+                        .route("/", delete(delete_files))
+                        .route("/", post(add_files))
+                        .layer(DefaultBodyLimit::max(10_000_000)),
                 ),
         )
         .nest("/files", Router::new().fallback(get_file))
