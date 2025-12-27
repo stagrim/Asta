@@ -9,7 +9,7 @@
 	import EyeIcon from '@lucide/svelte/icons/eye';
 	import type { TreeFile } from '$lib/api_bindings/files/TreeFile';
 	import { filesize } from 'filesize';
-	import { Folder } from '@lucide/svelte';
+	import { Files, Folder } from '@lucide/svelte';
 	import * as Resizable from '$lib/components/ui/resizable';
 	import { watch } from 'runed';
 	import * as Sheet from '$lib/components/ui/sheet';
@@ -42,31 +42,32 @@
 </script>
 
 {#snippet previewContent()}
+	{@const selectedItem = fm.oneSelected()}
 	<aside class="w-full h-full shrink-0 border-l border-border bg-card flex flex-col">
 		<header class="flex items-center justify-between px-4 py-3 border-b border-border">
 			<h2 class="font-medium text-foreground">Preview</h2>
 		</header>
 
-		{#if fm.selectedItem}
+		{#if selectedItem}
 			<ScrollArea class="flex-1">
 				<div class="p-4">
 					<div class="flex flex-col items-center mb-6">
 						<div class="rounded-lg bg-muted flex items-center justify-center mb-3">
 							<!-- TODO: Make this a util function? -->
 							<!-- Check if a TreeDirectory -->
-							{#if 'directories' in fm.selectedItem}
+							{#if 'directories' in selectedItem}
 								<Folder class="w-12 h-12" />
 							{:else}
-								{@const previewURL = previews(fm.selectedItem)}
+								{@const previewURL = previews(selectedItem)}
 								{#if previewURL}
 									<img class="mb-4" src={previewURL} alt="" />
 								{:else}
-									<FileIcon extension="{fm.selectedItem.name.split('.').at(-1)}}" size="lg" />
+									<FileIcon extension="{selectedItem.name.split('.').at(-1)}}" size="lg" />
 								{/if}
 							{/if}
 						</div>
 						<h3 class="text-sm font-medium text-foreground text-center break-all">
-							{fm.selectedItem.name}
+							{selectedItem.name}
 						</h3>
 						<!-- <p class="text-xs text-muted-foreground mt-1">{file.type.toUpperCase()}</p> -->
 					</div>
@@ -74,7 +75,7 @@
 					<Separator class="my-4" />
 
 					<div class="space-y-4">
-						{#if 'size' in fm.selectedItem}
+						{#if 'size' in selectedItem}
 							<div>
 								<h4 class="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
 									Details
@@ -82,12 +83,12 @@
 								<dl class="space-y-2">
 									<div class="flex justify-between">
 										<dt class="text-sm text-muted-foreground">Size</dt>
-										<dd class="text-sm text-foreground">{filesize(fm.selectedItem.size)}</dd>
+										<dd class="text-sm text-foreground">{filesize(selectedItem.size)}</dd>
 									</div>
 									<div class="flex justify-between">
 										<dt class="text-sm text-muted-foreground">Modified</dt>
 										<dd class="text-sm text-foreground">
-											{new Date(fm.selectedItem.date).toLocaleString()}
+											{new Date(selectedItem.date).toLocaleString()}
 										</dd>
 									</div>
 								</dl>
@@ -101,7 +102,7 @@
 									<div class="flex justify-between">
 										<dt class="text-sm text-muted-foreground">Size</dt>
 										<dd class="text-sm text-foreground">
-											{fm.selectedItem.directories.length + fm.selectedItem.files.length} item(s)
+											{selectedItem.directories.length + selectedItem.files.length} item(s)
 										</dd>
 									</div>
 								</dl>
@@ -136,6 +137,11 @@
 					</div>
 				</div>
 			</ScrollArea>
+		{:else if fm.nbrSelected() > 1}
+			<div class="flex-1 flex flex-col items-center justify-center text-muted-foreground p-4">
+				<Files class="w-12 h-12 mb-3 stroke-1" />
+				<p class="text-sm text-center">{fm.nbrSelected()} items selected</p>
+			</div>
 		{:else}
 			<div class="flex-1 flex flex-col items-center justify-center text-muted-foreground p-4">
 				<EyeIcon class="w-12 h-12 mb-3 stroke-1" />

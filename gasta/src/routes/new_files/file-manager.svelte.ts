@@ -2,6 +2,7 @@ import { setContext, getContext } from 'svelte';
 import type { TreeDirectory } from '$lib/api_bindings/files/TreeDirectory';
 import type { TreeFile } from '$lib/api_bindings/files/TreeFile';
 import { IsMobile } from '$lib/hooks/is-mobile.svelte';
+import { SvelteSet } from 'svelte/reactivity';
 
 const FM_KEY = Symbol('FILE_MANAGER');
 
@@ -28,7 +29,48 @@ export class FileManager {
 	}
 
 	// Selection & UI
-	selectedItem = $state<TreeFile | TreeDirectory | null>(null);
+	#selectedItem = new SvelteSet<TreeFile | TreeDirectory>();
+
+	/** Returns wether the given item is selected or not */
+	isSelected(item: TreeFile | TreeDirectory) {
+		return this.#selectedItem.has(item);
+	}
+
+	/** Set the current item as the only selected item */
+	setSelection(item: TreeFile | TreeDirectory) {
+		this.clearSelection();
+		this.addSelected(item);
+	}
+
+	/** Clear all selected items */
+	clearSelection() {
+		this.#selectedItem.clear();
+	}
+
+	/** Select the given item */
+	addSelected(item: TreeFile | TreeDirectory) {
+		this.#selectedItem.add(item);
+	}
+
+	/** Deselect the given item */
+	removeSelected(item: TreeFile | TreeDirectory) {
+		this.#selectedItem.delete(item);
+	}
+
+	/** Toggle select state of the given item */
+	toggleSelected(item: TreeFile | TreeDirectory) {
+		this.#selectedItem.has(item) ? this.#selectedItem.delete(item) : this.#selectedItem.add(item);
+	}
+
+	/** Number of selected items */
+	nbrSelected() {
+		return this.#selectedItem.size;
+	}
+
+	/** Gives the selected `TreeDirectory` or `TreeFile` object if it is the only selected item. Returns null if more or less than one is selected */
+	oneSelected(): TreeDirectory | TreeFile | null {
+		return this.nbrSelected() == 1 ? this.#selectedItem.values().next().value! : null;
+	}
 
 	// Layout State
 	viewMode = $state<'grid' | 'list'>('grid');
@@ -61,15 +103,15 @@ export class FileManager {
 			const dir = this.#traverseTree(directory);
 			if (dir) {
 				this.#currentPath = dir.id;
-				this.selectedItem = null;
 				this.#currentDirectory = dir;
+				this.clearSelection();
 			} else {
 				console.error(`${directory} was not found`);
 			}
 		} else {
 			this.#currentPath = directory.id;
 			this.#currentDirectory = directory;
-			this.selectedItem = null;
+			this.clearSelection();
 		}
 	}
 

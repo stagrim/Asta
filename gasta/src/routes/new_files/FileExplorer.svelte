@@ -12,18 +12,64 @@
 	import { cn } from '$lib/utils';
 	import * as Breadcrumb from '$lib/components/ui/breadcrumb';
 	import { useFileManager } from './file-manager.svelte';
+	import { PressedKeys, watch } from 'runed';
+	import type { TreeDirectory } from '$lib/api_bindings/files/TreeDirectory';
+	import type { TreeFile } from '$lib/api_bindings/files/TreeFile';
 
 	const fm = useFileManager();
 
-	let recursivePath = $derived(
+	const recursivePath = $derived(
 		fm.currentPath
 			.split('/')
 			.filter((s) => s)
 			.reduce(
-				(pre, cur, i) => [...pre, { href: `${pre.at(-1)?.href ?? ''}/${cur}`, name: cur }],
+				(pre, name) => [...pre, { href: `${pre.at(-1)?.href ?? ''}/${name}`, name }],
 				[] as { href: string; name: string }[]
 			)
 	);
+
+	const keys = new PressedKeys();
+	const items = $derived([...fm.currentSubDirectories, ...fm.currentFiles]);
+	const isCtrlPressed = $derived(keys.has('Control'));
+	const isShiftPressed = $derived(keys.has('Shift'));
+
+	// Move this selection logic into fileManager context?
+	let lastIndex = $state<number | undefined>(undefined);
+	watch(
+		() => items,
+		() => {
+			lastIndex = undefined;
+		}
+	);
+	function selectItem(item: TreeDirectory | TreeFile, index: number) {
+		if (isShiftPressed) {
+			if (lastIndex !== undefined) {
+				items
+					.slice(Math.min(index, lastIndex), Math.max(index, lastIndex) + 1)
+					.forEach((i) => fm.addSelected(i));
+			} else {
+				fm.toggleSelected(item);
+				lastIndex = index;
+			}
+		} else if (isCtrlPressed) {
+			fm.toggleSelected(item);
+			lastIndex = index;
+		} else {
+			fm.setSelection(item);
+			lastIndex = index;
+		}
+	}
+
+	function clearSelection(
+		e: MouseEvent & {
+			currentTarget: EventTarget & HTMLDivElement;
+		}
+	) {
+		if (e.target === e.currentTarget) {
+			fm.clearSelection();
+			lastIndex = undefined;
+		}
+	}
 </script>
 
 <div class="flex-1 flex flex-col min-w-0 bg-background">
@@ -104,14 +150,7 @@
 	<ScrollArea class="flex-1">
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<div
-			class="p-4 h-full"
-			onclick={(e) => {
-				if (e.target === e.currentTarget) {
-					fm.selectedItem = null;
-				}
-			}}
-		>
+		<div class="p-4 h-full" onclick={clearSelection}>
 			{#if fm.currentEmpty()}
 				<div class="flex flex-col items-center justify-center h-64 text-muted-foreground">
 					<FolderIcon class="w-16 h-16 mb-4 stroke-1" />
@@ -122,47 +161,44 @@
 					'flex h-fit flex-col items-center p-4 rounded-lg border transition-all cursor-pointer'}
 				<div
 					class="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3"
-					onclick={(e) => {
-						if (e.target === e.currentTarget) {
-							fm.selectedItem = null;
-						}
-					}}
+					onclick={clearSelection}
 				>
-					{#each fm.currentSubDirectories as dir}
-						<button
-							class={cn(
-								buttonClasses,
-								fm.selectedItem?.name === dir.name
-									? 'border-primary bg-primary/5'
-									: 'border-transparent hover:bg-muted'
-							)}
-							onclick={() => (fm.selectedItem = dir)}
-							ondblclick={() => fm.navigate(dir)}
-						>
-							<Folder class="w-12 h-12" />
-							<span class="mt-2 text-sm text-foreground text-center truncate w-full"
-								>{dir.name}</span
+					{#each items as item, i}
+						{#if 'directories' in item}
+							<button
+								class={cn(
+									buttonClasses,
+									fm.isSelected(item)
+										? 'border-primary bg-primary/5'
+										: 'border-transparent hover:bg-muted'
+								)}
+								onclick={() => selectItem(item, i)}
+								ondblclick={() => fm.navigate(item)}
 							>
-							<!-- <span class="text-xs text-muted-foreground">{filesize(file.size)}</span> -->
-						</button>
-					{/each}
-					{#each fm.currentFiles as file}
-						<button
-							draggable="true"
-							class={cn(
-								buttonClasses,
-								fm.selectedItem?.name === file.name
-									? 'border-primary bg-primary/5'
-									: 'border-transparent hover:bg-muted'
-							)}
-							onclick={() => (fm.selectedItem = file)}
-						>
-							<FileIcon extension={file.name.split('.').at(-1)} size="lg" />
-							<span class="mt-2 text-sm text-foreground text-center break-all w-full">
-								{file.name}
-							</span>
-							<span class="text-xs text-muted-foreground">{filesize(file.size)}</span>
-						</button>
+								<Folder class="w-12 h-12" />
+								<span class="mt-2 text-sm text-foreground text-center truncate w-full"
+									>{item.name}</span
+								>
+								<!-- <span class="text-xs text-muted-foreground">{filesize(file.size)}</span> -->
+							</button>
+						{:else}
+							<button
+								draggable="true"
+								class={cn(
+									buttonClasses,
+									fm.isSelected(item)
+										? 'border-primary bg-primary/5'
+										: 'border-transparent hover:bg-muted'
+								)}
+								onclick={() => selectItem(item, i)}
+							>
+								<FileIcon extension={item.name.split('.').at(-1)} size="lg" />
+								<span class="mt-2 text-sm text-foreground text-center break-all w-full">
+									{item.name}
+								</span>
+								<span class="text-xs text-muted-foreground">{filesize(item.size)}</span>
+							</button>
+						{/if}
 					{/each}
 				</div>
 			{:else}
@@ -176,51 +212,54 @@
 							</tr>
 						</thead>
 						<tbody>
-							{#each fm.currentSubDirectories as directory}
-								<tr
-									class="border-t border-border transition-colors cursor-pointer {fm.selectedItem
-										?.name === directory.name
-										? 'bg-primary/5'
-										: 'hover:bg-muted/50'}"
-									onclick={() => (fm.selectedItem = directory)}
-									onkeydown={(e) => e.key === 'Enter' && (fm.selectedItem = directory)}
-									tabindex="0"
-									role="button"
-								>
-									<td class="px-4 py-3">
-										<div class="flex items-center gap-3">
-											<Folder class="w-5 h-5" />
-											<span class="text-sm text-foreground">{directory.name}</span>
-										</div>
-									</td>
-									<td class="px-4 py-3 text-sm text-muted-foreground"
-										>{directory.directories.length} item(s)</td
+							{#each items as item, i}
+								{#if 'directories' in item}
+									<tr
+										class="border-t border-border transition-colors cursor-pointer {fm.isSelected(
+											item
+										)
+											? 'bg-primary/5'
+											: 'hover:bg-muted/50'}"
+										onclick={() => selectItem(item, i)}
+										onkeydown={(e) => e.key === 'Enter' && selectItem(item, i)}
+										tabindex="0"
+										role="button"
 									>
-									<td class="px-4 py-3 text-sm text-muted-foreground"></td>
-								</tr>
-							{/each}
-							{#each fm.currentFiles as file}
-								<tr
-									class="border-t border-border transition-colors cursor-pointer {fm.selectedItem
-										?.name === file.name
-										? 'bg-primary/5'
-										: 'hover:bg-muted/50'}"
-									onclick={() => (fm.selectedItem = file)}
-									onkeydown={(e) => e.key === 'Enter' && (fm.selectedItem = file)}
-									tabindex="0"
-									role="button"
-								>
-									<td class="px-4 py-3">
-										<div class="flex items-center gap-3">
-											<FileIcon extension={file.name.split('.').at(-1)} size="sm" />
-											<span class="text-sm text-foreground">{file.name}</span>
-										</div>
-									</td>
-									<td class="px-4 py-3 text-sm text-muted-foreground">{filesize(file.size)}</td>
-									<td class="px-4 py-3 text-sm text-muted-foreground">
-										{new Date(file.date).toLocaleString()}
-									</td>
-								</tr>
+										<td class="px-4 py-3">
+											<div class="flex items-center gap-3">
+												<Folder class="w-5 h-5" />
+												<span class="text-sm text-foreground">{item.name}</span>
+											</div>
+										</td>
+										<td class="px-4 py-3 text-sm text-muted-foreground"
+											>{item.directories.length} item(s)</td
+										>
+										<td class="px-4 py-3 text-sm text-muted-foreground"></td>
+									</tr>
+								{:else}
+									<tr
+										class="border-t border-border transition-colors cursor-pointer focus:outline-0 {fm.isSelected(
+											item
+										)
+											? 'bg-primary/5'
+											: 'hover:bg-muted/50'}"
+										onclick={() => selectItem(item, i)}
+										onkeydown={(e) => e.key === 'Enter' && selectItem(item, i)}
+										tabindex="0"
+										role="button"
+									>
+										<td class="px-4 py-3">
+											<div class="flex items-center gap-3">
+												<FileIcon extension={item.name.split('.').at(-1)} size="sm" />
+												<span class="text-sm text-foreground">{item.name}</span>
+											</div>
+										</td>
+										<td class="px-4 py-3 text-sm text-muted-foreground">{filesize(item.size)}</td>
+										<td class="px-4 py-3 text-sm text-muted-foreground">
+											{new Date(item.date).toLocaleString()}
+										</td>
+									</tr>
+								{/if}
 							{/each}
 						</tbody>
 					</table>
