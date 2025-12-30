@@ -129,12 +129,22 @@
 
 {#snippet recursiveNode(node: TreeDirectory)}
 	{#if node.directories.length}
-		<TreeView.Folder open={false} name={node.name} id={node.id}>
+		<TreeView.Folder
+			open={false}
+			name={node.name}
+			id={node.id}
+			ondblclick={() => fm.navigate(node)}
+		>
 			{#each node.directories as child}
 				{@render recursiveNode(child)}
 			{/each}
 		</TreeView.Folder>
 	{:else}
-		<TreeView.Folder open={false} name={node.name} id={node.id} />
+		<TreeView.Folder
+			open={false}
+			name={node.name}
+			id={node.id}
+			ondblclick={() => fm.navigate(node)}
+		/>
 	{/if}
 {/snippet}

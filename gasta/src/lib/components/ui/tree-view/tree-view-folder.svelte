@@ -3,10 +3,10 @@
 	import { cn } from '$lib/utils';
 	import { getTreeContext } from './ctx.svelte';
 	import * as Collapsible from '../collapsible';
-	import type { CollapsibleRootProps } from 'bits-ui';
 	import { buttonVariants } from '../button';
+	import type { CollapsibleTriggerProps } from 'bits-ui';
 
-	type Props = CollapsibleRootProps & {
+	type Props = CollapsibleTriggerProps & {
 		/** Optional: If folders are selectable */
 		id?: string;
 		name: string;
@@ -18,9 +18,15 @@
 	const ctx = getTreeContext();
 	let isSelected = $derived(id && ctx.selectedId === id);
 	let IconComponent = $derived(open ? FolderOpen : Folder);
+
+	$effect(() => {
+		if (id && ctx.selectedId?.startsWith(id)) {
+			open = true;
+		}
+	});
 </script>
 
-<Collapsible.Root bind:open class={cn('w-full', className)} {...props}>
+<Collapsible.Root bind:open class={cn('w-full', className)}>
 	<Collapsible.Trigger
 		class={cn(
 			'flex items-center justify-center p-0.5 rounded-sm w-full',
@@ -28,6 +34,7 @@
 			isSelected && 'bg-accent text-accent-foreground',
 			!isSelected && 'text-foreground/80'
 		)}
+		{...props}
 	>
 		<div class="relative flex w-full select-none items-center gap-2 transition-colors">
 			<!-- svelte-ignore a11y_click_events_have_key_events -->

@@ -221,6 +221,7 @@
 											? 'bg-primary/5'
 											: 'hover:bg-muted/50'}"
 										onclick={() => selectItem(item, i)}
+										ondblclick={() => fm.navigate(item)}
 										onkeydown={(e) => e.key === 'Enter' && selectItem(item, i)}
 										tabindex="0"
 										role="button"
