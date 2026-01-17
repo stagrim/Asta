@@ -32,7 +32,7 @@ export class FileManager {
 	#selectedItem = new SvelteSet<TreeFile | TreeDirectory>();
 
 	/** Returns wether the given item is selected or not */
-	isSelected(item: TreeFile | TreeDirectory) {
+	isSelected(item: TreeFile | TreeDirectory): boolean {
 		return this.#selectedItem.has(item);
 	}
 
@@ -70,6 +70,27 @@ export class FileManager {
 	/** Gives the selected `TreeDirectory` or `TreeFile` object if it is the only selected item. Returns null if more or less than one is selected */
 	oneSelected(): TreeDirectory | TreeFile | null {
 		return this.nbrSelected() == 1 ? this.#selectedItem.values().next().value! : null;
+	}
+
+	getSelected(): (TreeDirectory | TreeFile)[] {
+		return [...this.#selectedItem.values()];
+	}
+
+	#clipboardMode: 'copy' | 'clip' = 'copy';
+	#clipboard = new SvelteSet<TreeFile | TreeDirectory>();
+	/** Empties, and sets `items` to the current clipboard content */
+	setClipboard(items: (TreeFile | TreeDirectory)[], mode: 'copy' | 'clip') {
+		this.#clipboard.clear();
+		items.forEach((i) => this.#clipboard.add(i));
+		this.#clipboardMode = mode;
+	}
+
+	isInClipboard(item: TreeFile | TreeDirectory): boolean {
+		return this.#clipboard.has(item);
+	}
+
+	get clipboardMode() {
+		return this.#clipboardMode;
 	}
 
 	// Layout State

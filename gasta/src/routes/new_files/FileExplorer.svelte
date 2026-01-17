@@ -70,6 +70,12 @@
 			lastIndex = undefined;
 		}
 	}
+
+	$effect(() => {
+		if (keys.has('Control', 'X')) {
+			fm.setClipboard(fm.getSelected(), 'clip');
+		}
+	});
 </script>
 
 <div class="flex-1 flex flex-col min-w-0 bg-background">
@@ -170,7 +176,8 @@
 									buttonClasses,
 									fm.isSelected(item)
 										? 'border-primary bg-primary/5'
-										: 'border-transparent hover:bg-muted'
+										: 'border-transparent hover:bg-muted',
+									fm.isInClipboard(item) && 'opacity-40'
 								)}
 								onclick={() => selectItem(item, i)}
 								ondblclick={() => fm.navigate(item)}
@@ -188,7 +195,8 @@
 									buttonClasses,
 									fm.isSelected(item)
 										? 'border-primary bg-primary/5'
-										: 'border-transparent hover:bg-muted'
+										: 'border-transparent hover:bg-muted',
+									fm.isInClipboard(item) && 'opacity-40'
 								)}
 								onclick={() => selectItem(item, i)}
 							>
