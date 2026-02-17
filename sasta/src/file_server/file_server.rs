@@ -6,7 +6,7 @@ use std::{
 
 use axum::{
     body::Body,
-    extract::{Multipart, State},
+    extract::{DefaultBodyLimit, Multipart, State},
     response::IntoResponse,
     Json,
 };
@@ -26,10 +26,23 @@ use tower::ServiceExt;
 use tower_http::services::ServeFile;
 use tracing::{error_span, info_span, warn, warn_span};
 use ts_rs::TS;
-use utoipa::ToSchema;
+use utoipa::{
+    openapi::{ArrayBuilder, Ref, RefOr, Schema},
+    ToSchema,
+};
+use utoipa_axum::{router::OpenApiRouter, routes};
 use uuid::Uuid;
 
 use crate::AppState;
+
+pub fn file_api_router() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(get_all_paths_tree))
+        .routes(routes!(get_all_paths_list))
+        .routes(routes!(delete_files))
+        .routes(routes!(add_files))
+        .layer(DefaultBodyLimit::max(10_000_000))
+}
 
 pub type Response<T> = Result<Json<T>, (StatusCode, Json<T>)>;
 
@@ -50,12 +63,24 @@ pub struct TreeFile {
     date: String,
 }
 
+/// Helper function to handle recursion for Vec<TreeDirectory>
+fn recursive_directory_schema() -> RefOr<Schema> {
+    Schema::Array(
+        ArrayBuilder::new()
+            .items(Ref::from_schema_name("TreeDirectory"))
+            .build(),
+    )
+    .into()
+}
+
 #[derive(Serialize, Debug, ToSchema, TS)]
 #[ts(export, export_to = "api_bindings/files/")]
 pub struct TreeDirectory {
     id: String,
     name: String,
     files: Vec<TreeFile>,
+    // Manually specify the schema to break infinite recursion
+    #[schema(schema_with = recursive_directory_schema)]
     directories: Vec<TreeDirectory>,
 }
 
@@ -165,19 +190,32 @@ impl From<&Directory> for ListViewItem {
     }
 }
 
-#[debug_handler]
+#[utoipa::path(
+    get,
+    path = "/list",
+    tag = "files",
+    responses(
+        (status = 200, description = "List all files flat", body = Payload)
+    )
+)]
 pub async fn get_all_paths_list(State(state): State<AppState>) -> Response<Payload> {
     let files = state.file_server.lock().await.get_paths_list().await;
     Ok(Json(Payload::FilePaths(files)))
 }
 
-#[debug_handler]
+#[utoipa::path(
+    get,
+    path = "/tree",
+    tag = "files",
+    responses(
+        (status = 200, description = "Get file tree", body = TreeDirectory)
+    )
+)]
 pub async fn get_all_paths_tree(State(state): State<AppState>) -> Response<TreeDirectory> {
     let files = state.file_server.lock().await.get_paths_tree().await;
     Ok(Json(files))
 }
 
-#[debug_handler]
 pub async fn get_file(State(state): State<AppState>, uri: Uri) -> impl IntoResponse {
     let file_server = state.file_server.lock().await;
     let url_decoded_path = urlencoding::decode(&uri.to_string()).unwrap().into_owned();
@@ -198,110 +236,136 @@ pub async fn get_file(State(state): State<AppState>, uri: Uri) -> impl IntoRespo
     }
 }
 
+/// Struct representing the multipart/form-data schema for file uploads
+#[derive(ToSchema)]
+pub struct FileUpload {
+    /// Target directory to upload files to
+    directory: String,
+    /// One or more files to upload
+    #[schema(value_type = Vec<String>, format = Binary)]
+    #[allow(dead_code)] // Field is used in manual parsing logic, not direct struct access
+    files: Vec<FileItem>,
+}
+
+pub struct FileItem {
+    pub name: String,
+    pub content: Bytes,
+}
+
+impl FileUpload {
+    /// Parse Multipart stream into FileUpload struct
+    pub async fn from_multipart(mut multipart: Multipart) -> Result<Self, (u8, String)> {
+        let mut directory = None;
+        let mut files = Vec::new();
+
+        while let Some(field) = multipart.next_field().await.unwrap() {
+            if let Some(filename) = field.file_name() {
+                let filename = filename.to_string();
+                let bytes = match field.bytes().await {
+                    Ok(b) => b,
+                    Err(e) => return Err((5, e.body_text())),
+                };
+                info_span!("Add file ", filename);
+                files.push(FileItem {
+                    name: filename,
+                    content: bytes,
+                });
+            } else if let Some(name) = field.name() {
+                if name == "directory" {
+                    let dir = field
+                        .text()
+                        .await
+                        .unwrap_or(String::new())
+                        .trim()
+                        .trim_end_matches("/")
+                        .to_string();
+                    info_span!("Got directory name", dir);
+                    directory = Some(dir);
+                }
+                continue;
+            } else {
+                warn_span!("Unknown field", ?field);
+            }
+        }
+
+        match directory {
+            Some(dir) => Ok(FileUpload {
+                directory: dir,
+                files,
+            }),
+            None => Err((2, "Directory field cannot be empty".to_string())),
+        }
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/",
+    tag = "files",
+    request_body(content = FileUpload, content_type = "multipart/form-data"),
+    responses(
+        (status = 200, description = "Files uploaded successfully", body = Payload),
+        (status = 400, description = "Bad Request (e.g. missing directory field)", body = Payload)
+    )
+)]
 #[debug_handler]
-pub async fn add_files(
-    State(state): State<AppState>,
-    mut multipart: Multipart,
-) -> Response<Payload> {
+pub async fn add_files(State(state): State<AppState>, multipart: Multipart) -> Response<Payload> {
     let mut file_server = state.file_server.lock().await;
 
-    #[derive(Debug)]
-    struct AddFiles {
-        directory: Option<String>,
-        files: Vec<(String, Bytes)>,
-    }
-    let mut add_files = AddFiles {
-        directory: None,
-        files: Vec::new(),
+    let upload = match FileUpload::from_multipart(multipart).await {
+        Ok(u) => u,
+        Err((code, message)) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(Payload::Error { code, message }),
+            ))
+        }
     };
 
-    while let Some(field) = multipart.next_field().await.unwrap() {
-        if let Some(filename) = field.file_name() {
-            let filename = filename.to_string();
-            let bytes = match field.bytes().await {
-                Ok(b) => b,
-                Err(e) => {
-                    return Err((
-                        StatusCode::BAD_REQUEST,
-                        Json(Payload::Error {
-                            code: 5,
-                            message: e.body_text(),
-                        }),
-                    ))
-                }
-            };
-            info_span!("Add file ", filename);
-            add_files.files.push((filename, bytes));
-        } else if let Some(name) = field.name() {
-            if name == "directory" {
-                let directory = field
-                    .text()
-                    .await
-                    .unwrap_or(String::new())
-                    .trim()
-                    .trim_end_matches("/")
-                    .to_string();
-                info_span!("Got directory name", directory);
-                add_files.directory = Some(directory);
+    let mut successful_files = Vec::with_capacity(upload.files.len());
+
+    // No files in request, create empty folder
+    if upload.files.is_empty() {
+        info_span!("No files in request; creating dirs");
+        match file_server.add_dir(&upload.directory).await {
+            Ok(_) => (),
+            Err(message) => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(Payload::Error { code: 3, message }),
+                ))
             }
-            continue;
-        } else {
-            warn_span!("Unknown field", ?field);
         }
     }
 
-    if let Some(dir) = add_files.directory {
-        let mut files = Vec::with_capacity(add_files.files.len());
-
-        // No files in request, create empty folder
-        if add_files.files.is_empty() {
-            info_span!("No files in request; creating dirs");
-            match file_server.add_dir(&dir).await {
-                Ok(_) => (),
-                Err(message) => {
-                    return Err((
-                        StatusCode::BAD_REQUEST,
-                        Json(Payload::Error { code: 3, message }),
-                    ))
-                }
+    for file_item in upload.files {
+        match file_server
+            .add_file(
+                format!("{}/{}", upload.directory, file_item.name),
+                file_item.content.len(),
+            )
+            .await
+        {
+            Ok(f) => successful_files.push((f, file_item.content)),
+            Err(message) => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(Payload::Error { code: 4, message }),
+                ))
             }
         }
-
-        for (filename, bytes) in add_files.files {
-            match file_server
-                .add_file(format!("{dir}/{filename}"), bytes.len())
-                .await
-            {
-                Ok(f) => files.push((f, bytes)),
-                Err(message) => {
-                    return Err((
-                        StatusCode::BAD_REQUEST,
-                        Json(Payload::Error { code: 4, message }),
-                    ))
-                }
-            }
-        }
-
-        file_server.write().await;
-
-        for (f, bytes) in files {
-            let mut file = TokioFile::create(format!("file_server/{}", f.file_server))
-                .await
-                .unwrap();
-            file.write_all(&bytes).await.unwrap();
-        }
-
-        Ok(Json(Payload::FilePaths(ListView(vec![]))))
-    } else {
-        error_span!("No directory field provided");
-        Err((
-            StatusCode::BAD_REQUEST,
-            Json(Payload::Error {
-                code: 2,
-                message: format!("Directory cannot be empty"),
-            }),
-        ))
     }
+
+    file_server.write().await;
+
+    for (f, bytes) in successful_files {
+        let mut file = TokioFile::create(format!("file_server/{}", f.file_server))
+            .await
+            .unwrap();
+        file.write_all(&bytes).await.unwrap();
+    }
+
+    Ok(Json(Payload::FilePaths(ListView(vec![]))))
 }
 
 #[derive(Deserialize, Debug, ToSchema, TS)]
@@ -316,6 +380,16 @@ pub struct DeleteFilesRequest {
 /// Delete files and directories
 ///
 /// ids ending with a `'/'` will be treated as a dir, and recursively remote all contained items if present.
+#[utoipa::path(
+    delete,
+    path = "/",
+    tag = "files",
+    request_body = DeleteFilesRequest,
+    responses(
+        (status = 200, description = "Files deleted successfully", body = Payload),
+        (status = 400, description = "Bad Request", body = Payload)
+    )
+)]
 #[debug_handler]
 pub async fn delete_files(
     State(state): State<AppState>,

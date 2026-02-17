@@ -26,7 +26,6 @@ tracing = "0.1.41"
 uuid = { version = "1.18.0", features = ["serde", "v4"] }
 # See https://github.com/zslayton/cron/pull/116
 
-utoipa-swagger-ui = { version = "9.0.2", features = ["axum"] }
 mockall = "0.13.1"
 cron = "0.15.0"
 chrono = { version = "0.4.41", features = ["serde"] }
@@ -40,8 +39,10 @@ redis = { version = "0.32.5", features = [
 ] }
 regex = "1.11.2"
 utoipa = { version = "5.4.0", features = ["axum_extras", "uuid"] }
+utoipa-axum = "0.2.0"
 utoipa-redoc = { version = "6.0.0", features = ["axum"] }
 utoipa-rapidoc = { version = "6.0.0", features = ["axum"] }
+utoipa-swagger-ui = { version = "9.0.2", features = ["axum"] }
 dotenvy = "0.15.7"
 maud = { version = "0.27.0", features = ["axum"] }
 crypto = { version = "0.5.1", features = ["digest"] }

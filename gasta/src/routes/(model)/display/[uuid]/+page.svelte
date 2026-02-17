@@ -2,13 +2,13 @@
 	import TypePicker from '$lib/TypePicker.svelte';
 	import UpdateForm from '$lib/UpdateForm.svelte';
 	import type { PageData } from './$types';
-	import type { Display } from '$lib/api_bindings/read/Display';
 	import { Label } from '$lib/components/ui/label';
 	import { Input } from '$lib/components/ui/input';
 	import * as InputGroup from '$lib/components/ui/input-group';
 	import { CheckIcon, CopyIcon } from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
 	import * as Select from '$lib/components/ui/select';
+	import type { Display } from '$lib/server/sasta_client';
 
 	let { data }: { data: PageData } = $props();
 

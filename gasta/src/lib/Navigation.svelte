@@ -6,9 +6,6 @@
 	import { page } from '$app/state';
 	import type { LayoutData } from '../routes/$types';
 	import sanitizeHtml from 'sanitize-html';
-	import type { Display } from './api_bindings/read/Display';
-	import type { Schedule } from './api_bindings/read/Schedule';
-	import type { Playlist } from './api_bindings/read/Playlist';
 	import {
 		CalendarClock,
 		ChevronRight,
@@ -22,6 +19,7 @@
 	import { capitalize } from './utils';
 	import { Badge } from './components/ui/badge';
 	import { Separator } from './components/ui/separator';
+	import type { Display, Playlist, Schedule } from './server/sasta_client';
 
 	let { data }: { data: LayoutData } = $props();
 

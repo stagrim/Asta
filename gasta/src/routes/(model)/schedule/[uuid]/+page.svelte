@@ -1,7 +1,6 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import TypePicker from '$lib/TypePicker.svelte';
-	import type { Schedule } from '$lib/api_bindings/read/Schedule';
 	import UpdateForm from '$lib/UpdateForm.svelte';
 	import CronField from './CronField.svelte';
 	import { onMount } from 'svelte';
@@ -9,7 +8,6 @@
 		renderSnippet,
 		type ColumnDef
 	} from '$lib/components/ui/dnd-table/DndTable.svelte';
-	import type { ScheduledPlaylistInput } from '$lib/api_bindings/update/ScheduledPlaylistInput';
 	import { Label } from '$lib/components/ui/label';
 	import { Input } from '$lib/components/ui/input';
 	import { Button } from '$lib/components/ui/button';
@@ -19,7 +17,7 @@
 	import cron from 'cron-validate';
 	import { Badge } from '$lib/components/ui/badge';
 	import { cn } from '$lib/utils';
-	import * as Card from '$lib/components/ui/card';
+	import type { Schedule, ScheduledPlaylistInput } from '$lib/server/sasta_client';
 
 	let { data }: { data: PageData } = $props();
 

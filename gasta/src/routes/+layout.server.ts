@@ -1,10 +1,14 @@
-import { env } from '$env/dynamic/private';
-import type { Payload } from '$lib/api_bindings/read/Payload';
-import type { DisplayState, PlaylistState, ScheduleState, State } from '../app';
+import type { DisplayState, PlaylistState, ScheduleState } from '../app';
 import type { LayoutServerLoad } from './$types';
-import type { Display } from '$lib/api_bindings/read/Display';
-import type { Playlist } from '$lib/api_bindings/read/Playlist';
-import type { Schedule } from '$lib/api_bindings/read/Schedule';
+import {
+	readDisplays,
+	readPlaylist,
+	readSchedule,
+	type Display,
+	type Playlist,
+	type Schedule
+} from '$lib/server/sasta_client';
+import { error } from '@sveltejs/kit';
 
 export const load = (async ({
 	locals
@@ -35,38 +39,27 @@ export const load = (async ({
 		};
 	}
 
-	const get = async (api_route: string): Promise<DisplayState | PlaylistState | ScheduleState> => {
-		const payload: Payload = await fetch(`${env.SERVER_URL}/api/${api_route}`).then((d) =>
-			d.json()
-		);
-
-		if (payload.type == 'Error') {
-			console.error(`Error: ${payload}`);
-			throw Error();
+	function arrayToMap<T extends { uuid: string }>(res: { data?: T[]; error?: unknown }) {
+		if (res.error || !res.data) {
+			console.error('Error fetching state:', res.error);
+			throw error(500, 'Could not fetch state');
 		}
+		return new Map(res.data.map((item) => [item.uuid, item]));
+	}
 
-		const map = new Map();
-		payload.content.forEach((c) => map.set(c.uuid, c));
+	const [display, schedule, playlist] = await Promise.all([
+		readDisplays().then(arrayToMap),
+		readSchedule().then(arrayToMap),
+		readPlaylist().then(arrayToMap)
+	]);
 
-		return {
-			type: payload.type,
-			content: map
-		};
-	};
-
-	const display = await get('display');
-	if (display.type != 'Display') throw Error();
-	const schedule = await get('schedule');
-	if (schedule.type != 'Schedule') throw Error();
-	const playlist = await get('playlist');
-	if (playlist.type != 'Playlist') throw Error();
-
-	schedule.content.forEach((v) => v.scheduled?.forEach((s) => (s.id = crypto.randomUUID())));
+	//TODO: Stupid fix; make data have ids in the db instead
+	schedule.forEach((v) => v.scheduled?.forEach((s) => (s.id = crypto.randomUUID())));
 
 	return {
-		display,
-		schedule,
-		playlist,
+		display: { content: display, type: 'Display' },
+		schedule: { content: schedule, type: 'Schedule' },
+		playlist: { content: playlist, type: 'Playlist' },
 		user: session?.user.preferred_username
 	};
 }) satisfies LayoutServerLoad;
