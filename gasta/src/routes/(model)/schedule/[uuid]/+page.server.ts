@@ -10,7 +10,9 @@ const type = 'Schedule';
 export const load: PageServerLoad = ({ params }) => {
 	const schedule_info: Promise<ScheduleInfo> = fetch(
 		`${env.SERVER_URL}/api/${type.toLocaleLowerCase()}/${params.uuid}`
-	).then((response) => response.json());
+	)
+		.then((response) => response.json())
+		.catch((e) => ({ current: '' }));
 
 	return {
 		schedule_info,
