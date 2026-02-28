@@ -21,7 +21,6 @@ use tokio::{
     io::AsyncWriteExt,
     sync::Mutex as AsyncMutex,
 };
-use tokio_util::bytes::Bytes;
 use tower::ServiceExt;
 use tower_http::services::ServeFile;
 use tracing::{error_span, info_span, warn, warn_span};
@@ -242,13 +241,12 @@ pub struct FileUpload {
     /// Target directory to upload files to
     directory: String,
     /// One or more files to upload
+    #[schema(value_type = Vec<String>, format = Binary)]
     files: Vec<FileItem>,
 }
 
-#[derive(ToSchema)]
-pub struct FileItem {
+struct FileItem {
     pub name: String,
-    #[schema(value_type = String, format = Binary)]
     pub content: Vec<u8>,
 }
 

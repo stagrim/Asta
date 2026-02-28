@@ -14,8 +14,7 @@ export default defineConfig({
 		},
 		'valibot',
 		{
-			name: '@hey-api/sdk',
-			validator: true
+			name: '@hey-api/sdk'
 		}
 	]
 });

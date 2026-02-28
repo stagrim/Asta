@@ -66,29 +66,33 @@ export const defaultHandle: Handle = async ({ event, resolve }) => {
 	}
 
 	if (event.request.method === 'POST') {
-		const clone = event.request.clone();
-		const entries = [...(await clone.formData()).entries()];
+		try {
+			const clone = event.request.clone();
+			const entries = [...(await clone.formData()).entries()];
 
-		console.log(
-			JSON.stringify(
-				{
-					type: 'POST request',
-					name: session?.user,
-					url: clone.url,
-					body: entries.reduce((prev, [key, val]) => {
-						try {
-							// Try to convert value to JSON and replace val with the parsed data
-							val = JSON.parse(val.toString());
-						} catch {
-							console.log('Failed to parse: ' + val.toString());
-						}
-						return Object.assign(prev, { [key.toString()]: val });
-					}, {})
-				},
-				null,
-				2
-			)
-		);
+			console.log(
+				JSON.stringify(
+					{
+						type: 'POST request',
+						name: session?.user,
+						url: clone.url,
+						body: entries.reduce((prev, [key, val]) => {
+							try {
+								// Try to convert value to JSON and replace val with the parsed data
+								val = JSON.parse(val.toString());
+							} catch {
+								console.log('Failed to parse: ' + val.toString());
+							}
+							return Object.assign(prev, { [key.toString()]: val });
+						}, {})
+					},
+					null,
+					2
+				)
+			);
+		} catch (e) {
+			console.error(`Could not log POST request: ${e}`);
+		}
 	}
 
 	return resolve(event);
