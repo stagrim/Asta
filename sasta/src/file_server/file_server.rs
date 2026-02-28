@@ -5,15 +5,15 @@ use std::{
 };
 
 use axum::{
+    Json,
     body::Body,
     extract::{DefaultBodyLimit, Multipart, State},
     response::IntoResponse,
-    Json,
 };
 use axum_macros::debug_handler;
 use chrono::{DateTime, Local};
 use hyper::{Request, StatusCode, Uri};
-use redis::{aio::MultiplexedConnection, Client, JsonAsyncCommands};
+use redis::{Client, JsonAsyncCommands, aio::MultiplexedConnection};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use tokio::{
@@ -27,8 +27,8 @@ use tower_http::services::ServeFile;
 use tracing::{error_span, info_span, warn, warn_span};
 use ts_rs::TS;
 use utoipa::{
-    openapi::{ArrayBuilder, Ref, RefOr, Schema},
     ToSchema,
+    openapi::{ArrayBuilder, Ref, RefOr, Schema},
 };
 use utoipa_axum::{router::OpenApiRouter, routes};
 use uuid::Uuid;
@@ -242,14 +242,14 @@ pub struct FileUpload {
     /// Target directory to upload files to
     directory: String,
     /// One or more files to upload
-    #[schema(value_type = Vec<String>, format = Binary)]
-    #[allow(dead_code)] // Field is used in manual parsing logic, not direct struct access
     files: Vec<FileItem>,
 }
 
+#[derive(ToSchema)]
 pub struct FileItem {
     pub name: String,
-    pub content: Bytes,
+    #[schema(value_type = String, format = Binary)]
+    pub content: Vec<u8>,
 }
 
 impl FileUpload {
@@ -262,7 +262,7 @@ impl FileUpload {
             if let Some(filename) = field.file_name() {
                 let filename = filename.to_string();
                 let bytes = match field.bytes().await {
-                    Ok(b) => b,
+                    Ok(b) => b.into_iter().collect::<Vec<_>>(),
                     Err(e) => return Err((5, e.body_text())),
                 };
                 info_span!("Add file ", filename);
@@ -270,29 +270,25 @@ impl FileUpload {
                     name: filename,
                     content: bytes,
                 });
-            } else if let Some(name) = field.name() {
-                if name == "directory" {
-                    let dir = field
-                        .text()
-                        .await
-                        .unwrap_or(String::new())
-                        .trim()
-                        .trim_end_matches("/")
-                        .to_string();
-                    info_span!("Got directory name", dir);
-                    directory = Some(dir);
-                }
-                continue;
+            } else if let Some(name) = field.name()
+                && name == "directory"
+            {
+                let dir = field
+                    .text()
+                    .await
+                    .unwrap_or(String::new())
+                    .trim()
+                    .trim_end_matches("/")
+                    .to_string();
+                info_span!("Got directory name", dir);
+                directory = Some(dir);
             } else {
                 warn_span!("Unknown field", ?field);
             }
         }
 
         match directory {
-            Some(dir) => Ok(FileUpload {
-                directory: dir,
-                files,
-            }),
+            Some(directory) => Ok(FileUpload { directory, files }),
             None => Err((2, "Directory field cannot be empty".to_string())),
         }
     }
@@ -318,7 +314,7 @@ pub async fn add_files(State(state): State<AppState>, multipart: Multipart) -> R
             return Err((
                 StatusCode::BAD_REQUEST,
                 Json(Payload::Error { code, message }),
-            ))
+            ));
         }
     };
 
@@ -333,7 +329,7 @@ pub async fn add_files(State(state): State<AppState>, multipart: Multipart) -> R
                 return Err((
                     StatusCode::BAD_REQUEST,
                     Json(Payload::Error { code: 3, message }),
-                ))
+                ));
             }
         }
     }
@@ -351,7 +347,7 @@ pub async fn add_files(State(state): State<AppState>, multipart: Multipart) -> R
                 return Err((
                     StatusCode::BAD_REQUEST,
                     Json(Payload::Error { code: 4, message }),
-                ))
+                ));
             }
         }
     }
@@ -407,7 +403,7 @@ pub async fn delete_files(
                     return Err((
                         StatusCode::BAD_REQUEST,
                         Json(Payload::Error { code: 3, message }),
-                    ))
+                    ));
                 }
             }
         } else {
@@ -417,7 +413,7 @@ pub async fn delete_files(
                     return Err((
                         StatusCode::BAD_REQUEST,
                         Json(Payload::Error { code: 4, message }),
-                    ))
+                    ));
                 }
             }
         }
@@ -500,7 +496,10 @@ impl FileServer {
         let root = match con.json_get::<_, _, String>("files", ".").await {
             Ok(str) => serde_json::from_str(&str).unwrap(),
             Err(e) => {
-                warn!("Could not parse files content, starting with a blank root directory (Error: {:?})", e);
+                warn!(
+                    "Could not parse files content, starting with a blank root directory (Error: {:?})",
+                    e
+                );
                 Directory {
                     name: "".to_string(),
                     path: String::from("/"),
@@ -747,7 +746,6 @@ impl FileServer {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     #[test]
     fn traverse() {}
 }

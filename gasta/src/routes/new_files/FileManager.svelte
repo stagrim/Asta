@@ -1,6 +1,6 @@
 <script lang="ts">
-	import type { TreeDirectory } from '$lib/api_bindings/files/TreeDirectory';
 	import * as Resizable from '$lib/components/ui/resizable';
+	import type { TreeDirectory } from '$lib/server/sasta_client';
 	import AppSidebar from './AppSiderbar.svelte';
 	import { createFileManager } from './file-manager.svelte';
 	import FileExplorer from './FileExplorer.svelte';

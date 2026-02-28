@@ -13,8 +13,7 @@
 	import * as Breadcrumb from '$lib/components/ui/breadcrumb';
 	import { useFileManager } from './file-manager.svelte';
 	import { PressedKeys, watch } from 'runed';
-	import type { TreeDirectory } from '$lib/api_bindings/files/TreeDirectory';
-	import type { TreeFile } from '$lib/api_bindings/files/TreeFile';
+	import type { TreeDirectory, TreeFile } from '$lib/server/sasta_client';
 
 	const fm = useFileManager();
 

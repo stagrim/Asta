@@ -1,6 +1,7 @@
 import { defineConfig } from '@hey-api/openapi-ts';
 import 'dotenv/config';
 
+//@ts-ignore
 const SERVER_URL = process.env.SERVER_URL;
 
 export default defineConfig({
@@ -11,6 +12,10 @@ export default defineConfig({
 			name: '@hey-api/client-fetch',
 			runtimeConfigPath: '../sasta-api'
 		},
-		'@hey-api/sdk'
+		'valibot',
+		{
+			name: '@hey-api/sdk',
+			validator: true
+		}
 	]
 });

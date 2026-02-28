@@ -7,13 +7,13 @@
 	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import EyeIcon from '@lucide/svelte/icons/eye';
-	import type { TreeFile } from '$lib/api_bindings/files/TreeFile';
 	import { filesize } from 'filesize';
 	import { Files, Folder } from '@lucide/svelte';
 	import * as Resizable from '$lib/components/ui/resizable';
 	import { watch } from 'runed';
 	import * as Sheet from '$lib/components/ui/sheet';
 	import { useFileManager } from './file-manager.svelte';
+	import type { TreeFile } from '$lib/server/sasta_client';
 
 	// svelte-ignore non_reactive_update
 	let pane: ReturnType<typeof Resizable.Pane>;

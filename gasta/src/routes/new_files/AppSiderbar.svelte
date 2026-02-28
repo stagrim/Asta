@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { Label } from '$lib/components/ui/label';
-	import type { TreeDirectory } from '$lib/api_bindings/files/TreeDirectory';
 	import { FolderPlus, HardDrive, History, House, Search, Upload } from '@lucide/svelte';
 	import * as TreeView from '$lib/components/ui/tree-view';
 	import * as Resizable from '$lib/components/ui/resizable';
@@ -11,6 +10,7 @@
 	import * as ButtonGroup from '$lib/components/ui/button-group';
 	import { useFileManager } from './file-manager.svelte';
 	import { watch } from 'runed';
+	import type { TreeDirectory } from '$lib/server/sasta_client';
 
 	// svelte-ignore non_reactive_update
 	let pane: ReturnType<typeof Resizable.Pane>;

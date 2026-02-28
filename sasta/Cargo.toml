@@ -1,7 +1,7 @@
 [package]
 name = "sasta"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 authors = ["Esbjörn Stenberg <me@stagrim.com>"]
 license = "GPL-3.0-or-later"
 

@@ -1,8 +1,7 @@
 import { setContext, getContext } from 'svelte';
-import type { TreeDirectory } from '$lib/api_bindings/files/TreeDirectory';
-import type { TreeFile } from '$lib/api_bindings/files/TreeFile';
 import { IsMobile } from '$lib/hooks/is-mobile.svelte';
 import { SvelteSet } from 'svelte/reactivity';
+import type { TreeDirectory, TreeFile } from '$lib/server/sasta_client';
 
 const FM_KEY = Symbol('FILE_MANAGER');
 

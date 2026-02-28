@@ -1,14 +1,15 @@
 use std::collections::{HashMap, HashSet};
 
 use chrono::Local;
-use redis::{aio::ConnectionManager, Client, JsonAsyncCommands, RedisError};
+use redis::{Client, JsonAsyncCommands, RedisError, aio::ConnectionManager};
 use serde::{Deserialize, Deserializer, Serialize};
 use tokio::{
     sync::{
+        Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard,
         broadcast::{self, Receiver, Sender},
-        oneshot, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard,
+        oneshot,
     },
-    time::{sleep_until, Instant},
+    time::{Instant, sleep_until},
 };
 use tracing::{error, error_span, info, trace, warn, warn_span};
 use ts_rs::TS;
@@ -261,7 +262,9 @@ impl Store {
                 .collect();
 
             if moments.is_empty() {
-                info!("[Scheduler] No loaded Schedule has any scheduled playlists, waiting on an update to a Schedule...");
+                info!(
+                    "[Scheduler] No loaded Schedule has any scheduled playlists, waiting on an update to a Schedule..."
+                );
                 loop {
                     match receiver.recv().await {
                         Ok(Change::ScheduleInput(uuids)) => {
@@ -271,7 +274,9 @@ impl Store {
                                     .get(u)
                                     .is_some_and(|s| s.has_scheduled_playlists())
                             }) {
-                                info!("[Scheduler] An updated Schedule has scheduled playlists, rerunning loop");
+                                info!(
+                                    "[Scheduler] An updated Schedule has scheduled playlists, rerunning loop"
+                                );
                                 break;
                             }
                         }
@@ -349,7 +354,7 @@ impl Store {
         self.sender.subscribe()
     }
 
-    pub async fn read(&self) -> RwLockReadGuard<Content> {
+    pub async fn read<'a>(&'a self) -> RwLockReadGuard<'a, Content> {
         self.content.read().await
     }
 

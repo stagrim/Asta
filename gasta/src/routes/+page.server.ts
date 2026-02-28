@@ -4,9 +4,9 @@ import fs from 'node:fs';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const session = await locals.auth();
-	
+
 	if (!session?.user) {
-		redirect(302, "/login")
+		redirect(302, '/login');
 	}
 
 	let markdown = null;

@@ -1,20 +1,20 @@
 use std::{collections::HashSet, env, net::SocketAddr, str::FromStr, sync::Arc, vec};
 
 use axum::{
+    Json, Router,
     extract::{ConnectInfo, Path, State, WebSocketUpgrade},
     response::IntoResponse,
     routing::get,
-    Json, Router,
 };
 use axum_macros::debug_handler;
 use chrono::Local;
 use hyper::StatusCode;
 use read::Payload;
 use store::{schedule::Moment, store::Store};
-use tokio::sync::{oneshot, Mutex};
+use tokio::sync::{Mutex, oneshot};
 use tower_http::services::ServeDir;
-use tracing::{error, info, info_span, Level};
-use tracing_subscriber::{fmt::format::FmtSpan, FmtSubscriber};
+use tracing::{Level, error, info, info_span};
+use tracing_subscriber::{FmtSubscriber, fmt::format::FmtSpan};
 use utoipa::OpenApi;
 use utoipa_axum::{router::OpenApiRouter, routes};
 use utoipa_rapidoc::RapiDoc;
@@ -25,7 +25,7 @@ use uuid::Uuid;
 use crate::{
     casta::casta::{casta_index, compute_hash, minify},
     connection::connection::client_connection,
-    file_server::file_server::{file_api_router, get_file, FileServer},
+    file_server::file_server::{FileServer, file_api_router, get_file},
     store::{schedule, store::DisplayMaterial},
 };
 
@@ -470,9 +470,9 @@ async fn create_playlist(
 
     return if let Some(p) = store.read().await.playlists.get(&uuid) {
         info!("[Api] Created Playlist {uuid}");
-        Ok(Json(read::Payload::Playlist(
-            vec![(uuid, p.clone()).into()],
-        )))
+        Ok(Json(read::Payload::Playlist(vec![
+            (uuid, p.clone()).into(),
+        ])))
     } else {
         error!("[Api] No Playlist with {uuid} could be found while reading after write");
         Err((
@@ -533,9 +533,9 @@ async fn create_schedule(
 
     return if let Some(s) = store.read().await.schedules.get(&uuid) {
         info!("[Api] Created Schedule {uuid}");
-        Ok(Json(read::Payload::Schedule(
-            vec![(uuid, s.clone()).into()],
-        )))
+        Ok(Json(read::Payload::Schedule(vec![
+            (uuid, s.clone()).into(),
+        ])))
     } else {
         error!("[Api] No Schedule with {uuid} could be found while reading after write");
         Err((
@@ -694,7 +694,7 @@ async fn update_display(
     if let Some((uuid, _)) = read
         .displays
         .iter()
-        .find(|(&u, d)| d.name == display.name && u != uuid)
+        .find(|(u, d)| d.name == display.name && **u != uuid)
     {
         error!("[Api] Name is already used by Display {}", uuid);
         return Err((
@@ -726,7 +726,7 @@ async fn update_display(
     return if let Some(d) = store.read().await.displays.get(&uuid) {
         info!("[Api] Updated and read Display {uuid}");
         Ok(Json(update::Payload::Display(vec![
-            (uuid, d.clone()).into()
+            (uuid, d.clone()).into(),
         ])))
     } else {
         error!("[Api] Could not find Display with {uuid} after update");
@@ -775,7 +775,7 @@ async fn update_playlist(
     if let Some((uuid, _)) = read
         .playlists
         .iter()
-        .find(|(&u, p)| p.name == playlist.name && u != uuid)
+        .find(|(u, p)| p.name == playlist.name && **u != uuid)
     {
         error!("[Api] Name is already used by Playlist {}", uuid);
         return Err((
@@ -808,7 +808,7 @@ async fn update_playlist(
     return if let Some(p) = store.read().await.playlists.get(&uuid) {
         info!("[Api] Updated and read Playlist {uuid}");
         Ok(Json(update::Payload::Playlist(vec![
-            (uuid, p.clone()).into()
+            (uuid, p.clone()).into(),
         ])))
     } else {
         error!("[Api] Could not find Playlist with {uuid} after update");
@@ -857,7 +857,7 @@ async fn update_schedule(
     if let Some((uuid, _)) = read
         .schedules
         .iter()
-        .find(|(&u, s)| s.name == schedule.name && u != uuid)
+        .find(|(u, s)| s.name == schedule.name && **u != uuid)
     {
         error!("[Api] Name is already used by Schedule {}", uuid);
         return Err((
@@ -905,7 +905,7 @@ async fn update_schedule(
     return if let Some(s) = store.read().await.schedules.get(&uuid) {
         info!("[Api] Updated and read Schedule {uuid}");
         Ok(Json(update::Payload::Schedule(vec![
-            (uuid, s.clone()).into()
+            (uuid, s.clone()).into(),
         ])))
     } else {
         error!("[Api] Could not find Schedule with {uuid} after update");
@@ -1066,9 +1066,9 @@ pub(crate) async fn delete_playlist(
     }
 
     if let Some(d) = read.playlists.get(&uuid) {
-        res = Ok(Json(read::Payload::Playlist(
-            vec![(uuid, d.clone()).into()],
-        )));
+        res = Ok(Json(read::Payload::Playlist(vec![
+            (uuid, d.clone()).into(),
+        ])));
     } else {
         error!("[Api] No Playlist with {uuid} was found");
         return Err((
@@ -1154,9 +1154,9 @@ async fn delete_schedule(State(state): State<AppState>, Path(uuid): Path<Uuid>) 
     }
 
     if let Some(s) = read.schedules.get(&uuid) {
-        res = Ok(Json(read::Payload::Schedule(
-            vec![(uuid, s.clone()).into()],
-        )));
+        res = Ok(Json(read::Payload::Schedule(vec![
+            (uuid, s.clone()).into(),
+        ])));
     } else {
         error!("[Api] No Schedule with {uuid} was found");
         return Err((
