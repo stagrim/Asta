@@ -8,12 +8,13 @@
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import EyeIcon from '@lucide/svelte/icons/eye';
 	import { filesize } from 'filesize';
-	import { Files, Folder } from '@lucide/svelte';
+	import { ExternalLink, Files, Folder } from '@lucide/svelte';
 	import * as Resizable from '$lib/components/ui/resizable';
 	import { watch } from 'runed';
 	import * as Sheet from '$lib/components/ui/sheet';
 	import { useFileManager } from './file-manager.svelte';
 	import type { TreeFile } from '$lib/server/sasta_client';
+	import { toast } from 'svelte-sonner';
 
 	// svelte-ignore non_reactive_update
 	let pane: ReturnType<typeof Resizable.Pane>;
@@ -52,7 +53,7 @@
 			<ScrollArea class="flex-1">
 				<div class="p-4">
 					<div class="flex flex-col items-center mb-6">
-						<div class="rounded-lg bg-muted flex items-center justify-center mb-3">
+						<div class="rounded-lg flex items-center justify-center mb-3">
 							<!-- TODO: Make this a util function? -->
 							<!-- Check if a TreeDirectory -->
 							{#if 'directories' in selectedItem}
@@ -60,9 +61,9 @@
 							{:else}
 								{@const previewURL = previews(selectedItem)}
 								{#if previewURL}
-									<img class="mb-4" src={previewURL} alt="" />
+									<img class="rounded-lg" src={previewURL} alt="" />
 								{:else}
-									<FileIcon extension="{selectedItem.name.split('.').at(-1)}}" size="lg" />
+									<FileIcon extension={selectedItem.name.split('.').at(-1)} size="lg" />
 								{/if}
 							{/if}
 						</div>
@@ -111,15 +112,31 @@
 
 						<Separator />
 
-						<div>
+						<div class="@container">
 							<h4 class="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
 								Actions
 							</h4>
-							<div class="grid grid-cols-2 gap-2">
-								<Button variant="secondary" size="sm" class="gap-2">
-									<DownloadIcon class="w-4 h-4" />
-									Download
-								</Button>
+							<div class="grid gap-2 grid-cols-1 @[230px]:grid-cols-2">
+								{#if 'size' in selectedItem}
+									<Button
+										variant="secondary"
+										size="sm"
+										class="gap-2 col-span-full"
+										onclick={() =>
+											window
+												.open(`/files${selectedItem.id}`, '_blank', 'noopener,noreferrer')
+												?.focus()}
+									>
+										<ExternalLink class="w-4 h-4" />
+										Open
+									</Button>
+									<a href="/files{selectedItem.id}" download>
+										<Button variant="secondary" size="sm" class="gap-2 w-full">
+											<DownloadIcon class="w-4 h-4" />
+											Download
+										</Button>
+									</a>
+								{/if}
 								<Button variant="secondary" size="sm" class="gap-2">
 									<PencilIcon class="w-4 h-4" />
 									Rename
@@ -128,7 +145,12 @@
 									<Folder class="w-4 h-4" />
 									Move
 								</Button>
-								<Button variant="destructive" size="sm" class="gap-2">
+								<Button
+									variant="destructive"
+									size="sm"
+									class="gap-2 {'directories' in selectedItem && 'col-span-full'}"
+									onclick={() => fm.deleteFile([selectedItem]) || toast('Could not delete file')}
+								>
 									<Trash2Icon class="w-4 h-4" />
 									Delete
 								</Button>
@@ -141,6 +163,15 @@
 			<div class="flex-1 flex flex-col items-center justify-center text-muted-foreground p-4">
 				<Files class="w-12 h-12 mb-3 stroke-1" />
 				<p class="text-sm text-center">{fm.nbrSelected()} items selected</p>
+				<Button
+					variant="destructive"
+					size="sm"
+					class="gap-2"
+					onclick={() => fm.deleteFile(fm.getSelected()) || toast('Could not delete files')}
+				>
+					<Trash2Icon class="w-4 h-4" />
+					Delete
+				</Button>
 			</div>
 		{:else}
 			<div class="flex-1 flex flex-col items-center justify-center text-muted-foreground p-4">

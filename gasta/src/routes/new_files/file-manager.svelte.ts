@@ -2,6 +2,7 @@ import { setContext, getContext } from 'svelte';
 import { IsMobile } from '$lib/hooks/is-mobile.svelte';
 import { SvelteSet } from 'svelte/reactivity';
 import type { TreeDirectory, TreeFile } from '$lib/server/sasta_client';
+import type { FileManagerAPI } from './types';
 
 const FM_KEY = Symbol('FILE_MANAGER');
 
@@ -10,6 +11,30 @@ export class FileManager {
 	/** Get root tree node */
 	get root() {
 		return this.#root;
+	}
+
+	async refresh() {
+		try {
+			this.#root = await this.#api.getFileTree();
+
+			// Sync current path to the new tree
+			if (this.#currentPath === '/') {
+				this.#currentDirectory = this.#root;
+			} else {
+				// Find the new object reference for the folder we are currently in
+				const updatedCurrentDir = this.#traverseTree(this.#currentPath);
+
+				if (updatedCurrentDir) {
+					this.#currentDirectory = updatedCurrentDir;
+				} else {
+					// Fallback to root if the folder was deleted!
+					this.#currentPath = '/';
+					this.#currentDirectory = this.#root;
+				}
+			}
+		} catch (e) {
+			console.error('Failed to refresh tree: ', e);
+		}
 	}
 
 	// Current active path and directory
@@ -97,7 +122,23 @@ export class FileManager {
 	sidebarOpen = $state(!this.#isMobile.current);
 	previewOpen = $state(false);
 
-	constructor(initialRoot: TreeDirectory) {
+	#api: FileManagerAPI;
+
+	async deleteFile(ids: (TreeFile | TreeDirectory)[]): Promise<boolean> {
+		try {
+			await this.#api.deleteFile(ids.map((t) => t.id));
+		} catch (e) {
+			console.error(e);
+			await this.refresh();
+			return false;
+		}
+		ids.forEach((t) => this.#selectedItem.delete(t));
+		await this.refresh();
+		return true;
+	}
+
+	constructor(api: FileManagerAPI, initialRoot: TreeDirectory) {
+		this.#api = api;
 		this.#root = $state(initialRoot);
 		this.#currentDirectory = $state(this.#root);
 	}
@@ -173,11 +214,12 @@ export class FileManager {
 /**
  * Instantiates a new `FileManager` instance and sets it in the context.
  *
+ * @param api implementation of the `FileManagerAPI` interface for backend communication
  * @param root The root TreeDirectory node of the file system
  * @returns  The `FileManager` instance.
  */
-export function createFileManager(root: TreeDirectory): FileManager {
-	return setContext(FM_KEY, new FileManager(root));
+export function createFileManager(api: FileManagerAPI, root: TreeDirectory): FileManager {
+	return setContext(FM_KEY, new FileManager(api, root));
 }
 
 /**

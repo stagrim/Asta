@@ -5,9 +5,7 @@ import {
 	vDeleteFilesData,
 	vFileUpload as generatedFileUpload
 } from '$lib/server/sasta_client/valibot.gen';
-import { createClient } from '$lib/server/sasta_client/client';
-import { createClientConfig } from '$lib/server/sasta-api';
-import { client as globalClient } from '$lib/server/sasta_client/client.gen';
+import { error } from '@sveltejs/kit';
 
 // Overwrite file
 const vFileUpload = v.object({
@@ -49,16 +47,28 @@ export const uploadFile = form(vFileUpload, async (body) => {
 		}
 	});
 
+	await getFiles().refresh();
+
 	if (res.error) {
 		console.error('Upload failed:', res.error);
-		throw new Error('Failed to upload files');
+		if (res.error.type === 'Error') {
+			console.error(res.error.content?.message);
+			error(res.response.status, `Failed to upload files: ${res.error.content?.message}`);
+		} else {
+			error(res.response.status, 'Could not upload file');
+		}
 	}
+
 	return true;
 });
 
 export const removeFile = command(vDeleteFilesData, async ({ body }) => {
 	const res = await deleteFiles({ body });
-	if (res.error) throw new Error('Failed to delete files');
+	if (res.error) {
+		console.error(res.error);
+		throw new Error('Failed to delete files');
+	}
+	await getFiles().refresh();
 	return true;
 });
 

@@ -1,11 +1,9 @@
-import { join } from 'path';
 import type { Config } from 'tailwindcss';
 import forms from '@tailwindcss/forms';
-import { DTheme } from './d-theme';
 
 const config = {
 	darkMode: 'class',
-	content: ['./src/**/*.{html,js,svelte,ts}', join('../**/*.{html,js,svelte,ts}')],
+	content: ['./src/**/*.{html,js,svelte,ts}'],
 	theme: {
 		extend: {
 			keyframes: {

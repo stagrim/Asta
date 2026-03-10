@@ -70,11 +70,18 @@
 		}
 	}
 
-	$effect(() => {
-		if (keys.has('Control', 'X')) {
-			fm.setClipboard(fm.getSelected(), 'clip');
+	watch(
+		() => keys.all,
+		() => {
+    		if (keys.has('Control', 'X')) {
+    		    console.log('test')
+       			fm.setClipboard(fm.getSelected(), 'clip');
+    		}
+    		if (keys.has('Delete')) {
+                fm.deleteFile(fm.getSelected())
+    		}
 		}
-	});
+	);
 </script>
 
 <div class="flex-1 flex flex-col min-w-0 bg-background">

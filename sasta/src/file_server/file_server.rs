@@ -40,7 +40,7 @@ pub fn file_api_router() -> OpenApiRouter<AppState> {
         .routes(routes!(get_all_paths_list))
         .routes(routes!(delete_files))
         .routes(routes!(add_files))
-        .layer(DefaultBodyLimit::max(10_000_000))
+        .layer(DefaultBodyLimit::max(100_000_000))
 }
 
 pub type Response<T> = Result<Json<T>, (StatusCode, Json<T>)>;
@@ -316,8 +316,6 @@ pub async fn add_files(State(state): State<AppState>, multipart: Multipart) -> R
         }
     };
 
-    let mut successful_files = Vec::with_capacity(upload.files.len());
-
     // No files in request, create empty folder
     if upload.files.is_empty() {
         info_span!("No files in request; creating dirs");
@@ -332,6 +330,8 @@ pub async fn add_files(State(state): State<AppState>, multipart: Multipart) -> R
         }
     }
 
+    let mut errors = Vec::new();
+
     for file_item in upload.files {
         match file_server
             .add_file(
@@ -340,26 +340,29 @@ pub async fn add_files(State(state): State<AppState>, multipart: Multipart) -> R
             )
             .await
         {
-            Ok(f) => successful_files.push((f, file_item.content)),
-            Err(message) => {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    Json(Payload::Error { code: 4, message }),
-                ));
+            Ok(f) => {
+                let mut file = TokioFile::create(format!("file_server/{}", f.file_server))
+                    .await
+                    .unwrap();
+                file.write_all(&file_item.content).await.unwrap();
             }
+            Err(message) => errors.push(message),
         }
     }
 
     file_server.write().await;
 
-    for (f, bytes) in successful_files {
-        let mut file = TokioFile::create(format!("file_server/{}", f.file_server))
-            .await
-            .unwrap();
-        file.write_all(&bytes).await.unwrap();
+    if errors.is_empty() {
+        Ok(Json(Payload::FilePaths(ListView(vec![]))))
+    } else {
+        Err((
+            StatusCode::BAD_REQUEST,
+            Json(Payload::Error {
+                code: 4,
+                message: errors.join(", "),
+            }),
+        ))
     }
-
-    Ok(Json(Payload::FilePaths(ListView(vec![]))))
 }
 
 #[derive(Deserialize, Debug, ToSchema, TS)]
@@ -392,32 +395,34 @@ pub async fn delete_files(
     info_span!("Deleting files", ?files);
     let mut file_server = state.file_server.lock().await;
 
+    let mut errors = Vec::new();
+
     //TODO: Don't interrupt on errors, let it delete all values, and then return all which did not succeed
     for id in files.ids {
         if id.ends_with('/') {
             match file_server.delete_dir(id).await {
                 Ok(_) => (),
-                Err(message) => {
-                    return Err((
-                        StatusCode::BAD_REQUEST,
-                        Json(Payload::Error { code: 3, message }),
-                    ));
-                }
+                Err(message) => errors.push(message),
             }
         } else {
             match file_server.delete_file(id).await {
                 Ok(_) => (),
-                Err(message) => {
-                    return Err((
-                        StatusCode::BAD_REQUEST,
-                        Json(Payload::Error { code: 4, message }),
-                    ));
-                }
+                Err(message) => errors.push(message),
             }
         }
     }
 
-    Ok(Json(Payload::FilePaths(ListView(vec![]))))
+    if errors.is_empty() {
+        Ok(Json(Payload::FilePaths(ListView(vec![]))))
+    } else {
+        Err((
+            StatusCode::BAD_REQUEST,
+            Json(Payload::Error {
+                code: 3,
+                message: errors.join(", "),
+            }),
+        ))
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
