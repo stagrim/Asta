@@ -21,7 +21,7 @@ export const getFiles = query(async () => {
 
 export const uploadFile = form(vFileUpload, async (body) => {
 	// Perform some rituals to keep deno happy and make file upload work
-	// Who knew file uploads are so irritating??
+	// Who knew file uploads could be so irritating??
 	// Hours wasted: 3
 	const formData = new FormData();
 
@@ -59,6 +59,16 @@ export const uploadFile = form(vFileUpload, async (body) => {
 		}
 	}
 
+	return true;
+});
+
+export const createFolder = command(vFileUpload, async (body) => {
+	const res = await addFiles({ body });
+	if (res.error) {
+		console.error(res.error);
+		throw new Error('Failed to create dir');
+	}
+	await getFiles().refresh();
 	return true;
 });
 

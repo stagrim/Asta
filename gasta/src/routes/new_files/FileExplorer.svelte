@@ -73,18 +73,18 @@
 	watch(
 		() => keys.all,
 		() => {
-    		if (keys.has('Control', 'X')) {
-    		    console.log('test')
-       			fm.setClipboard(fm.getSelected(), 'clip');
-    		}
-    		if (keys.has('Delete')) {
-                fm.deleteFile(fm.getSelected())
-    		}
+			if (keys.has('Control', 'X')) {
+				console.log('test');
+				fm.setClipboard(fm.getSelected(), 'clip');
+			}
+			if (keys.has('Delete')) {
+				fm.deleteFile(fm.getSelected());
+			}
 		}
 	);
 </script>
 
-<div class="flex-1 flex flex-col min-w-0 bg-background">
+<div class="flex-1 flex flex-col min-w-0 min-h-0 bg-background">
 	<header class="flex items-center justify-between px-4 py-3 border-b border-border">
 		<div class="flex items-center gap-2">
 			<Button
@@ -159,127 +159,126 @@
 		</div>
 	</header>
 
-	<ScrollArea class="flex-1">
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<div class="p-4 h-full" onclick={clearSelection}>
-			{#if fm.currentEmpty()}
-				<div class="flex flex-col items-center justify-center h-64 text-muted-foreground">
-					<FolderIcon class="w-16 h-16 mb-4 stroke-1" />
-					<p>This folder is empty</p>
-				</div>
-			{:else if fm.viewMode === 'grid'}
-				{@const buttonClasses =
-					'flex h-fit flex-col items-center p-4 rounded-lg border transition-all cursor-pointer'}
-				<div
-					class="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3"
-					onclick={clearSelection}
-				>
-					{#each items as item, i}
-						{#if 'directories' in item}
-							<button
-								class={cn(
-									buttonClasses,
-									fm.isSelected(item)
-										? 'border-primary bg-primary/5'
-										: 'border-transparent hover:bg-muted',
-									fm.isInClipboard(item) && 'opacity-40'
-								)}
-								onclick={() => selectItem(item, i)}
-								ondblclick={() => fm.navigate(item)}
-							>
-								<Folder class="w-12 h-12" />
-								<span class="mt-2 text-sm text-foreground text-center truncate w-full"
-									>{item.name}</span
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<div class="p-4 flex-1 overflow-y-auto box-border" onclick={clearSelection}>
+		{#if fm.currentEmpty()}
+			<div class="flex flex-col items-center justify-center h-64 text-muted-foreground">
+				<FolderIcon class="w-16 h-16 mb-4 stroke-1" />
+				<p>This folder is empty</p>
+			</div>
+		{:else if fm.viewMode === 'grid'}
+			{@const buttonClasses =
+				'flex h-fit flex-col items-center p-4 rounded-lg border transition-all cursor-pointer'}
+			<div
+				class="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3"
+				onclick={clearSelection}
+			>
+				{#each items as item, i}
+					{#if 'directories' in item}
+						<button
+							class={cn(
+								buttonClasses,
+								fm.isSelected(item)
+									? 'border-primary bg-primary/5'
+									: 'border-transparent hover:bg-muted',
+								fm.isInClipboard(item) && 'opacity-40'
+							)}
+							onclick={() => selectItem(item, i)}
+							ondblclick={() => fm.navigate(item)}
+						>
+							<Folder class="w-12 h-12" />
+							<span class="mt-2 text-sm text-foreground text-center truncate w-full">
+								{item.name}
+							</span>
+							<!-- <span class="text-xs text-muted-foreground">{filesize(file.size)}</span> -->
+						</button>
+					{:else}
+						<button
+							draggable="true"
+							class={cn(
+								buttonClasses,
+								fm.isSelected(item)
+									? 'border-primary bg-primary/5'
+									: 'border-transparent hover:bg-muted',
+								fm.isInClipboard(item) && 'opacity-40'
+							)}
+							onclick={() => selectItem(item, i)}
+							ondblclick={() => (fm.previewOpen = true)}
+						>
+							<FileIcon extension={item.name.split('.').at(-1)} size="lg" />
+							<span class="mt-2 text-sm text-foreground text-center break-all w-full">
+								{item.name}
+							</span>
+							<span class="text-xs text-muted-foreground">{filesize(item.size)}</span>
+						</button>
+					{/if}
+				{/each}
+			</div>
+		{:else}
+			<div class="border border-border rounded-lg overflow-hidden">
+				<table class="w-full">
+					<thead>
+						<tr class="bg-muted/50 text-left text-sm text-muted-foreground">
+							<th class="px-4 py-3 font-medium">Name</th>
+							<th class="px-4 py-3 font-medium w-32">Size</th>
+							<th class="px-4 py-3 font-medium w-46">Modified</th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each items as item, i}
+							{#if 'directories' in item}
+								<tr
+									class="border-t border-border transition-colors cursor-pointer {fm.isSelected(
+										item
+									)
+										? 'bg-primary/5'
+										: 'hover:bg-muted/50'}"
+									onclick={() => selectItem(item, i)}
+									ondblclick={() => fm.navigate(item)}
+									onkeydown={(e) => e.key === 'Enter' && selectItem(item, i)}
+									tabindex="0"
+									role="button"
 								>
-								<!-- <span class="text-xs text-muted-foreground">{filesize(file.size)}</span> -->
-							</button>
-						{:else}
-							<button
-								draggable="true"
-								class={cn(
-									buttonClasses,
-									fm.isSelected(item)
-										? 'border-primary bg-primary/5'
-										: 'border-transparent hover:bg-muted',
-									fm.isInClipboard(item) && 'opacity-40'
-								)}
-								onclick={() => selectItem(item, i)}
-							>
-								<FileIcon extension={item.name.split('.').at(-1)} size="lg" />
-								<span class="mt-2 text-sm text-foreground text-center break-all w-full">
-									{item.name}
-								</span>
-								<span class="text-xs text-muted-foreground">{filesize(item.size)}</span>
-							</button>
-						{/if}
-					{/each}
-				</div>
-			{:else}
-				<div class="border border-border rounded-lg overflow-hidden">
-					<table class="w-full">
-						<thead>
-							<tr class="bg-muted/50 text-left text-sm text-muted-foreground">
-								<th class="px-4 py-3 font-medium">Name</th>
-								<th class="px-4 py-3 font-medium w-32">Size</th>
-								<th class="px-4 py-3 font-medium w-46">Modified</th>
-							</tr>
-						</thead>
-						<tbody>
-							{#each items as item, i}
-								{#if 'directories' in item}
-									<tr
-										class="border-t border-border transition-colors cursor-pointer {fm.isSelected(
-											item
-										)
-											? 'bg-primary/5'
-											: 'hover:bg-muted/50'}"
-										onclick={() => selectItem(item, i)}
-										ondblclick={() => fm.navigate(item)}
-										onkeydown={(e) => e.key === 'Enter' && selectItem(item, i)}
-										tabindex="0"
-										role="button"
+									<td class="px-4 py-3">
+										<div class="flex items-center gap-3">
+											<Folder class="w-5 h-5" />
+											<span class="text-sm text-foreground">{item.name}</span>
+										</div>
+									</td>
+									<td class="px-4 py-3 text-sm text-muted-foreground"
+										>{item.directories.length} item(s)</td
 									>
-										<td class="px-4 py-3">
-											<div class="flex items-center gap-3">
-												<Folder class="w-5 h-5" />
-												<span class="text-sm text-foreground">{item.name}</span>
-											</div>
-										</td>
-										<td class="px-4 py-3 text-sm text-muted-foreground"
-											>{item.directories.length} item(s)</td
-										>
-										<td class="px-4 py-3 text-sm text-muted-foreground"></td>
-									</tr>
-								{:else}
-									<tr
-										class="border-t border-border transition-colors cursor-pointer focus:outline-0 {fm.isSelected(
-											item
-										)
-											? 'bg-primary/5'
-											: 'hover:bg-muted/50'}"
-										onclick={() => selectItem(item, i)}
-										onkeydown={(e) => e.key === 'Enter' && selectItem(item, i)}
-										tabindex="0"
-										role="button"
-									>
-										<td class="px-4 py-3">
-											<div class="flex items-center gap-3">
-												<FileIcon extension={item.name.split('.').at(-1)} size="sm" />
-												<span class="text-sm text-foreground">{item.name}</span>
-											</div>
-										</td>
-										<td class="px-4 py-3 text-sm text-muted-foreground">{filesize(item.size)}</td>
-										<td class="px-4 py-3 text-sm text-muted-foreground">
-											{new Date(item.date).toLocaleString()}
-										</td>
-									</tr>
-								{/if}
-							{/each}
-						</tbody>
-					</table>
-				</div>
-			{/if}
-		</div>
-	</ScrollArea>
+									<td class="px-4 py-3 text-sm text-muted-foreground"></td>
+								</tr>
+							{:else}
+								<tr
+									class="border-t border-border transition-colors cursor-pointer focus:outline-0 {fm.isSelected(
+										item
+									)
+										? 'bg-primary/5'
+										: 'hover:bg-muted/50'}"
+									onclick={() => selectItem(item, i)}
+									onkeydown={(e) => e.key === 'Enter' && selectItem(item, i)}
+									tabindex="0"
+									role="button"
+								>
+									<td class="px-4 py-3">
+										<div class="flex items-center gap-3">
+											<FileIcon extension={item.name.split('.').at(-1)} size="sm" />
+											<span class="text-sm text-foreground">{item.name}</span>
+										</div>
+									</td>
+									<td class="px-4 py-3 text-sm text-muted-foreground">{filesize(item.size)}</td>
+									<td class="px-4 py-3 text-sm text-muted-foreground">
+										{new Date(item.date).toLocaleString()}
+									</td>
+								</tr>
+							{/if}
+						{/each}
+					</tbody>
+				</table>
+			</div>
+		{/if}
+	</div>
 </div>
