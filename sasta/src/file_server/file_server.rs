@@ -1,5 +1,6 @@
 use std::{
     collections::{LinkedList, VecDeque},
+    ffi::OsString,
     path::Path,
     sync::{Arc, Mutex},
 };
@@ -557,7 +558,11 @@ impl FileServer {
                         file_server: format!(
                             "{}.{}",
                             Uuid::new_v4(),
-                            Path::new(file_name).extension().unwrap().to_str().unwrap()
+                            Path::new(file_name)
+                                .extension()
+                                .unwrap_or(&OsString::from("txt"))
+                                .to_str()
+                                .unwrap()
                         ),
                         path: file_path.to_string(),
                         size,
