@@ -195,7 +195,7 @@
 		onCollapse={() => (fm.previewOpen = false)}
 		onExpand={() => (fm.previewOpen = true)}
 		defaultSize={0}
-		minSize={15}
+		class={{ 'max-w-[40%] min-w-45': fm.previewOpen }}
 		maxSize={40}
 	>
 		{#if fm.previewOpen}

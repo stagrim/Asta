@@ -1,6 +1,15 @@
 <script lang="ts">
 	import { Label } from '$lib/components/ui/label';
-	import { Folder, FolderPlus, HardDrive, History, House, Search, Upload } from '@lucide/svelte';
+	import {
+		Folder,
+		FolderPlus,
+		HardDrive,
+		History,
+		House,
+		Search,
+		SidebarOpen,
+		Upload
+	} from '@lucide/svelte';
 	import * as TreeView from '$lib/components/ui/tree-view';
 	import * as Resizable from '$lib/components/ui/resizable';
 	import { ScrollArea } from '$lib/components/ui/scroll-area';
@@ -289,7 +298,7 @@
 		onCollapse={() => (fm.sidebarOpen = false)}
 		onExpand={() => (fm.sidebarOpen = true)}
 		defaultSize={20}
-		minSize={20}
+		class={{ 'max-w-[40%] min-w-58': fm.sidebarOpen }}
 		maxSize={40}
 	>
 		{#if fm.sidebarOpen}

@@ -14,7 +14,7 @@
 </script>
 
 <div
-	class="group/filemanager relative flex w-full h-full border rounded-xl overflow-hidden isolation-isolate bg-background"
+	class="group/filemanager relative flex w-full h-[calc(100dvh-6rem)] border rounded-xl overflow-hidden isolation-isolate bg-background"
 >
 	<Resizable.PaneGroup direction="horizontal">
 		<AppSidebar />
