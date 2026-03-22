@@ -137,6 +137,20 @@ export class FileManager {
 		return true;
 	}
 
+	async createFolder(folderName: string): Promise<string> {
+		if (folderName.includes('/')) {
+			return "Folder name can not include slashes ('/')";
+		}
+
+		try {
+			await this.#api.createFolder(this.currentPath + folderName);
+			await this.refresh();
+		} catch (error: any) {
+			return error.body?.message || 'Folder creation failed';
+		}
+		return '';
+	}
+
 	constructor(api: FileManagerAPI, initialRoot: TreeDirectory) {
 		this.#api = api;
 		this.#root = $state(initialRoot);

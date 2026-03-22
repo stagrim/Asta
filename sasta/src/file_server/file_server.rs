@@ -98,7 +98,7 @@ impl From<&File> for TreeFile {
 impl From<&Directory> for TreeDirectory {
     fn from(value: &Directory) -> Self {
         TreeDirectory {
-            id: value.path.clone(),
+            id: format!("{}/", value.path.clone()),
             name: value.name.clone(),
             files: value
                 .files

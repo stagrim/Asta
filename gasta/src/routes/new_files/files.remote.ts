@@ -1,6 +1,11 @@
 import { query, command, form } from '$app/server';
 import * as v from 'valibot';
-import { addFiles, deleteFiles, getAllPathsTree } from '$lib/server/sasta_client';
+import {
+	addFiles,
+	deleteFiles,
+	getAllPathsTree,
+	type TreeDirectory
+} from '$lib/server/sasta_client';
 import {
 	vDeleteFilesData,
 	vFileUpload as generatedFileUpload
@@ -63,6 +68,12 @@ export const uploadFile = form(vFileUpload, async (body) => {
 });
 
 export const createFolder = command(vFileUpload, async (body) => {
+	const root = await getFiles();
+	const dir = traverseTree(body.directory, root);
+	if (dir) {
+		error(403, 'Folder already exists');
+	}
+
 	const res = await addFiles({ body });
 	if (res.error) {
 		console.error(res.error);
@@ -88,3 +99,22 @@ export const renameFile = command(async () => {
 	// if (res.error) throw new Error('Failed to rename');
 	return true;
 });
+
+function traverseTree(path: string, root: TreeDirectory): TreeDirectory | null {
+	const dirs = path.split('/').filter((s) => s);
+
+	if (dirs.length === 0) {
+		return root;
+	}
+
+	let dir = root;
+	for (const x of dirs) {
+		const res = dir.directories.find((d) => d.name === x);
+		if (res) {
+			dir = res;
+		} else {
+			return null;
+		}
+	}
+	return dir;
+}

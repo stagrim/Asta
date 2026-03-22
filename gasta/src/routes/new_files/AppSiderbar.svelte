@@ -21,6 +21,7 @@
 	import { watch } from 'runed';
 	import type { TreeDirectory } from '$lib/server/sasta_client';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
+	//TODO: break this out of component using snippets or something
 	import { getFiles, uploadFile } from './files.remote';
 	import * as FileDropZone from '$lib/components/ui-extra/file-drop-zone';
 	import { Button as ButtonExtra } from '$lib/components/ui-extra/button';
@@ -87,6 +88,10 @@
 	function removeFile(index: number) {
 		selectedFiles = selectedFiles.filter((_, i) => i !== index);
 	}
+
+	let folderPaneOpen = $state(false);
+	let folderName = $state('');
+	let folderError = $state('');
 
 	// function handleDragOver(e: DragEvent) {
 	// 	e.preventDefault(); // Essential to allow dropping
@@ -226,23 +231,37 @@
 					</AlertDialog.Root>
 					<ButtonGroup.Separator />
 					<!-- <Button class="grow" variant="secondary" size="sm"><FolderPlus /> New Folder</Button> -->
-					<AlertDialog.Root>
+					<AlertDialog.Root bind:open={folderPaneOpen}>
 						<AlertDialog.Trigger
 							class="grow {buttonVariants({ variant: 'secondary', size: 'sm' })}"
 						>
-							<FolderPlus />New Folder
+							<FolderPlus /> New Folder
 						</AlertDialog.Trigger>
 						<AlertDialog.Content>
 							<AlertDialog.Header>
 								<AlertDialog.Title>New Folder</AlertDialog.Title>
 							</AlertDialog.Header>
-							<div class="flex gap-4 items-center text-muted-foreground">
-								<Folder size={50} />
-								<Input placeholder="Folder name"></Input>
+							<div class="flex flex-col">
+								<div class="flex gap-4 items-center text-muted-foreground">
+									<Folder size={50} />
+									<Input bind:value={folderName} placeholder="Folder name" />
+								</div>
+								{#if folderError}
+									<span class="text-red-400">{folderError}</span>
+								{/if}
 							</div>
 							<AlertDialog.Footer>
 								<AlertDialog.Cancel type="button">Cancel</AlertDialog.Cancel>
-								<AlertDialog.Action>Create</AlertDialog.Action>
+								<AlertDialog.Action
+									disabled={!folderName}
+									onclick={async () => {
+										folderError = await fm.createFolder(folderName);
+										if (!folderError) {
+											folderPaneOpen = false;
+											//TODO: set selection to newly created folder
+										}
+									}}>Create</AlertDialog.Action
+								>
 							</AlertDialog.Footer>
 						</AlertDialog.Content>
 					</AlertDialog.Root>
