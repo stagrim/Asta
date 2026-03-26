@@ -1,15 +1,20 @@
+<script lang="ts" module>
+	import type { Snippet } from 'svelte';
+	import type { Action } from 'svelte/action';
+
+	export type FormContext = {
+		InternalUI: Snippet;
+		bindFileInput: Action<HTMLInputElement>;
+		setLoading: (state: boolean) => void;
+		resetFiles: () => void;
+		currentPath: string;
+		refreshManager: () => Promise<void>;
+	};
+</script>
+
 <script lang="ts">
 	import { Label } from '$lib/components/ui/label';
-	import {
-		Folder,
-		FolderPlus,
-		HardDrive,
-		History,
-		House,
-		Search,
-		SidebarOpen,
-		Upload
-	} from '@lucide/svelte';
+	import { Folder, FolderPlus, HardDrive, History, House, Search, Upload } from '@lucide/svelte';
 	import * as TreeView from '$lib/components/ui/tree-view';
 	import * as Resizable from '$lib/components/ui/resizable';
 	import { ScrollArea } from '$lib/components/ui/scroll-area';
@@ -22,13 +27,14 @@
 	import type { TreeDirectory } from '$lib/server/sasta_client';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	//TODO: break this out of component using snippets or something
-	import { getFiles, uploadFile } from './files.remote';
 	import * as FileDropZone from '$lib/components/ui-extra/file-drop-zone';
 	import { Button as ButtonExtra } from '$lib/components/ui-extra/button';
 	import { XIcon } from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
 	import { Separator } from '$lib/components/ui/separator';
 	import { Input } from '$lib/components/ui/input';
+
+	let { uploadFormSnippet }: { uploadFormSnippet?: Snippet<[FormContext]> } = $props();
 
 	// svelte-ignore non_reactive_update
 	let pane: ReturnType<typeof Resizable.Pane>;
@@ -52,11 +58,27 @@
 
 	const MAX_UPLOAD_SIZE = 50_000_000;
 
-	const { directory, files } = uploadFile.fields;
 	let loading = $state(false);
 	let selectedFiles = $state<File[]>([]);
 	let selectedFilesSize = $derived(selectedFiles.reduce((p, c) => p + c.size, 0));
 	let fileInput = $state<HTMLInputElement | null>(null);
+
+	// Action exposed to the parent to bind the hidden input
+	const bindFileInput: Action<HTMLInputElement> = (node) => {
+		fileInput = node;
+		return {
+			destroy() {
+				if (fileInput === node) fileInput = null;
+			}
+		};
+	};
+
+	function setLoading(state: boolean) {
+		loading = state;
+	}
+	function resetFiles() {
+		selectedFiles = [];
+	}
 
 	// Sync svelte state with form field
 	$effect(() => {
@@ -100,6 +122,65 @@
 	// }
 </script>
 
+{#snippet InternalFileUploadUI()}
+	<FileDropZone.Root
+		{onUpload}
+		{onFileRejected}
+		maxFileSize={MAX_UPLOAD_SIZE}
+		fileCount={selectedFiles.length}
+	>
+		<FileDropZone.Trigger />
+	</FileDropZone.Root>
+
+	<div class="flex flex-col gap-2">
+		<ScrollArea class="max-h-[50vh]">
+			<div class="p-4">
+				{#each selectedFiles as file, i (file.name)}
+					<div class="flex place-items-center justify-between gap-2">
+						<div class="flex flex-col">
+							<span>{file.name}</span>
+							<span class="text-muted-foreground text-xs">
+								{FileDropZone.displaySize(file.size)}
+							</span>
+						</div>
+						<Button variant="outline" size="icon" type="button" onclick={() => removeFile(i)}>
+							<XIcon />
+						</Button>
+					</div>
+					<Separator class="my-2" />
+				{/each}
+			</div>
+		</ScrollArea>
+	</div>
+
+	<div class="flex gap-2 items-center">
+		<AlertDialog.Cancel type="button">Cancel</AlertDialog.Cancel>
+		<Button
+			class="mr-auto"
+			type="button"
+			variant="outline"
+			onclick={resetFiles}
+			disabled={selectedFiles.length <= 0}
+		>
+			Reset
+		</Button>
+		<span
+			class="text-muted-foreground text-xs"
+			class:text-red-400={selectedFilesSize > MAX_UPLOAD_SIZE}
+		>
+			{FileDropZone.displaySize(selectedFilesSize)} / {FileDropZone.displaySize(MAX_UPLOAD_SIZE)}
+		</span>
+		<ButtonExtra
+			type="submit"
+			class="w-fit"
+			{loading}
+			disabled={selectedFiles.length === 0 || selectedFilesSize > MAX_UPLOAD_SIZE}
+		>
+			Submit
+		</ButtonExtra>
+	</div>
+{/snippet}
+
 {#snippet sidebarContent()}
 	<div class="flex h-full flex-col bg-sidebar border-r-0">
 		<div class="flex items-center px-4 py-3 border-b">
@@ -133,100 +214,16 @@
 								><AlertDialog.Title>Upload Files</AlertDialog.Title></AlertDialog.Header
 							>
 							<!-- TODO: Make this into a snippet to be able to pass it into the api or something like that -->
-							<form
-								enctype="multipart/form-data"
-								class="flex w-full flex-col gap-2 p-6"
-								{...uploadFile.enhance(async ({ form, submit }) => {
-									loading = true;
-									try {
-										await submit().updates(getFiles());
-
-										form.reset();
-										selectedFiles = [];
-										directory.set(fm.currentPath);
-
-										toast.success('Your attachments were uploaded');
-									} catch (error: any) {
-										toast.error(error.body?.message || 'Upload failed');
-										await getFiles().refresh();
-									}
-									await fm.refresh();
-									loading = false;
+							{#if uploadFormSnippet}
+								{@render uploadFormSnippet({
+									InternalUI: InternalFileUploadUI,
+									bindFileInput,
+									setLoading,
+									resetFiles,
+									currentPath: fm.currentPath,
+									refreshManager: async () => await fm.refresh()
 								})}
-							>
-								<input {...directory.as('text')} hidden value={fm.currentPath} />
-
-								<input {...files.as('file multiple')} bind:this={fileInput} class="hidden" />
-
-								<FileDropZone.Root
-									{onUpload}
-									{onFileRejected}
-									maxFileSize={MAX_UPLOAD_SIZE}
-									fileCount={selectedFiles.length}
-								>
-									<FileDropZone.Trigger />
-								</FileDropZone.Root>
-
-								<div class="flex flex-col gap-2">
-									<ScrollArea class="max-h-[50vh]">
-										<div class="p-4">
-											{#each selectedFiles as file, i (file.name)}
-												<div class="flex place-items-center justify-between gap-2">
-													<div class="flex flex-col">
-														<span>{file.name}</span>
-														<span class="text-muted-foreground text-xs">
-															{FileDropZone.displaySize(file.size)}
-														</span>
-													</div>
-													<Button
-														variant="outline"
-														size="icon"
-														type="button"
-														onclick={() => removeFile(i)}
-													>
-														<XIcon />
-													</Button>
-												</div>
-												<Separator class="my-2" />
-											{/each}
-										</div>
-									</ScrollArea>
-								</div>
-
-								<div class="flex gap-2 items-center">
-									<AlertDialog.Cancel type="button">Cancel</AlertDialog.Cancel>
-									<Button
-										class="mr-auto"
-										type="button"
-										variant="outline"
-										onclick={() => {
-											selectedFiles = [];
-											directory.set(fm.currentPath);
-										}}
-										disabled={selectedFiles.length <= 0}
-									>
-										Reset
-									</Button>
-
-									<span
-										class="text-muted-foreground text-xs"
-										class:text-red-400={selectedFilesSize > MAX_UPLOAD_SIZE}
-									>
-										{FileDropZone.displaySize(selectedFilesSize)} / {FileDropZone.displaySize(
-											MAX_UPLOAD_SIZE
-										)}
-									</span>
-
-									<ButtonExtra
-										type="submit"
-										class="w-fit"
-										{loading}
-										disabled={selectedFiles.length === 0 || selectedFilesSize > MAX_UPLOAD_SIZE}
-									>
-										Submit
-									</ButtonExtra>
-								</div>
-							</form>
+							{/if}
 						</AlertDialog.Content>
 					</AlertDialog.Root>
 					<ButtonGroup.Separator />

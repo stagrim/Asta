@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { toast } from 'svelte-sonner';
 	import * as Resizable from '$lib/components/ui/resizable';
 	import type { TreeDirectory } from '$lib/server/sasta_client';
 	import AppSidebar from './AppSiderbar.svelte';
@@ -7,8 +6,15 @@
 	import FileExplorer from './FileExplorer.svelte';
 	import PreviewPanel from './PreviewPanel.svelte';
 	import type { FileManagerAPI } from './types';
+	import type { Snippet } from 'svelte';
+	import type { FormContext } from './AppSiderbar.svelte';
 
-	let { api, fileTree }: { api: FileManagerAPI; fileTree: TreeDirectory } = $props();
+	let {
+		api,
+		fileTree,
+		uploadFormSnippet
+	}: { api: FileManagerAPI; fileTree: TreeDirectory; uploadFormSnippet?: Snippet<[FormContext]> } =
+		$props();
 
 	const fm = createFileManager(api, fileTree);
 </script>
@@ -17,7 +23,7 @@
 	class="group/filemanager relative flex w-full h-[calc(100dvh-6rem)] border rounded-xl overflow-hidden isolation-isolate bg-background"
 >
 	<Resizable.PaneGroup direction="horizontal">
-		<AppSidebar />
+		<AppSidebar {uploadFormSnippet} />
 
 		<Resizable.Handle />
 
