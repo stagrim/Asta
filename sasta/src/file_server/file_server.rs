@@ -2,7 +2,7 @@ use std::{
     collections::{LinkedList, VecDeque},
     ffi::OsString,
     path::Path,
-    sync::{Arc, Mutex},
+    sync::{Arc, LazyLock, Mutex},
 };
 
 use axum::{
@@ -14,17 +14,21 @@ use axum::{
 use axum_macros::debug_handler;
 use chrono::{DateTime, Local};
 use hyper::{Request, StatusCode, Uri};
+#[cfg(not(test))]
 use redis::{Client, JsonAsyncCommands, aio::MultiplexedConnection};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+#[cfg(not(test))]
+use tokio::sync::Mutex as AsyncMutex;
 use tokio::{
     fs::{self, File as TokioFile},
     io::AsyncWriteExt,
-    sync::Mutex as AsyncMutex,
 };
 use tower::ServiceExt;
 use tower_http::services::ServeFile;
-use tracing::{error_span, info_span, warn, warn_span};
+#[cfg(not(test))]
+use tracing::warn;
+use tracing::{error_span, info_span, warn_span};
 use ts_rs::TS;
 use utoipa::{
     ToSchema,
@@ -54,7 +58,7 @@ pub enum Payload {
     Error { code: u8, message: String },
 }
 
-#[derive(Serialize, Debug, ToSchema, TS)]
+#[derive(Deserialize, Serialize, Debug, ToSchema, TS)]
 #[ts(export, export_to = "api_bindings/files/")]
 pub struct TreeFile {
     id: String,
@@ -73,7 +77,7 @@ fn recursive_directory_schema() -> RefOr<Schema> {
     .into()
 }
 
-#[derive(Serialize, Debug, ToSchema, TS)]
+#[derive(Deserialize, Serialize, Debug, ToSchema, TS)]
 #[ts(export, export_to = "api_bindings/files/")]
 pub struct TreeDirectory {
     id: String,
@@ -342,10 +346,14 @@ pub async fn add_files(State(state): State<AppState>, multipart: Multipart) -> R
             .await
         {
             Ok(f) => {
-                let mut file = TokioFile::create(format!("file_server/{}", f.file_server))
-                    .await
-                    .unwrap();
-                file.write_all(&file_item.content).await.unwrap();
+                match TokioFile::create(format!("file_server/{}", f.file_server)).await {
+                    Ok(mut file) => {
+                        if let Err(e) = file.write_all(&file_item.content).await {
+                            errors.push(e.to_string());
+                        }
+                    }
+                    Err(e) => errors.push(e.to_string()),
+                };
             }
             Err(message) => errors.push(message),
         }
@@ -366,7 +374,7 @@ pub async fn add_files(State(state): State<AppState>, multipart: Multipart) -> R
     }
 }
 
-#[derive(Deserialize, Debug, ToSchema, TS)]
+#[derive(Serialize, Deserialize, Debug, ToSchema, TS)]
 #[ts(export, export_to = "api_bindings/files/")]
 pub struct DeleteFilesRequest {
     /// path of files /dirs to be deleted.
@@ -412,6 +420,8 @@ pub async fn delete_files(
             }
         }
     }
+
+    file_server.write().await;
 
     if errors.is_empty() {
         Ok(Json(Payload::FilePaths(ListView(vec![]))))
@@ -488,11 +498,16 @@ impl Serialize for Directory {
 }
 
 pub struct FileServer {
+    #[cfg(not(test))]
     con: AsyncMutex<MultiplexedConnection>,
     root: Directory,
 }
 
+pub static FILE_PATH_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^/[\w/_\-\. ]+[\w]$").unwrap());
+
 impl FileServer {
+    #[cfg(not(test))]
     pub async fn new(redis_url: &str) -> Self {
         let client = Client::open(redis_url).unwrap();
         let mut con = client.get_multiplexed_tokio_connection().await.unwrap();
@@ -519,6 +534,19 @@ impl FileServer {
         }
     }
 
+    #[cfg(test)]
+    pub async fn new(_redis_url: &str) -> Self {
+        // Return a fresh, empty in-memory tree for every test
+        Self {
+            root: Directory {
+                name: "".to_string(),
+                path: String::from("/"),
+                files: Arc::new(Mutex::new(vec![])),
+                children: Arc::new(Mutex::new(vec![])),
+            },
+        }
+    }
+
     pub async fn get_paths_list(&self) -> ListView {
         (&self.root).into()
     }
@@ -533,8 +561,7 @@ impl FileServer {
     pub async fn add_file(&mut self, file_path: String, size: usize) -> Result<File, String> {
         info_span!("Adding file with ", file_path);
         let file_path = file_path.trim();
-        let re = Regex::new(r"^/[\w/_\-\. ]+[\w]$").unwrap();
-        if !re.is_match(file_path) {
+        if !FILE_PATH_REGEX.is_match(file_path) {
             error_span!("Illegal file name");
             return Err("Illegal file name. Must only contain '_-./' special characters, start with root ('/') and end with a letter.".to_string());
         }
@@ -543,6 +570,7 @@ impl FileServer {
             .split('/')
             .filter(|s| !s.is_empty())
             .collect::<Vec<_>>();
+        let file_path = format!("/{}", path.join("/"));
         let file_name = path.pop().unwrap();
 
         let dir = self.create_up_to_dir(path).await;
@@ -564,10 +592,9 @@ impl FileServer {
                                 .to_str()
                                 .unwrap()
                         ),
-                        path: file_path.to_string(),
+                        path: file_path,
                         size,
                         date: Local::now(),
-                        //TODO: Add things like path to file on disk (with uuid generated name)
                     },
                 );
 
@@ -737,6 +764,12 @@ impl FileServer {
         Some(dir)
     }
 
+    #[cfg(test)]
+    async fn write(&mut self) {
+        // Do not write to any db when in test environment
+    }
+
+    #[cfg(not(test))]
     async fn write(&mut self) {
         let root_dir = &self.root.clone();
         if let Err(error) = self
@@ -754,6 +787,270 @@ impl FileServer {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn traverse() {}
+    use crate::store::store::Store;
+
+    use super::*;
+    use axum::serve;
+    use reqwest::multipart;
+    use std::sync::Arc;
+    use tokio::fs;
+    use tokio::net::TcpListener;
+    use tokio::sync::Mutex as AsyncMutex;
+
+    /// Helper function
+    async fn setup_test_server() -> FileServer {
+        let _ = fs::create_dir_all("file_server").await;
+
+        FileServer::new("not used since in test environment").await
+    }
+
+    #[tokio::test]
+    async fn test_regex_path_validation() {
+        // Valid paths
+        assert!(FILE_PATH_REGEX.is_match("/file.txt"));
+        assert!(FILE_PATH_REGEX.is_match("/folder/file.txt"));
+        assert!(FILE_PATH_REGEX.is_match("/folder 1/my_file-name.txt"));
+        assert!(FILE_PATH_REGEX.is_match("/deeply/nested/dir/file.ts"));
+
+        // Invalid paths
+        assert!(!FILE_PATH_REGEX.is_match("file.txt")); // Missing leading slash
+        assert!(!FILE_PATH_REGEX.is_match("/folder/")); // Ends in slash (not a file)
+        assert!(!FILE_PATH_REGEX.is_match("/fol@der/file.txt")); // Illegal characters
+    }
+
+    #[tokio::test]
+    async fn test_add_file_creates_directories() {
+        let mut server = setup_test_server().await;
+
+        let path = "/test_folder/nested/file.txt".to_string();
+        let file = server
+            .add_file(path.clone(), 1024)
+            .await
+            .expect("Failed to add file");
+
+        assert_eq!(file.name, "file.txt");
+        assert_eq!(file.path, "/test_folder/nested/file.txt");
+        assert_eq!(file.size, 1024);
+
+        let tree = server.get_paths_tree().await;
+
+        let test_folder = tree
+            .directories
+            .iter()
+            .find(|d| d.name == "test_folder")
+            .unwrap();
+        let nested = test_folder
+            .directories
+            .iter()
+            .find(|d| d.name == "nested")
+            .unwrap();
+
+        assert_eq!(nested.files.len(), 1);
+        assert_eq!(nested.files[0].name, "file.txt");
+    }
+
+    #[tokio::test]
+    async fn test_add_duplicate_file_fails() {
+        let mut server = setup_test_server().await;
+
+        let path = "/duplicates/file.txt".to_string();
+
+        let _ = server.add_file(path.clone(), 100).await.unwrap();
+
+        let result = server.add_file(path.clone(), 200).await;
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            "File /duplicates/file.txt already exists"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_delete_file_success_and_failure() {
+        let mut server = setup_test_server().await;
+        let path = "/to_delete/delete_me.txt".to_string();
+
+        let file = server.add_file(path.clone(), 10).await.unwrap();
+
+        let disk_path = format!("file_server/{}", file.file_server);
+        fs::write(&disk_path, b"dummy data").await.unwrap();
+
+        let deleted = server
+            .delete_file(path.clone())
+            .await
+            .expect("Failed to delete file");
+        assert_eq!(deleted.name, "delete_me.txt");
+
+        assert!(!Path::new(&disk_path).exists());
+
+        let fail_result = server
+            .delete_file("/to_delete/does_not_exist.txt".to_string())
+            .await;
+        assert!(fail_result.is_err());
+        assert_eq!(
+            fail_result.unwrap_err(),
+            "File /to_delete/does_not_exist.txt does not exists"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_add_and_delete_directory() {
+        let mut server = setup_test_server().await;
+
+        let dir_path = "/my_folder/child_folder".to_string();
+        server.add_dir(&dir_path).await.expect("Failed to add dir");
+
+        let file = server
+            .add_file("/my_folder/child_folder/test.txt".to_string(), 0)
+            .await
+            .unwrap();
+        let disk_path = format!("file_server/{}", file.file_server);
+        fs::write(&disk_path, b"data").await.unwrap();
+
+        let deleted_dir = server
+            .delete_dir("/my_folder".to_string())
+            .await
+            .expect("Failed to delete dir");
+        assert_eq!(deleted_dir.name, "my_folder");
+
+        assert!(!Path::new(&disk_path).exists());
+
+        let tree = server.get_paths_tree().await;
+        assert!(tree.directories.iter().all(|d| d.name != "my_folder"));
+    }
+
+    #[tokio::test]
+    async fn test_delete_root_directory_fails() {
+        let mut server = setup_test_server().await;
+
+        // Attempting to delete "/" should be blocked
+        let result = server.delete_dir("/".to_string()).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Will not delete root folder");
+    }
+
+    #[tokio::test]
+    async fn test_virtual_path_weirdness_get_normalized() {
+        let mut server = setup_test_server().await;
+
+        let weird_path = "///weird////path//file.txt".to_string();
+
+        let file = server.add_file(weird_path, 50).await.unwrap();
+        assert_eq!(file.path, "/weird/path/file.txt");
+
+        let tree = server.get_paths_tree().await;
+        let weird_dir = tree.directories.iter().find(|d| d.name == "weird").unwrap();
+        let path_dir = weird_dir
+            .directories
+            .iter()
+            .find(|d| d.name == "path")
+            .unwrap();
+
+        assert_eq!(path_dir.files[0].name, "file.txt");
+
+        // Easier to make harmless wonkyness a feature than fixing it...
+        let weird_path = "/../wonky/.file/....path..txt".to_string();
+
+        let file = server.add_file(weird_path, 50).await.unwrap();
+        assert_eq!(file.path, "/../wonky/.file/....path..txt");
+    }
+
+    #[tokio::test]
+    async fn test_full_api_upload_read_delete() {
+        let file_server = setup_test_server().await;
+
+        let state = AppState {
+            file_server: Arc::new(AsyncMutex::new(file_server)),
+            htmx_hash: String::new(),
+            store: Arc::new(Store::new("again, not used in test environment").await),
+        };
+
+        let (app, _api) = file_api_router().with_state(state).split_for_parts();
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let base_url = format!("http://{}", addr);
+
+        tokio::spawn(async move {
+            serve(listener, app).await.unwrap();
+        });
+
+        let client = reqwest::Client::new();
+
+        // ==========================================
+        // TEST A: UPLOAD FILE (POST /)
+        // ==========================================
+        let file_content = b"Hello, Axum Web API!".to_vec();
+        let part = multipart::Part::bytes(file_content.clone())
+            .file_name("api_test.txt")
+            .mime_str("text/plain")
+            .unwrap();
+
+        let form = multipart::Form::new()
+            .text("directory", "/api_folder")
+            .part("files", part);
+
+        let upload_res = client
+            .post(&format!("{}/", base_url))
+            .multipart(form)
+            .send()
+            .await
+            .expect("Failed to send upload request");
+
+        assert_eq!(upload_res.status(), StatusCode::OK);
+
+        // ==========================================
+        // TEST B: READ TREE (GET /tree)
+        // ==========================================
+        let tree_res = client
+            .get(&format!("{}/tree", base_url))
+            .send()
+            .await
+            .expect("Failed to fetch tree");
+
+        assert_eq!(tree_res.status(), StatusCode::OK);
+
+        let tree_json: TreeDirectory = tree_res.json().await.unwrap();
+
+        let api_folder = tree_json
+            .directories
+            .iter()
+            .find(|d| d.name == "api_folder")
+            .unwrap();
+
+        assert_eq!(api_folder.files.len(), 1);
+        assert_eq!(api_folder.files[0].name, "api_test.txt");
+        assert_eq!(api_folder.files[0].size, 20); // Length of "Hello, Axum Web API!"
+
+        // ==========================================
+        // TEST C: DELETE FILE (DELETE /)
+        // ==========================================
+        let delete_payload = DeleteFilesRequest {
+            ids: vec!["/api_folder/api_test.txt".to_string()],
+        };
+
+        let delete_res = client
+            .delete(&format!("{}/", base_url))
+            .json(&delete_payload)
+            .send()
+            .await
+            .expect("Failed to send delete request");
+
+        assert_eq!(delete_res.status(), StatusCode::OK);
+
+        let final_tree_res = client
+            .get(&format!("{}/tree", base_url))
+            .send()
+            .await
+            .unwrap();
+
+        let final_tree_json: TreeDirectory = final_tree_res.json().await.unwrap();
+        let final_api_folder = final_tree_json
+            .directories
+            .iter()
+            .find(|d| d.name == "api_folder")
+            .unwrap();
+
+        assert_eq!(final_api_folder.files.len(), 0);
+    }
 }

@@ -5,7 +5,8 @@ edition = "2024"
 authors = ["Esbjörn Stenberg <me@stagrim.com>"]
 license = "GPL-3.0-or-later"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dev-dependencies]
+reqwest = { version = "0.12", features = ["json", "multipart"] }
 
 [dependencies]
 axum = { version = "0.8.4", features = ["ws", "multipart"] }
@@ -25,8 +26,6 @@ tokio-util = "0.7.16"
 tracing = "0.1.41"
 uuid = { version = "1.18.0", features = ["serde", "v4"] }
 # See https://github.com/zslayton/cron/pull/116
-
-mockall = "0.13.1"
 cron = "0.15.0"
 chrono = { version = "0.4.41", features = ["serde"] }
 ts-rs = "11.0.1"

@@ -1,17 +1,24 @@
 use std::collections::{HashMap, HashSet};
 
 use chrono::Local;
-use redis::{Client, JsonAsyncCommands, RedisError, aio::ConnectionManager};
+use redis::RedisError;
+#[cfg(not(test))]
+use redis::{Client, JsonAsyncCommands, aio::ConnectionManager};
 use serde::{Deserialize, Deserializer, Serialize};
+
+#[cfg(not(test))]
+use tokio::sync::Mutex;
 use tokio::{
     sync::{
-        Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard,
+        RwLock, RwLockReadGuard, RwLockWriteGuard,
         broadcast::{self, Receiver, Sender},
         oneshot,
     },
     time::{Instant, sleep_until},
 };
-use tracing::{error, error_span, info, trace, warn, warn_span};
+use tracing::{error, info, trace};
+#[cfg(not(test))]
+use tracing::{error_span, warn, warn_span};
 use ts_rs::TS;
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -142,26 +149,40 @@ pub struct Content {
 }
 
 pub struct Store {
+    #[cfg(not(test))]
     con: Mutex<ConnectionManager>,
     sender: Sender<Change>,
     content: RwLock<Content>,
 }
 
 impl Store {
+    #[cfg(not(test))]
     pub async fn new(redis_url: &str) -> Self {
         let client = Client::open(redis_url).unwrap();
         let mut con = ConnectionManager::new(client).await.unwrap();
         let (sender, _) = broadcast::channel(5);
         let content = RwLock::new(Self::read_file(&mut con).await);
 
-        let s = Store {
+        Store {
             con: Mutex::new(con),
             sender,
             content,
-        };
-        s
+        }
     }
 
+    #[cfg(test)]
+    pub async fn new(_redis_url: &str) -> Self {
+        let (sender, _) = broadcast::channel(5);
+        let content = RwLock::new(Content {
+            displays: HashMap::new(),
+            playlists: HashMap::new(),
+            schedules: HashMap::new(),
+        });
+
+        Store { sender, content }
+    }
+
+    #[cfg(not(test))]
     async fn read_file(con: &mut ConnectionManager) -> Content {
         match con.json_get::<_, _, String>("content", ".").await {
             Ok(str) => {
@@ -360,6 +381,7 @@ impl Store {
 
     /// Runs closure with lock write guard handle given as argument
     /// and sends a message signalling a state change once it is done
+    #[cfg(not(test))]
     async fn write<F>(&self, fun: F) -> Result<(), RedisError>
     where
         F: FnOnce(RwLockWriteGuard<Content>) -> Option<Change>,
@@ -384,6 +406,13 @@ impl Store {
         } else {
             Ok(())
         }
+    }
+    #[cfg(test)]
+    async fn write<F>(&self, _fun: F) -> Result<(), RedisError>
+    where
+        F: FnOnce(RwLockWriteGuard<Content>) -> Option<Change>,
+    {
+        Ok(())
     }
 
     /// Creates a new display
