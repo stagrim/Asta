@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
 	import type { FormContext } from './AppSiderbar.svelte';
-	import FileManager from './FileManager.svelte';
 	import { createFolder, getFiles, removeFile, renameFile, uploadFile } from './files.remote';
-	import type { FileManagerAPI } from './types';
+	import type { FileManagerAPI } from '$lib/components/file-manager/types';
+	import FileManager from '$lib/components/file-manager/FileManager.svelte';
 
 	const backendProvider: FileManagerAPI = {
 		getFileTree: () => getFiles(),
