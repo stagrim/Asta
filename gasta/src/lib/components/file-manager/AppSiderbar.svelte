@@ -15,7 +15,7 @@
 <script lang="ts">
 	import { Label } from '$lib/components/ui/label';
 	import { Folder, FolderPlus, HardDrive, History, House, Search, Upload } from '@lucide/svelte';
-	import * as TreeView from '$lib/components/ui/tree-view';
+	import * as TreeView from '$lib/components/tree-view';
 	import * as Resizable from '$lib/components/ui/resizable';
 	import { ScrollArea } from '$lib/components/ui/scroll-area';
 	import { Button, buttonVariants } from '$lib/components/ui/button';

@@ -2,8 +2,8 @@
 	import { Folder, FolderOpen } from '@lucide/svelte';
 	import { cn } from '$lib/utils';
 	import { getTreeContext } from './ctx.svelte';
-	import * as Collapsible from '../collapsible';
-	import { buttonVariants } from '../button';
+	import * as Collapsible from '../ui/collapsible';
+	import { buttonVariants } from '../ui/button';
 	import type { CollapsibleTriggerProps } from 'bits-ui';
 
 	type Props = CollapsibleTriggerProps & {
