@@ -5,7 +5,7 @@
 	import Label from '$lib/components/ui/label/label.svelte';
 	import Input from '$lib/components/ui/input/input.svelte';
 	import { Button } from '$lib/components/ui/button';
-	import { PlusIcon, EllipsisVertical } from '@lucide/svelte';
+	import { PlusIcon, EllipsisVertical, Paperclip } from '@lucide/svelte';
 	import { capitalize, cn } from '$lib/utils';
 	import type { PlaylistItem } from '$lib/api_bindings/update/PlaylistItem';
 	import { Textarea } from '$lib/components/ui/textarea';
@@ -16,6 +16,8 @@
 		type ColumnDef
 	} from '$lib/components/ui/dnd-table/DndTable.svelte';
 	import EditDrawer from './EditDrawer.svelte';
+	import FilePicker from '$lib/components/file-picker/FilePicker.svelte';
+	import * as InputGroup from '$lib/components/ui/input-group';
 
 	let { data }: { data: PageData } = $props();
 
@@ -30,14 +32,6 @@
 			id,
 			settings: { duration: 60 as unknown as bigint, url: '' }
 		});
-	};
-
-	const swap_item = (a: number, b: number) => {
-		if (playlist) {
-			const tmp = playlist.items[a];
-			playlist.items[a] = playlist.items[b];
-			playlist.items[b] = tmp;
-		}
 	};
 
 	let columns: ColumnDef<PlaylistItem>[] = [
@@ -92,11 +86,31 @@
 		'hover:bg-input/30 focus-visible:bg-background dark:hover:bg-input/30 dark:focus-visible:bg-input/30 border-transparent bg-transparent shadow-none focus-visible:border dark:bg-transparent'}
 	<Label class="sr-only">Value</Label>
 	{#if item.type == 'WEBSITE'}
-		<Input class={cn(base, 'w-full')} bind:value={item.settings.url} />
+		<InputGroup.Root>
+			<InputGroup.Input class={cn(base, 'w-full')} bind:value={item.settings.url} />
+			<InputGroup.Addon align="inline-end">
+				<FilePicker
+					onSelected={(selected) => (item.settings.url = `ASTA:/${selected.id}`)}
+					root={data.files}
+				>
+					<InputGroup.Button variant="secondary"><Paperclip /></InputGroup.Button>
+				</FilePicker>
+			</InputGroup.Addon>
+		</InputGroup.Root>
+	{:else if item.type == 'IMAGE'}
+		<InputGroup.Root>
+			<InputGroup.Input class={cn(base, 'w-full')} bind:value={item.settings.src} />
+			<InputGroup.Addon align="inline-end">
+				<FilePicker
+					onSelected={(selected) => (item.settings.src = `ASTA:/${selected.id}`)}
+					root={data.files}
+				>
+					<InputGroup.Button variant="secondary"><Paperclip /></InputGroup.Button>
+				</FilePicker>
+			</InputGroup.Addon>
+		</InputGroup.Root>
 	{:else if item.type == 'TEXT'}
 		<Textarea class={base} bind:value={item.settings.text} />
-	{:else if item.type == 'IMAGE'}
-		<Input class={cn(base, 'w-full')} bind:value={item.settings.src} />
 	{/if}
 {/snippet}
 
@@ -158,9 +172,9 @@
 {/snippet}
 
 <UpdateForm
-	bind:type={data.playlist}
+	type={data.playlist}
 	dependant_state={{ schedules: data.schedule, displays: data.display }}
-	bind:uuid={data.uuid}
+	uuid={data.uuid}
 	bind:item={playlist}
 >
 	{#if playlist}

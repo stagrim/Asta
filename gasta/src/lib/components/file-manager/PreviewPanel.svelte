@@ -1,3 +1,12 @@
+<script lang="ts" module>
+	export function previews(file: TreeFile) {
+		const authorized_extensions = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'];
+		// TODO: break out into a function
+		const ext = file.name.split('.').at(-1)!;
+		return authorized_extensions.includes(ext) ? `/files/${file.id}` : false;
+	}
+</script>
+
 <script lang="ts">
 	import FileIcon from './FileIcon.svelte';
 	import { Button } from '$lib/components/ui/button';
@@ -33,13 +42,6 @@
 			}
 		}
 	);
-
-	function previews(file: TreeFile) {
-		const authorized_extensions = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'];
-		// TODO: break out into a function
-		const ext = file.name.split('.').at(-1)!;
-		return authorized_extensions.includes(ext) ? `/files/${file.id}` : false;
-	}
 </script>
 
 {#snippet previewContent()}
@@ -53,7 +55,7 @@
 			<ScrollArea class="flex-1">
 				<div class="p-4">
 					<div class="flex flex-col items-center mb-6">
-						<div class="rounded-lg flex items-center justify-center mb-3">
+						<div class="rounded-lg mb-3">
 							<!-- TODO: Make this a util function? -->
 							<!-- Check if a TreeDirectory -->
 							{#if 'directories' in selectedItem}
@@ -70,7 +72,6 @@
 						<h3 class="text-sm font-medium text-foreground text-center break-all">
 							{selectedItem.name}
 						</h3>
-						<!-- <p class="text-xs text-muted-foreground mt-1">{file.type.toUpperCase()}</p> -->
 					</div>
 
 					<Separator class="my-4" />

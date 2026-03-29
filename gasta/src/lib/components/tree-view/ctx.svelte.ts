@@ -1,16 +1,20 @@
+import type { TreeFile } from '$lib/server/sasta_client';
 import { setContext, getContext } from 'svelte';
 
 const TREE_KEY = Symbol('tree-view');
 
 export class TreeState {
 	selectedId = $state<string | undefined>(undefined);
+	complementryData = $state<TreeFile | undefined>(undefined);
 
-	constructor(initialSelectedId?: string) {
+	constructor(initialSelectedId?: string, initialComplementryData?: TreeFile) {
 		this.selectedId = initialSelectedId;
+		this.complementryData = initialComplementryData;
 	}
 
-	select(id: string) {
+	select(id: string, data?: TreeFile) {
 		this.selectedId = id;
+		this.complementryData = data;
 	}
 }
 

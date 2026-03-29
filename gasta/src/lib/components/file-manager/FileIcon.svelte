@@ -13,13 +13,14 @@
 		size = 'md'
 	}: {
 		extension?: string;
-		size?: 'sm' | 'md' | 'lg';
+		size?: 'sm' | 'md' | 'lg' | 'xl';
 	} = $props();
 
 	const sizeClasses = {
 		sm: 'w-5 h-5',
 		md: 'w-8 h-8',
-		lg: 'w-12 h-12'
+		lg: 'w-12 h-12',
+		xl: 'w-24 h-24'
 	};
 
 	const extLookup: Record<string, string> = {
