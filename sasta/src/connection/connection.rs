@@ -11,13 +11,13 @@ use axum::{
 };
 use casta_protocol::{DisplayPayload, RequestPayload, ResponsePayload, WebsitePayload};
 use futures_util::{
-    stream::{SplitSink, SplitStream},
     SinkExt, StreamExt,
+    stream::{SplitSink, SplitStream},
 };
 use maud::html;
 use tokio::{
     sync::Mutex,
-    time::{sleep_until, timeout, Instant},
+    time::{Instant, sleep_until, timeout},
 };
 use tracing::{error, info, trace, warn};
 
@@ -41,6 +41,8 @@ impl IntoHtmx for DisplayPayload {
         .into_string()
     }
 }
+
+const ASTA_FLE_PREFIX: &'static str = "ASTA://";
 
 /// Websocket connection to the client following the casta protocol
 ///
@@ -199,8 +201,11 @@ pub async fn client_connection(
                 let payload = match item {
                     PlaylistItem::Website {
                         id: name,
-                        settings: WebsiteData { url, duration },
+                        settings: WebsiteData { mut url, duration },
                     } => {
+                        if url.starts_with(ASTA_FLE_PREFIX) {
+                            url = url.replace(ASTA_FLE_PREFIX, "/files/");
+                        }
                         info!("[{who} ({client_name})] Sending Website '{name}'");
                         sleep_duration = duration;
                         DisplayPayload::Website(WebsitePayload { content: url })
@@ -215,8 +220,11 @@ pub async fn client_connection(
                     }
                     PlaylistItem::Image {
                         id: name,
-                        settings: ImageData { src, duration },
+                        settings: ImageData { mut src, duration },
                     } => {
+                        if src.starts_with(ASTA_FLE_PREFIX) {
+                            src = src.replace(ASTA_FLE_PREFIX, "/files/");
+                        }
                         info!("[{who} ({client_name})] Sending Image '{name}'");
                         sleep_duration = duration;
                         DisplayPayload::Image(WebsitePayload { content: src })
@@ -234,7 +242,9 @@ pub async fn client_connection(
                     )
                 };
                 if let Err(e) = client_send.lock().await.send(msg).await {
-                    error!("[{who} ({client_name})] Could not send playlist message because '{e:?}', exiting");
+                    error!(
+                        "[{who} ({client_name})] Could not send playlist message because '{e:?}', exiting"
+                    );
                     return;
                 };
 
