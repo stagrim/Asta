@@ -37,7 +37,7 @@
 		</AlertDialog.Header>
 
 		<div class="flex-1 min-h-0 overflow-hidden">
-			<div class="flex h-full gap-4">
+			<div class="flex h-full gap-4 flex-col lg:flex-row">
 				<ScrollArea class="min-h-0 pr-2 flex-1">
 					<TreeView.Root bind:selectedId bind:complementryData={selectedFile}>
 						{#each root.directories ?? [] as child}
@@ -49,23 +49,20 @@
 					</TreeView.Root>
 				</ScrollArea>
 
-				<ScrollArea class="min-h-0 flex justify-center w-1/6">
+				<div class="min-h-0 flex justify-center items-center max-h-full lg:w-1/4 max-lg:max-h-1/4">
 					{#if selectedFile}
 						{@const previewURL = previews(selectedFile)}
-						<div class="mb-3 flex justify-center">
-							{#if previewURL}
-								<img class="rounded-lg" src={previewURL} alt="" />
-							{:else}
-								<FileIcon extension={selectedFile.name.split('.').at(-1)} size="xl" />
-							{/if}
-						</div>
-						<p class="text-xs wrap-break-word text-center">{selectedFile.name}</p>
+						{#if previewURL}
+							<img class="rounded-lg object-contain h-full" src={previewURL} alt="" />
+						{:else}
+							<FileIcon extension={selectedFile.name.split('.').at(-1)} size="xl" />
+						{/if}
 					{:else}
 						<p class="text-muted-foreground mt-10 wrap-break-word text-center">
 							Select a file to preview
 						</p>
 					{/if}
-				</ScrollArea>
+				</div>
 			</div>
 		</div>
 
