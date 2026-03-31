@@ -53,8 +53,7 @@
     "npm:typescript@^5.9.3": "5.9.3",
     "npm:valibot@^1.2.0": "1.2.0_typescript@5.9.3",
     "npm:vaul-svelte@^1.0.0-next.7": "1.0.0-next.7_svelte@5.51.2__acorn@8.15.0",
-    "npm:vite@^7.3.1": "7.3.1_@types+node@25.2.3_picomatch@4.0.3",
-    "npm:wx-svelte-filemanager@^2.4.0": "2.4.0"
+    "npm:vite@^7.3.1": "7.3.1_@types+node@25.2.3_picomatch@4.0.3"
   },
   "npm": {
     "@auth/core@0.41.1_preact@10.24.3": {
@@ -2698,8 +2697,7 @@
         "npm:typescript@^5.9.3",
         "npm:valibot@^1.2.0",
         "npm:vaul-svelte@^1.0.0-next.7",
-        "npm:vite@^7.3.1",
-        "npm:wx-svelte-filemanager@^2.4.0"
+        "npm:vite@^7.3.1"
       ]
     }
   }

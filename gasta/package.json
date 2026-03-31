@@ -68,7 +68,6 @@
 		"svelte-dnd-action": "^0.9.69",
 		"svelte-markdown": "^0.4.1",
 		"tailwind-merge": "^3.4.1",
-		"valibot": "^1.2.0",
-		"wx-svelte-filemanager": "^2.4.0"
+		"valibot": "^1.2.0"
 	}
 }

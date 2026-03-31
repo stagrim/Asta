@@ -190,21 +190,6 @@
 					</Sidebar.MenuItem>
 				</Sidebar.Menu>
 			</Sidebar.GroupContent>
-			<Sidebar.GroupContent>
-				<Sidebar.Menu>
-					<Sidebar.MenuItem>
-						<Sidebar.MenuButton>
-							{#snippet child({ props })}
-								<a href="/new_files" onclick={drawerClose} {...props}>
-									<File />
-									<span>New Files</span>
-									<Badge>Beta</Badge>
-								</a>
-							{/snippet}
-						</Sidebar.MenuButton>
-					</Sidebar.MenuItem>
-				</Sidebar.Menu>
-			</Sidebar.GroupContent>
 		</Sidebar.Group>
 	</Sidebar.Content>
 </Sidebar.Root>
