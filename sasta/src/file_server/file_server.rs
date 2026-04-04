@@ -1147,6 +1147,209 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_move_file_cross_directory_and_rename() {
+        let mut server = setup_test_server().await;
+        server.add_dir(&"/folder_a".to_string()).await.unwrap();
+        server.add_dir(&"/folder_b".to_string()).await.unwrap();
+        server
+            .add_file("/folder_a/test.txt".to_string(), 10)
+            .await
+            .unwrap();
+
+        // Move and rename at the same time
+        let moved_file = server
+            .move_file(
+                &"/folder_a/test.txt".to_string(),
+                &"/folder_b/moved.txt".to_string(),
+            )
+            .await
+            .expect("Failed to move file");
+
+        assert_eq!(moved_file.path, "/folder_b/moved.txt");
+        assert_eq!(moved_file.name, "moved.txt");
+
+        let tree = server.get_paths_tree().await;
+        let folder_a = tree
+            .directories
+            .iter()
+            .find(|d| d.name == "folder_a")
+            .unwrap();
+        assert!(
+            folder_a.files.is_empty(),
+            "File should be removed from old directory"
+        );
+
+        let folder_b = tree
+            .directories
+            .iter()
+            .find(|d| d.name == "folder_b")
+            .unwrap();
+        assert_eq!(folder_b.files.len(), 1);
+        assert_eq!(
+            folder_b.files[0].name, "moved.txt",
+            "File should exist in new directory"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_move_file_rename_index_shift_bug() {
+        let mut server = setup_test_server().await;
+        server.add_dir(&"/docs".to_string()).await.unwrap();
+        server
+            .add_file("/docs/apple.txt".to_string(), 10)
+            .await
+            .unwrap();
+        server
+            .add_file("/docs/banana.txt".to_string(), 10)
+            .await
+            .unwrap();
+        server
+            .add_file("/docs/zebra.txt".to_string(), 10)
+            .await
+            .unwrap();
+
+        // Rename apple to carrot. It must be inserted between banana and zebra.
+        // If the index shift bug isn't fixed, it will break the alphabetical order.
+        server
+            .move_file(
+                &"/docs/apple.txt".to_string(),
+                &"/docs/carrot.txt".to_string(),
+            )
+            .await
+            .unwrap();
+
+        let tree = server.get_paths_tree().await;
+        let docs = tree.directories.iter().find(|d| d.name == "docs").unwrap();
+
+        assert_eq!(docs.files.len(), 3);
+        assert_eq!(docs.files[0].name, "banana.txt");
+        assert_eq!(docs.files[1].name, "carrot.txt");
+        assert_eq!(docs.files[2].name, "zebra.txt");
+    }
+
+    #[tokio::test]
+    async fn test_move_file_collisions_and_errors() {
+        let mut server = setup_test_server().await;
+        server
+            .add_file("/docs/file1.txt".to_string(), 10)
+            .await
+            .unwrap();
+        server
+            .add_file("/docs/file2.txt".to_string(), 10)
+            .await
+            .unwrap();
+        server
+            .add_file("/archive/file1.txt".to_string(), 10)
+            .await
+            .unwrap();
+
+        // 1. Same directory collision
+        let err1 = server
+            .move_file(
+                &"/docs/file1.txt".to_string(),
+                &"/docs/file2.txt".to_string(),
+            )
+            .await
+            .unwrap_err();
+        assert!(err1.contains("already exists"));
+
+        // 2. Cross directory collision
+        let err2 = server
+            .move_file(
+                &"/docs/file1.txt".to_string(),
+                &"/archive/file1.txt".to_string(),
+            )
+            .await
+            .unwrap_err();
+        assert!(err2.contains("already exists"));
+
+        // 3. Source does not exist
+        let err3 = server
+            .move_file(
+                &"/docs/ghost.txt".to_string(),
+                &"/archive/ghost.txt".to_string(),
+            )
+            .await
+            .unwrap_err();
+        assert!(err3.contains("does not exist"));
+    }
+
+    #[tokio::test]
+    async fn test_move_dir_recursive_path_updates() {
+        let mut server = setup_test_server().await;
+        server
+            .add_file("/parent/child/deep/file.txt".to_string(), 10)
+            .await
+            .unwrap();
+        server.add_dir(&"/archive".to_string()).await.unwrap();
+
+        let moved_dir = server
+            .move_dir(
+                &"/parent/child".to_string(),
+                &"/archive/renamed_child".to_string(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(moved_dir.path, "/archive/renamed_child");
+
+        let tree = server.get_paths_tree().await;
+        let archive = tree
+            .directories
+            .iter()
+            .find(|d| d.name == "archive")
+            .unwrap();
+        let renamed = archive
+            .directories
+            .iter()
+            .find(|d| d.name == "renamed_child")
+            .unwrap();
+        let deep = renamed
+            .directories
+            .iter()
+            .find(|d| d.name == "deep")
+            .unwrap();
+
+        // Verify that internal properties propagated through the whole tree branch!
+        // (TreeDirectory maps value.path to `id` with a trailing slash, and TreeFile maps value.path directly to `id`)
+        assert_eq!(deep.id, "/archive/renamed_child/deep/");
+        assert_eq!(deep.files.len(), 1);
+        assert_eq!(deep.files[0].id, "/archive/renamed_child/deep/file.txt");
+    }
+
+    #[tokio::test]
+    async fn test_move_dir_inception_protection() {
+        let mut server = setup_test_server().await;
+        server.add_dir(&"/docs/archive".to_string()).await.unwrap();
+
+        // 1. Block moving into itself
+        let err1 = server
+            .move_dir(&"/docs".to_string(), &"/docs".to_string())
+            .await
+            .unwrap_err();
+        assert!(err1.contains("Cannot move a directory into itself"));
+
+        // 2. Block moving into its own child (Orphan Tree Bug)
+        let err2 = server
+            .move_dir(&"/docs".to_string(), &"/docs/archive/nested".to_string())
+            .await
+            .unwrap_err();
+        assert!(err2.contains("Cannot move a directory into itself"));
+
+        // 3. DO NOT block moving into a different folder with a similar prefix name!
+        // This ensures new_dir_path.starts_with(&format!("{}/", old_dir_path)) is working perfectly.
+        server.add_dir(&"/docs_new".to_string()).await.unwrap();
+        let success = server
+            .move_dir(&"/docs".to_string(), &"/docs_new/docs".to_string())
+            .await;
+
+        assert!(
+            success.is_ok(),
+            "Failed to move into similarly named sibling directory"
+        );
+    }
+
+    #[tokio::test]
     async fn test_full_api_upload_read_delete() {
         let file_server = setup_test_server().await;
 
