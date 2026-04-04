@@ -43,6 +43,7 @@ pub fn file_api_router() -> OpenApiRouter<AppState> {
         .routes(routes!(get_all_paths_tree))
         .routes(routes!(get_all_paths_list))
         .routes(routes!(delete_files))
+        .routes(routes!(rename_files))
         .routes(routes!(add_files))
         .layer(DefaultBodyLimit::max(100_000_000))
 }
@@ -373,6 +374,82 @@ pub async fn add_files(State(state): State<AppState>, multipart: Multipart) -> R
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, ToSchema)]
+pub struct RenameRequest {
+    ids_from: Vec<String>,
+    ids_to: Vec<String>,
+}
+
+/// Move/Rename files and folders
+///
+/// Multiple files and folders can be renamed at once. The from and to paths should be on the corresponding index of the `ids_from`
+/// and the `ids_to` respectively.
+///
+/// ids ending with a `'/'` will be treated as a dir, and recursively move all contained items if present.
+#[utoipa::path(
+    put,
+    path = "/",
+    tag = "files",
+    request_body = RenameRequest,
+    responses(
+        (status = 200, description = "Files and folders renamed successfully", body = Payload),
+        (status = 400, description = "Bad Request", body = Payload)
+    )
+)]
+#[debug_handler]
+pub async fn rename_files(
+    State(state): State<AppState>,
+    Json(files): Json<RenameRequest>,
+) -> Response<Payload> {
+    info_span!("Renaming files", ?files);
+    if files.ids_from.len() != files.ids_to.len() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(Payload::Error {
+                code: 1,
+                message: "ids_from and ids_to must be the same length".to_string(),
+            }),
+        ));
+    }
+    let mut file_server = state.file_server.lock().await;
+
+    let mut errors = Vec::new();
+
+    //TODO: Don't interrupt on errors, let it delete all values, and then return all which did not succeed
+    for (from, to) in files.ids_from.iter().zip(files.ids_to.iter()) {
+        if from.ends_with('/') && to.ends_with('/') {
+            match file_server.move_dir(from, to).await {
+                Ok(_) => (),
+                Err(message) => errors.push(message),
+            }
+        } else if !from.ends_with('/') && !to.ends_with('/') {
+            match file_server.move_file(from, to).await {
+                Ok(_) => (),
+                Err(message) => errors.push(message),
+            }
+        } else {
+            errors.push(
+                "Cannot mix file and directories on the corresponding indexes of the arrays fields"
+                    .to_string(),
+            )
+        }
+    }
+
+    file_server.write().await;
+
+    if errors.is_empty() {
+        Ok(Json(Payload::FilePaths(ListView(vec![]))))
+    } else {
+        Err((
+            StatusCode::BAD_REQUEST,
+            Json(Payload::Error {
+                code: 3,
+                message: errors.join(", "),
+            }),
+        ))
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, ToSchema, TS)]
 #[ts(export, export_to = "api_bindings/files/")]
 pub struct DeleteFilesRequest {
@@ -384,7 +461,7 @@ pub struct DeleteFilesRequest {
 
 /// Delete files and directories
 ///
-/// ids ending with a `'/'` will be treated as a dir, and recursively remote all contained items if present.
+/// ids ending with a `'/'` will be treated as a dir, and recursively remove all contained items if present.
 #[utoipa::path(
     delete,
     path = "/",
@@ -660,76 +737,6 @@ impl FileServer {
         }
     }
 
-    pub async fn delete_file(&mut self, file_path: String) -> Result<File, String> {
-        let path = VirtualPath::parse(&file_path, true)?;
-
-        let dir = match self.traverse_to_dir(path.parents()) {
-            Some(d) => d,
-            None => return Err(String::from("Directory does not exist")),
-        };
-
-        let file = {
-            let mut files = dir.files.lock().unwrap();
-            match files.binary_search_by_key(&path.name(), |f| &f.name) {
-                Ok(pos) => files.remove(pos),
-                Err(_) => return Err(format!("File {} does not exists", path.to_string_path())),
-            }
-        };
-
-        match fs::remove_file(format!("file_server/{}", file.file_server)).await {
-            Ok(_) => Ok(file),
-            Err(e) => Err(e.to_string()),
-        }
-    }
-
-    pub async fn add_dir(&mut self, dir_path: &String) -> Result<(), String> {
-        info_span!("Adding dir ", dir_path);
-        let path = VirtualPath::parse(dir_path, false)?;
-        let _ = self.create_up_to_dir(path.path());
-        Ok(())
-    }
-
-    pub async fn delete_dir(&mut self, dir_path: String) -> Result<Directory, String> {
-        info_span!("Deleting dir", dir_path);
-        let path = VirtualPath::parse(&dir_path, false)?;
-
-        if path.path().is_empty() {
-            return Err(String::from("Will not delete root folder"));
-        }
-
-        let parent_dir = match self.traverse_to_dir(path.parents()) {
-            Some(d) => d,
-            None => {
-                error_span!("Parent directory does not exist");
-                return Err(String::from("Parent directory does not exist"));
-            }
-        };
-        let dir = {
-            let mut dirs = parent_dir.children.lock().unwrap();
-            match dirs.binary_search_by_key(&path.name(), |d| &d.name) {
-                Ok(pos) => dirs.remove(pos),
-                Err(_) => {
-                    error_span!("Directory does not exist");
-                    return Err(String::from("Directory does not exist"));
-                }
-            }
-        };
-
-        let mut files = vec![];
-        let mut stack = VecDeque::from([dir.clone()]);
-        while let Some(dir) = stack.pop_front() {
-            files.append(&mut dir.files.lock().unwrap());
-            stack.extend(std::mem::take(&mut *dir.children.lock().unwrap()).into_iter());
-        }
-
-        for f in files {
-            if let Err(e) = fs::remove_file(format!("file_server/{}", f.file_server)).await {
-                warn!("Error deleting file {:?}", e);
-            }
-        }
-        Ok(dir)
-    }
-
     async fn get_file(&self, file_path: &String) -> Option<String> {
         let path = VirtualPath::parse(file_path, true).ok()?;
 
@@ -802,6 +809,35 @@ impl FileServer {
                 }
             }
         }
+    }
+
+    pub async fn delete_file(&mut self, file_path: String) -> Result<File, String> {
+        let path = VirtualPath::parse(&file_path, true)?;
+
+        let dir = match self.traverse_to_dir(path.parents()) {
+            Some(d) => d,
+            None => return Err(String::from("Directory does not exist")),
+        };
+
+        let file = {
+            let mut files = dir.files.lock().unwrap();
+            match files.binary_search_by_key(&path.name(), |f| &f.name) {
+                Ok(pos) => files.remove(pos),
+                Err(_) => return Err(format!("File {} does not exists", path.to_string_path())),
+            }
+        };
+
+        match fs::remove_file(format!("file_server/{}", file.file_server)).await {
+            Ok(_) => Ok(file),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    pub async fn add_dir(&mut self, dir_path: &String) -> Result<(), String> {
+        info_span!("Adding dir ", dir_path);
+        let path = VirtualPath::parse(dir_path, false)?;
+        let _ = self.create_up_to_dir(path.path());
+        Ok(())
     }
 
     pub async fn move_dir(
@@ -911,6 +947,47 @@ impl FileServer {
         for f in dir.files.lock().unwrap().iter_mut() {
             f.path = format!("{}/{}", dir.path, f.name)
         }
+    }
+
+    pub async fn delete_dir(&mut self, dir_path: String) -> Result<Directory, String> {
+        info_span!("Deleting dir", dir_path);
+        let path = VirtualPath::parse(&dir_path, false)?;
+
+        if path.path().is_empty() {
+            return Err(String::from("Will not delete root folder"));
+        }
+
+        let parent_dir = match self.traverse_to_dir(path.parents()) {
+            Some(d) => d,
+            None => {
+                error_span!("Parent directory does not exist");
+                return Err(String::from("Parent directory does not exist"));
+            }
+        };
+        let dir = {
+            let mut dirs = parent_dir.children.lock().unwrap();
+            match dirs.binary_search_by_key(&path.name(), |d| &d.name) {
+                Ok(pos) => dirs.remove(pos),
+                Err(_) => {
+                    error_span!("Directory does not exist");
+                    return Err(String::from("Directory does not exist"));
+                }
+            }
+        };
+
+        let mut files = vec![];
+        let mut stack = VecDeque::from([dir.clone()]);
+        while let Some(dir) = stack.pop_front() {
+            files.append(&mut dir.files.lock().unwrap());
+            stack.extend(std::mem::take(&mut *dir.children.lock().unwrap()).into_iter());
+        }
+
+        for f in files {
+            if let Err(e) = fs::remove_file(format!("file_server/{}", f.file_server)).await {
+                warn!("Error deleting file {:?}", e);
+            }
+        }
+        Ok(dir)
     }
 
     /// Traverse through tree until path and create dirs on the way
