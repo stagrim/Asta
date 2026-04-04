@@ -506,6 +506,8 @@ pub struct FileServer {
 pub static FILE_PATH_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^/[\w/_\-\. ]+[\w]$").unwrap());
 
+pub static DIR_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^/[\w/_\- ]+[\w]$").unwrap());
+
 impl FileServer {
     #[cfg(not(test))]
     pub async fn new(redis_url: &str) -> Self {
@@ -573,7 +575,7 @@ impl FileServer {
         let file_path = format!("/{}", path.join("/"));
         let file_name = path.pop().unwrap();
 
-        let dir = self.create_up_to_dir(path).await;
+        let dir = self.create_up_to_dir(&path);
 
         let mut files = dir.files.lock().unwrap();
         match files.binary_search_by_key(&file_name, |f| &f.name) {
@@ -611,7 +613,7 @@ impl FileServer {
             .collect::<Vec<_>>();
         let file_name = path.pop().unwrap();
 
-        let dir = match self.traverse_to_dir(path).await {
+        let dir = match self.traverse_to_dir(&path) {
             Some(d) => d,
             None => return Err(String::from("Directory does not exist")),
         };
@@ -633,8 +635,7 @@ impl FileServer {
     pub async fn add_dir(&mut self, dir_path: &String) -> Result<(), String> {
         info_span!("Adding dir ", dir_path);
         let dir_path = dir_path.trim();
-        let re = Regex::new(r"^/[\w/_\- ]+[\w]$").unwrap();
-        if !re.is_match(dir_path) {
+        if !DIR_REGEX.is_match(dir_path) {
             error_span!("Illegal dir name");
             return Err("Illegal directory name. Must only contain '_-' special characters, start with root ('/') and end with a letter.".to_string());
         }
@@ -644,7 +645,7 @@ impl FileServer {
             .filter(|s| !s.is_empty())
             .collect::<Vec<_>>();
 
-        let _ = self.create_up_to_dir(path).await;
+        let _ = self.create_up_to_dir(&path);
 
         Ok(())
     }
@@ -662,7 +663,7 @@ impl FileServer {
             None => return Err("Will not delete root folder".into()),
         };
 
-        let parent_dir = match self.traverse_to_dir(path).await {
+        let parent_dir = match self.traverse_to_dir(&path) {
             Some(d) => d,
             None => {
                 error_span!("Parent directory does not exist");
@@ -702,7 +703,7 @@ impl FileServer {
             .collect::<Vec<_>>();
         let file_name = path.pop()?;
 
-        let dir = self.traverse_to_dir(path).await?;
+        let dir = self.traverse_to_dir(&path)?;
 
         let files = dir.files.lock().unwrap();
         match files.binary_search_by_key(&file_name, |f| &f.name) {
@@ -711,13 +712,203 @@ impl FileServer {
         }
     }
 
-    //TODO: traversing where no folder is created, error is returned, and where both file path and dir path works as input.
+    pub async fn move_file(
+        &self,
+        file_path: &String,
+        new_file_path: &String,
+    ) -> Result<File, String> {
+        let file_path = file_path.trim();
+        let new_file_path = new_file_path.trim();
+        if !FILE_PATH_REGEX.is_match(new_file_path) {
+            error_span!("Illegal file name for new file");
+            return Err("Illegal file name for new file. Must only contain '_-./' special characters, start with root ('/') and end with a letter.".to_string());
+        }
+
+        let mut path = file_path
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>();
+        let file_name = path.pop().unwrap();
+
+        let dir = match self.traverse_to_dir(&path) {
+            Some(d) => d,
+            None => return Err(String::from("Directory does not exist")),
+        };
+
+        let mut new_path = new_file_path
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>();
+        let new_file_name = new_path.pop().unwrap();
+
+        let move_to_dir = match self.traverse_to_dir(&new_path) {
+            Some(d) => d,
+            None => return Err(String::from("Directory does not exist")),
+        };
+
+        let mut old_dir_files = dir.files.lock().unwrap();
+        let old_dir_file_pos = match old_dir_files.binary_search_by_key(&file_name, |f| &f.name) {
+            Ok(pos) => pos,
+            Err(_) => return Err(format!("File {file_path} does not exist")),
+        };
+
+        if move_to_dir.path == dir.path {
+            match old_dir_files.binary_search_by_key(&new_file_name, |f| &f.name) {
+                Ok(_) => Err(format!(
+                    "Cannot move file since {new_file_path} already exists"
+                )),
+                Err(pos) => {
+                    let mut file = old_dir_files.remove(old_dir_file_pos);
+                    file.path = new_file_path.to_string();
+                    file.name = new_file_name.to_string();
+
+                    // Decrease insert pos by on if file will be inserted after the before position
+                    // to account for itself being removed earlier in the array
+                    let insert_pos = if old_dir_file_pos < pos { pos - 1 } else { pos };
+                    old_dir_files.insert(insert_pos, file.clone());
+
+                    Ok(file)
+                }
+            }
+        } else {
+            let mut move_to_dir_files = move_to_dir.files.lock().unwrap();
+            match move_to_dir_files.binary_search_by_key(&new_file_name, |f| &f.name) {
+                Ok(_) => Err(format!(
+                    "Cannot move file since {new_file_path} already exists"
+                )),
+                Err(pos) => {
+                    let mut file = old_dir_files.remove(old_dir_file_pos);
+                    file.path = new_file_path.to_string();
+                    file.name = new_file_name.to_string();
+
+                    move_to_dir_files.insert(pos, file.clone());
+
+                    Ok(file)
+                }
+            }
+        }
+    }
+
+    pub async fn move_dir(
+        &self,
+        dir_path: &String,
+        new_dir_path: &String,
+    ) -> Result<Directory, String> {
+        info_span!("Moving dir", dir_path, new_dir_path);
+
+        let old_dir_path = dir_path.trim();
+        let new_dir_path = new_dir_path.trim();
+        if !DIR_REGEX.is_match(new_dir_path) {
+            error_span!("Illegal dir name");
+            return Err("Illegal directory name. Must only contain '_-' special characters, start with root ('/') and end with a letter.".to_string());
+        }
+
+        if new_dir_path == old_dir_path || new_dir_path.starts_with(&format!("{}/", old_dir_path)) {
+            error_span!("Cannot move directory into itself");
+            return Err("Cannot move a directory into itself or its subdirectories.".to_string());
+        }
+
+        let mut old_path = old_dir_path
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>();
+
+        let old_dir_name = match old_path.pop() {
+            Some(d) => d,
+            None => return Err("Will not move root folder".into()),
+        };
+        let old_parent_dir = match self.traverse_to_dir(&old_path) {
+            Some(d) => d,
+            None => {
+                error_span!("Parent directory does not exist");
+                return Err(String::from("Directory does not exist"));
+            }
+        };
+
+        let mut new_path = new_dir_path
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>();
+        let new_dir_name = match new_path.pop() {
+            Some(d) => d,
+            None => return Err("Will not move root folder".into()),
+        };
+        let new_parent_dir = match self.traverse_to_dir(&new_path) {
+            Some(d) => d,
+            None => {
+                error_span!("Parent directory does not exist");
+                return Err(String::from("Directory does not exist"));
+            }
+        };
+
+        let mut old_parent_dir_dirs = old_parent_dir.children.lock().unwrap();
+        let old_parent_dir_pos =
+            match old_parent_dir_dirs.binary_search_by_key(&old_dir_name, |d| &d.name) {
+                Ok(pos) => pos,
+                Err(_) => return Err(format!("Directory {old_dir_path} does not exist")),
+            };
+
+        let dir = if old_parent_dir.path == new_parent_dir.path {
+            match old_parent_dir_dirs.binary_search_by_key(&new_dir_name, |d| &d.name) {
+                Ok(_) => {
+                    return Err(format!(
+                        "Cannot move directory since {new_dir_path} already exists"
+                    ));
+                }
+                Err(pos) => {
+                    let mut dir = old_parent_dir_dirs.remove(old_parent_dir_pos);
+                    dir.path = new_dir_path.to_string();
+                    dir.name = new_dir_name.to_string();
+
+                    // Decrease insert pos by on if dir will be inserted after the before position
+                    // to account for itself being removed earlier in the array
+                    let insert_pos = if old_parent_dir_pos < pos {
+                        pos - 1
+                    } else {
+                        pos
+                    };
+                    old_parent_dir_dirs.insert(insert_pos, dir.clone());
+
+                    dir
+                }
+            }
+        } else {
+            let mut move_to_dir_dirs = new_parent_dir.children.lock().unwrap();
+            match move_to_dir_dirs.binary_search_by_key(&new_dir_name, |f| &f.name) {
+                Ok(_) => {
+                    return Err(format!(
+                        "Cannot move directory since {new_dir_path} already exists"
+                    ));
+                }
+                Err(pos) => {
+                    let mut dir = old_parent_dir_dirs.remove(old_parent_dir_pos);
+                    dir.path = new_dir_path.to_string();
+                    dir.name = new_dir_name.to_string();
+                    move_to_dir_dirs.insert(pos, dir.clone());
+
+                    dir
+                }
+            }
+        };
+        Self::recursivly_update_path(&dir);
+        Ok(dir)
+    }
+
+    fn recursivly_update_path(dir: &Directory) {
+        for d in dir.children.lock().unwrap().iter_mut() {
+            d.path = format!("{}/{}", dir.path, d.name);
+            Self::recursivly_update_path(d);
+        }
+        for f in dir.files.lock().unwrap().iter_mut() {
+            f.path = format!("{}/{}", dir.path, f.name)
+        }
+    }
 
     /// Traverse through tree until path and create dirs on the way
-    async fn create_up_to_dir(&self, path: Vec<&str>) -> Directory {
+    fn create_up_to_dir(&self, path: &[&str]) -> Directory {
         let mut dir = self.root.clone();
         let mut depth = 1;
-        for p in &path {
+        for p in path {
             let dir_c = dir.clone();
             let mut d = dir_c.children.lock().unwrap();
             let pos = match d.binary_search_by_key(p, |d| &d.name) {
@@ -748,9 +939,9 @@ impl FileServer {
     }
 
     /// Traverse through tree until path. Returns None if path does not exist
-    async fn traverse_to_dir(&self, path: Vec<&str>) -> Option<Directory> {
+    fn traverse_to_dir(&self, path: &[&str]) -> Option<Directory> {
         let mut dir = self.root.clone();
-        for p in &path {
+        for p in path {
             let dir_c = dir.clone();
             let d = dir_c.children.lock().unwrap();
             let pos = match d.binary_search_by_key(p, |d| &d.name) {
