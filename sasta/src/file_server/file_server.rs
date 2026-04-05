@@ -580,9 +580,10 @@ pub struct FileServer {
 }
 
 pub static FILE_PATH_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^/[\w/_\-\. ]+[\w]$").unwrap());
+    LazyLock::new(|| Regex::new(r"^/[\w/_\- ]*(\w+\.\w+)$").unwrap());
 
-pub static DIR_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^/[\w/_\- ]+[\w]$").unwrap());
+pub static DIR_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^/[(\w/_\- )]+/$|^/$").unwrap());
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum VirtualPath<'a> {
@@ -1081,17 +1082,39 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_regex_path_validation() {
+    async fn test_regex_filepath_validation() {
         // Valid paths
         assert!(FILE_PATH_REGEX.is_match("/file.txt"));
         assert!(FILE_PATH_REGEX.is_match("/folder/file.txt"));
-        assert!(FILE_PATH_REGEX.is_match("/folder 1/my_file-name.txt"));
+        assert!(FILE_PATH_REGEX.is_match("/folder 1/my_filename.txt"));
         assert!(FILE_PATH_REGEX.is_match("/deeply/nested/dir/file.ts"));
+        assert!(FILE_PATH_REGEX.is_match("/file_name.ts"));
+        assert!(FILE_PATH_REGEX.is_match("/test-file.ts"));
 
         // Invalid paths
-        assert!(!FILE_PATH_REGEX.is_match("file.txt")); // Missing leading slash
+        assert!(!FILE_PATH_REGEX.is_match("test/file.txt")); // Missing leading slash
+        assert!(!FILE_PATH_REGEX.is_match("file.txt"));
+        assert!(!FILE_PATH_REGEX.is_match("/deeply/nested/dir/file.d.ts")); // only one extension
         assert!(!FILE_PATH_REGEX.is_match("/folder/")); // Ends in slash (not a file)
         assert!(!FILE_PATH_REGEX.is_match("/fol@der/file.txt")); // Illegal characters
+    }
+
+    #[tokio::test]
+    async fn test_regex_dir_path_validation() {
+        // Valid paths
+        assert!(DIR_REGEX.is_match("/"));
+        assert!(DIR_REGEX.is_match("/test/"));
+        assert!(DIR_REGEX.is_match("/folder/test/"));
+        assert!(DIR_REGEX.is_match("/folder 1/_test/"));
+        assert!(DIR_REGEX.is_match("/deeply/nested/dir/here/"));
+
+        // Invalid paths
+        assert!(!DIR_REGEX.is_match("test/")); // Missing leading slash
+        assert!(!DIR_REGEX.is_match("/test/tes")); // Missing ending slash
+        assert!(!DIR_REGEX.is_match("/test/file.txt")); // File not dir
+        assert!(!DIR_REGEX.is_match("/folder/.hidden/")); // No dots
+        assert!(!DIR_REGEX.is_match("/fol@der/my_secret/")); // Illegal characters
+        assert!(!DIR_REGEX.is_match("/../wonky/")); // Illegal characters
     }
 
     #[tokio::test]
@@ -1107,6 +1130,9 @@ mod tests {
         assert_eq!(file.name, "file.txt");
         assert_eq!(file.path, "/test_folder/nested/file.txt");
         assert_eq!(file.size, 1024);
+
+        let no_file_ext = server.add_file("/test".to_string(), 1024).await;
+        assert_eq!(no_file_ext.unwrap_err(), "Illegal file name".to_string());
 
         let tree = server.get_paths_tree().await;
 
@@ -1173,7 +1199,7 @@ mod tests {
     async fn test_add_and_delete_directory() {
         let mut server = setup_test_server().await;
 
-        let dir_path = "/my_folder/child_folder".to_string();
+        let dir_path = "/my_folder/child_folder/".to_string();
         server.add_dir(&dir_path).await.expect("Failed to add dir");
 
         let file = server
@@ -1184,7 +1210,7 @@ mod tests {
         fs::write(&disk_path, b"data").await.unwrap();
 
         let deleted_dir = server
-            .delete_dir("/my_folder".to_string())
+            .delete_dir("/my_folder/".to_string())
             .await
             .expect("Failed to delete dir");
         assert_eq!(deleted_dir.name, "my_folder");
@@ -1224,18 +1250,17 @@ mod tests {
 
         assert_eq!(path_dir.files[0].name, "file.txt");
 
-        // Easier to make harmless wonkyness a feature than fixing it...
         let weird_path = "/../wonky/.file/....path..txt".to_string();
 
-        let file = server.add_file(weird_path, 50).await.unwrap();
-        assert_eq!(file.path, "/../wonky/.file/....path..txt");
+        let file = server.add_file(weird_path, 50).await;
+        assert_eq!(file.unwrap_err(), "Illegal file name");
     }
 
     #[tokio::test]
     async fn test_move_file_cross_directory_and_rename() {
         let mut server = setup_test_server().await;
-        server.add_dir(&"/folder_a".to_string()).await.unwrap();
-        server.add_dir(&"/folder_b".to_string()).await.unwrap();
+        server.add_dir(&"/folder_a/".to_string()).await.unwrap();
+        server.add_dir(&"/folder_b/".to_string()).await.unwrap();
         server
             .add_file("/folder_a/test.txt".to_string(), 10)
             .await
@@ -1279,7 +1304,7 @@ mod tests {
     #[tokio::test]
     async fn test_move_file_rename_index_shift_bug() {
         let mut server = setup_test_server().await;
-        server.add_dir(&"/docs".to_string()).await.unwrap();
+        server.add_dir(&"/docs/".to_string()).await.unwrap();
         server
             .add_file("/docs/apple.txt".to_string(), 10)
             .await
@@ -1366,12 +1391,12 @@ mod tests {
             .add_file("/parent/child/deep/file.txt".to_string(), 10)
             .await
             .unwrap();
-        server.add_dir(&"/archive".to_string()).await.unwrap();
+        server.add_dir(&"/archive/".to_string()).await.unwrap();
 
         let moved_dir = server
             .move_dir(
-                &"/parent/child".to_string(),
-                &"/archive/renamed_child".to_string(),
+                &"/parent/child/".to_string(),
+                &"/archive/renamed_child/".to_string(),
             )
             .await
             .unwrap();
@@ -1405,27 +1430,27 @@ mod tests {
     #[tokio::test]
     async fn test_move_dir_inception_protection() {
         let mut server = setup_test_server().await;
-        server.add_dir(&"/docs/archive".to_string()).await.unwrap();
+        server.add_dir(&"/docs/archive/".to_string()).await.unwrap();
 
         // 1. Block moving into itself
         let err1 = server
-            .move_dir(&"/docs".to_string(), &"/docs".to_string())
+            .move_dir(&"/docs/".to_string(), &"/docs/".to_string())
             .await
             .unwrap_err();
         assert!(err1.contains("Cannot move a directory into itself"));
 
         // 2. Block moving into its own child (Orphan Tree Bug)
         let err2 = server
-            .move_dir(&"/docs".to_string(), &"/docs/archive/nested".to_string())
+            .move_dir(&"/docs/".to_string(), &"/docs/archive/nested/".to_string())
             .await
             .unwrap_err();
         assert!(err2.contains("Cannot move a directory into itself"));
 
         // 3. DO NOT block moving into a different folder with a similar prefix name!
         // This ensures new_dir_path.starts_with(&format!("{}/", old_dir_path)) is working perfectly.
-        server.add_dir(&"/docs_new".to_string()).await.unwrap();
+        server.add_dir(&"/docs_new/".to_string()).await.unwrap();
         let success = server
-            .move_dir(&"/docs".to_string(), &"/docs_new/docs".to_string())
+            .move_dir(&"/docs/".to_string(), &"/docs_new/docs/".to_string())
             .await;
 
         assert!(
