@@ -2,7 +2,7 @@
 
 import { type Client, formDataBodySerializer, type Options as Options2, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { AddFilesData, AddFilesErrors, AddFilesResponses, CreateDisplayData, CreateDisplayErrors, CreateDisplayResponses, CreatePlaylistData, CreatePlaylistErrors, CreatePlaylistResponses, CreateScheduleData, CreateScheduleErrors, CreateScheduleResponses, DeleteDisplayData, DeleteDisplayErrors, DeleteDisplayResponses, DeleteFilesData, DeleteFilesErrors, DeleteFilesResponses, DeletePlaylistData, DeletePlaylistErrors, DeletePlaylistResponses, DeleteScheduleData, DeleteScheduleErrors, DeleteScheduleResponses, GetAllPathsListData, GetAllPathsListResponses, GetAllPathsTreeData, GetAllPathsTreeResponses, ReadDisplaysData, ReadDisplaysResponses, ReadPlaylistData, ReadPlaylistResponses, ReadScheduleData, ReadScheduleResponses, ScheduleInfoData, ScheduleInfoErrors, ScheduleInfoResponses, UpdateDisplayData, UpdateDisplayErrors, UpdateDisplayResponses, UpdatePlaylistData, UpdatePlaylistErrors, UpdatePlaylistResponses, UpdateScheduleData, UpdateScheduleErrors, UpdateScheduleResponses } from './types.gen';
+import type { AddFilesData, AddFilesErrors, AddFilesResponses, CreateDisplayData, CreateDisplayErrors, CreateDisplayResponses, CreatePlaylistData, CreatePlaylistErrors, CreatePlaylistResponses, CreateScheduleData, CreateScheduleErrors, CreateScheduleResponses, DeleteDisplayData, DeleteDisplayErrors, DeleteDisplayResponses, DeleteFilesData, DeleteFilesErrors, DeleteFilesResponses, DeletePlaylistData, DeletePlaylistErrors, DeletePlaylistResponses, DeleteScheduleData, DeleteScheduleErrors, DeleteScheduleResponses, GetAllPathsListData, GetAllPathsListResponses, GetAllPathsTreeData, GetAllPathsTreeResponses, ReadDisplaysData, ReadDisplaysResponses, ReadPlaylistData, ReadPlaylistResponses, ReadScheduleData, ReadScheduleResponses, RenameFilesData, RenameFilesErrors, RenameFilesResponses, ScheduleInfoData, ScheduleInfoErrors, ScheduleInfoResponses, UpdateDisplayData, UpdateDisplayErrors, UpdateDisplayResponses, UpdatePlaylistData, UpdatePlaylistErrors, UpdatePlaylistResponses, UpdateScheduleData, UpdateScheduleErrors, UpdateScheduleResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean> = Options2<TData, ThrowOnError> & {
     /**
@@ -43,7 +43,7 @@ export const updateDisplay = <ThrowOnError extends boolean = false>(options: Opt
 /**
  * Delete files and directories
  *
- * ids ending with a `'/'` will be treated as a dir, and recursively remote all contained items if present.
+ * ids ending with a `'/'` will be treated as a dir, and recursively remove all contained items if present.
  */
 export const deleteFiles = <ThrowOnError extends boolean = false>(options: Options<DeleteFilesData, ThrowOnError>) => (options.client ?? client).delete<DeleteFilesResponses, DeleteFilesErrors, ThrowOnError>({
     url: '/api/files',
@@ -60,6 +60,23 @@ export const addFiles = <ThrowOnError extends boolean = false>(options: Options<
     ...options,
     headers: {
         'Content-Type': null,
+        ...options.headers
+    }
+});
+
+/**
+ * Move/Rename files and folders
+ *
+ * Multiple files and folders can be renamed at once. The from and to paths should be on the corresponding index of the `ids_from`
+ * and the `ids_to` respectively.
+ *
+ * ids ending with a `'/'` will be treated as a dir, and recursively move all contained items if present.
+ */
+export const renameFiles = <ThrowOnError extends boolean = false>(options: Options<RenameFilesData, ThrowOnError>) => (options.client ?? client).put<RenameFilesResponses, RenameFilesErrors, ThrowOnError>({
+    url: '/api/files',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
         ...options.headers
     }
 });

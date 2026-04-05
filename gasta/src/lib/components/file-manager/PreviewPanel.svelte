@@ -9,24 +9,27 @@
 
 <script lang="ts">
 	import FileIcon from './FileIcon.svelte';
-	import { Button } from '$lib/components/ui/button';
-	import { ScrollArea } from '$lib/components/ui/scroll-area';
-	import { Separator } from '$lib/components/ui/separator';
+	import { Button, buttonVariants } from '../ui/button';
+	import { ScrollArea } from '../ui/scroll-area';
+	import { Separator } from '../ui/separator';
 	import DownloadIcon from '@lucide/svelte/icons/download';
 	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import EyeIcon from '@lucide/svelte/icons/eye';
 	import { filesize } from 'filesize';
 	import { ExternalLink, Files, Folder } from '@lucide/svelte';
-	import * as Resizable from '$lib/components/ui/resizable';
-	import { watch } from 'runed';
-	import * as Sheet from '$lib/components/ui/sheet';
+	import * as Resizable from '../ui/resizable';
+	import { PressedKeys, watch } from 'runed';
+	import * as Sheet from '../ui/sheet';
 	import { useFileManager } from './file-manager.svelte';
 	import type { TreeFile } from '$lib/server/sasta_client';
 	import { toast } from 'svelte-sonner';
+	import * as AlertDialog from '../ui/alert-dialog';
+	import { Input } from '../ui/input';
 
 	// svelte-ignore non_reactive_update
 	let pane: ReturnType<typeof Resizable.Pane>;
+	const keys = new PressedKeys();
 
 	const fm = useFileManager();
 
@@ -39,6 +42,31 @@
 				} else if (!fm.previewOpen && pane.isExpanded()) {
 					pane.collapse();
 				}
+			}
+		}
+	);
+
+	let renameName = $state('');
+	let renameExtension = $state('');
+	let renamePaneOpen = $state(false);
+	let renameError = $state('');
+
+	const openRenamePane = () => {
+		const selected = fm.oneSelected();
+		if (selected) {
+			const [name, ext] = selected.name.split('.');
+			renameName = name;
+			renameExtension = ext;
+			renamePaneOpen = true;
+			renameError = '';
+		}
+	};
+
+	watch(
+		() => keys.all,
+		() => {
+			if (keys.has('f2')) {
+				openRenamePane();
 			}
 		}
 	);
@@ -138,10 +166,51 @@
 										</Button>
 									</a>
 								{/if}
-								<Button variant="secondary" size="sm" class="gap-2">
+								<Button
+									variant="secondary"
+									size="sm"
+									class="gap-2"
+									onclick={() => openRenamePane()}
+								>
 									<PencilIcon class="w-4 h-4" />
 									Rename
 								</Button>
+								<AlertDialog.Root bind:open={renamePaneOpen}>
+									<AlertDialog.Content>
+										<AlertDialog.Header>
+											<AlertDialog.Title>Rename {selectedItem.name}</AlertDialog.Title>
+										</AlertDialog.Header>
+										<div class="flex flex-col">
+											<div class="flex gap-4 items-center text-muted-foreground">
+												<PencilIcon size={50} />
+												<Input bind:value={renameName} placeholder="New name" autofocus />
+												{#if renameExtension}
+													<p>.{renameExtension}</p>
+												{/if}
+											</div>
+											{#if renameError}
+												<span class="text-red-400">{renameError}</span>
+											{/if}
+										</div>
+										<AlertDialog.Footer>
+											<AlertDialog.Cancel type="button">Cancel</AlertDialog.Cancel>
+											<AlertDialog.Action
+												disabled={!renameName ||
+													`${renameName}.${renameExtension}` === selectedItem.name ||
+													renameName === selectedItem.name}
+												onclick={async () => {
+													renameError = await fm.renameItem(
+														selectedItem,
+														`${renameName}${renameExtension ? '.' + renameExtension : '/'}`
+													);
+													if (!renameError) {
+														renamePaneOpen = false;
+													}
+												}}>Rename</AlertDialog.Action
+											>
+										</AlertDialog.Footer>
+									</AlertDialog.Content>
+								</AlertDialog.Root>
 								<Button variant="secondary" size="sm" class="gap-2">
 									<Folder class="w-4 h-4" />
 									Move

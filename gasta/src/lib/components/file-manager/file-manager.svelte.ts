@@ -151,6 +151,16 @@ export class FileManager {
 		return '';
 	}
 
+	async renameItem(id: TreeFile | TreeDirectory, newName: string): Promise<string> {
+		try {
+			await this.#api.renameItem(id.id, this.currentPath + newName);
+			await this.refresh();
+		} catch (error: any) {
+			return error.body?.message || 'Folder creation failed';
+		}
+		return '';
+	}
+
 	constructor(api: FileManagerAPI, initialRoot: TreeDirectory) {
 		this.#api = api;
 		this.#root = $state(initialRoot);

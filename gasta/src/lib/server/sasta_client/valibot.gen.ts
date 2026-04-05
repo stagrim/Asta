@@ -57,6 +57,11 @@ export const vNextMoment = v.object({
     playlist: v.pipe(v.string(), v.uuid())
 });
 
+export const vRenameRequest = v.object({
+    ids_from: v.array(v.string()),
+    ids_to: v.array(v.string())
+});
+
 export const vScheduleInfo = v.object({
     current: v.pipe(v.string(), v.uuid()),
     next: v.optional(v.union([v.null(), vNextMoment]))
@@ -251,6 +256,17 @@ export const vAddFilesData = v.object({
  * Files uploaded successfully
  */
 export const vAddFilesResponse = vPayload;
+
+export const vRenameFilesData = v.object({
+    body: vRenameRequest,
+    path: v.optional(v.never()),
+    query: v.optional(v.never())
+});
+
+/**
+ * Files and folders renamed successfully
+ */
+export const vRenameFilesResponse = vPayload;
 
 export const vGetAllPathsListData = v.object({
     body: v.optional(v.never()),

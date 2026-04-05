@@ -106,6 +106,11 @@ export type PlaylistItem = {
     type: 'BACKGROUND_AUDIO';
 };
 
+export type RenameRequest = {
+    ids_from: Array<string>;
+    ids_to: Array<string>;
+};
+
 export type Schedule = {
     name: string;
     playlist: string;
@@ -318,6 +323,31 @@ export type AddFilesResponses = {
 };
 
 export type AddFilesResponse = AddFilesResponses[keyof AddFilesResponses];
+
+export type RenameFilesData = {
+    body: RenameRequest;
+    path?: never;
+    query?: never;
+    url: '/api/files';
+};
+
+export type RenameFilesErrors = {
+    /**
+     * Bad Request
+     */
+    400: Payload;
+};
+
+export type RenameFilesError = RenameFilesErrors[keyof RenameFilesErrors];
+
+export type RenameFilesResponses = {
+    /**
+     * Files and folders renamed successfully
+     */
+    200: Payload;
+};
+
+export type RenameFilesResponse = RenameFilesResponses[keyof RenameFilesResponses];
 
 export type GetAllPathsListData = {
     body?: never;

@@ -11,7 +11,8 @@
 		createFolder: (directory) => createFolder({ directory, files: [] }),
 		// TODO: Confirm deletion and show playlists using this file
 		deleteFile: (ids) => removeFile({ body: { ids } }),
-		renameFile: (uuid, newName) => renameFile()
+		renameItem: (id_from, id_to) => renameFile({ body: { ids_from: [id_from], ids_to: [id_to] } }),
+		moveItems: (ids_from, ids_to) => renameFile({ body: { ids_from, ids_to } })
 	};
 
 	const { directory, files } = uploadFile.fields;

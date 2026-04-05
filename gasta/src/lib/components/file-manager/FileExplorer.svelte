@@ -74,10 +74,8 @@
 		() => keys.all,
 		() => {
 			if (keys.has('Control', 'X')) {
-				console.log('test');
 				fm.setClipboard(fm.getSelected(), 'clip');
-			}
-			if (keys.has('Delete')) {
+			} else if (keys.has('Delete')) {
 				fm.deleteFile(fm.getSelected());
 			}
 		}

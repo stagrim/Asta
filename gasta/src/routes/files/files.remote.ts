@@ -4,11 +4,13 @@ import {
 	addFiles,
 	deleteFiles,
 	getAllPathsTree,
+	renameFiles,
 	type TreeDirectory
 } from '$lib/server/sasta_client';
 import {
 	vDeleteFilesData,
-	vFileUpload as generatedFileUpload
+	vFileUpload as generatedFileUpload,
+	vRenameFilesData
 } from '$lib/server/sasta_client/valibot.gen';
 import { error } from '@sveltejs/kit';
 
@@ -93,10 +95,20 @@ export const removeFile = command(vDeleteFilesData, async ({ body }) => {
 	return true;
 });
 
-export const renameFile = command(async () => {
-	console.log('TODO: implement');
-	// const res = await { path: { uuid: payload.uuid }, body: { name: payload.name } };
-	// if (res.error) throw new Error('Failed to rename');
+export const renameFile = command(vRenameFilesData, async ({ body }) => {
+	if (body.ids_from.length != 1 || body.ids_to.length != 1) {
+		error(403, 'Only one item may be renamed at a time');
+	}
+	const res = await renameFiles({ body });
+	if (res.error) {
+		console.error(res.error);
+		if (res.error.type === 'Error') {
+			error(500, res.error.content?.message);
+		} else {
+			error(500, 'Could not rename file');
+		}
+	}
+	await getFiles().refresh();
 	return true;
 });
 
