@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Folder, FolderOpen } from '@lucide/svelte';
+	import { Folder, FolderOpen, House } from '@lucide/svelte';
 	import { cn } from '$lib/utils';
 	import { getTreeContext } from './ctx.svelte';
 	import * as Collapsible from '../ui/collapsible';
@@ -12,12 +12,17 @@
 		name: string;
 		open?: boolean;
 	};
-
 	let { id, name, open, class: className, children, ...props }: Props = $props();
 
+	let isRoot = $derived(id === '/');
+
+	// svelte-ignore state_referenced_locally
+	if (isRoot) {
+		open = true;
+	}
 	const ctx = getTreeContext();
 	let isSelected = $derived(id && ctx.selectedId === id);
-	let IconComponent = $derived(open ? FolderOpen : Folder);
+	let IconComponent = $derived(isRoot ? House : open ? FolderOpen : Folder);
 
 	$effect(() => {
 		if (id && ctx.selectedId?.startsWith(id)) {
@@ -42,7 +47,9 @@
 			<div class="flex flex-1 gap-2 cursor-pointer">
 				<IconComponent class="size-4 shrink-0 text-muted-foreground" />
 
-				<span class="truncate mr-5">{name}</span>
+				<span class="truncate mr-5">
+					{#if isRoot}Home{:else}{name}{/if}
+				</span>
 			</div>
 		</div>
 	</Collapsible.Trigger>

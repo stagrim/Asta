@@ -8,5 +8,5 @@ export interface FileManagerAPI {
 	createFolder: (id: string) => Promise<boolean>;
 	deleteFile: (ids: string[]) => Promise<boolean>;
 	renameItem: (id: string, newName: string) => Promise<boolean>;
-	moveItems: (id: string[], newName: string[]) => Promise<boolean>;
+	moveItems: (ids: string[], newName: string) => Promise<boolean>;
 }

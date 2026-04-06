@@ -95,7 +95,7 @@ export const removeFile = command(vDeleteFilesData, async ({ body }) => {
 	return true;
 });
 
-export const renameFile = command(vRenameFilesData, async ({ body }) => {
+export const renameItem = command(vRenameFilesData, async ({ body }) => {
 	if (body.ids_from.length != 1 || body.ids_to.length != 1) {
 		error(403, 'Only one item may be renamed at a time');
 	}
@@ -111,6 +111,34 @@ export const renameFile = command(vRenameFilesData, async ({ body }) => {
 	await getFiles().refresh();
 	return true;
 });
+
+/** ids_from may contain multiple paths to be moved.
+ *  ids_to may only contain one directory where all should be moved.
+ */
+// The server rename is very flexible, so must have some logic to mold a into a pure file/dir 'move' function
+export const moveItem = command(
+	v.object({
+		ids_from: v.array(v.string()),
+		id_to: v.string()
+	}),
+	async ({ ids_from, id_to }) => {
+		if (ids_from.length === 0) {
+			error(403, 'Must give at least one path to move');
+		}
+		const ids_to = ids_from.map((p) => `${id_to}${p.split('/').at(-1)}`);
+		const res = await renameFiles({ body: { ids_from, ids_to } });
+		if (res.error) {
+			console.error(res.error);
+			if (res.error.type === 'Error') {
+				error(500, res.error.content?.message);
+			} else {
+				error(500, 'Could not rename file');
+			}
+		}
+		await getFiles().refresh();
+		return true;
+	}
+);
 
 function traverseTree(path: string, root: TreeDirectory): TreeDirectory | null {
 	const dirs = path.split('/').filter((s) => s);

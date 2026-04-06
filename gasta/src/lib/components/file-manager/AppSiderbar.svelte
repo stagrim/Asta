@@ -227,7 +227,6 @@
 						</AlertDialog.Content>
 					</AlertDialog.Root>
 					<ButtonGroup.Separator />
-					<!-- <Button class="grow" variant="secondary" size="sm"><FolderPlus /> New Folder</Button> -->
 					<AlertDialog.Root bind:open={folderPaneOpen}>
 						<AlertDialog.Trigger
 							class="grow {buttonVariants({ variant: 'secondary', size: 'sm' })}"

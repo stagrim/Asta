@@ -161,6 +161,19 @@ export class FileManager {
 		return '';
 	}
 
+	async moveItems(ids: (TreeFile | TreeDirectory)[], newDirectory: string): Promise<string> {
+		try {
+			await this.#api.moveItems(
+				ids.map((i) => i.id),
+				newDirectory
+			);
+			await this.refresh();
+		} catch (error: any) {
+			return error.body?.message || 'Folder creation failed';
+		}
+		return '';
+	}
+
 	constructor(api: FileManagerAPI, initialRoot: TreeDirectory) {
 		this.#api = api;
 		this.#root = $state(initialRoot);

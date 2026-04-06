@@ -22,10 +22,11 @@
 	import { PressedKeys, watch } from 'runed';
 	import * as Sheet from '../ui/sheet';
 	import { useFileManager } from './file-manager.svelte';
-	import type { TreeFile } from '$lib/server/sasta_client';
+	import type { TreeDirectory, TreeFile } from '$lib/server/sasta_client';
 	import { toast } from 'svelte-sonner';
 	import * as AlertDialog from '../ui/alert-dialog';
 	import { Input } from '../ui/input';
+	import * as TreeView from '../tree-view';
 
 	// svelte-ignore non_reactive_update
 	let pane: ReturnType<typeof Resizable.Pane>;
@@ -62,6 +63,16 @@
 		}
 	};
 
+	let moveValue = $state('');
+	let movePaneOpen = $state(false);
+	let moveError = $state('');
+
+	const openMovePane = () => {
+		moveValue = '';
+		movePaneOpen = true;
+		moveError = '';
+	};
+
 	watch(
 		() => keys.all,
 		() => {
@@ -80,7 +91,7 @@
 		</header>
 
 		{#if selectedItem}
-			<ScrollArea class="flex-1">
+			<div class="flex-1 overflow-auto">
 				<div class="p-4">
 					<div class="flex flex-col items-center mb-6">
 						<div class="rounded-lg mb-3">
@@ -211,7 +222,7 @@
 										</AlertDialog.Footer>
 									</AlertDialog.Content>
 								</AlertDialog.Root>
-								<Button variant="secondary" size="sm" class="gap-2">
+								<Button variant="secondary" size="sm" class="gap-2" onclick={() => openMovePane()}>
 									<Folder class="w-4 h-4" />
 									Move
 								</Button>
@@ -228,20 +239,28 @@
 						</div>
 					</div>
 				</div>
-			</ScrollArea>
+			</div>
 		{:else if fm.nbrSelected() > 1}
-			<div class="flex-1 flex flex-col items-center justify-center text-muted-foreground p-4">
+			<div class="flex-1 flex flex-col items-center justify-center text-muted-foreground p-4 gap-2">
 				<Files class="w-12 h-12 mb-3 stroke-1" />
 				<p class="text-sm text-center">{fm.nbrSelected()} items selected</p>
-				<Button
-					variant="destructive"
-					size="sm"
-					class="gap-2"
-					onclick={() => fm.deleteFile(fm.getSelected()) || toast('Could not delete files')}
-				>
-					<Trash2Icon class="w-4 h-4" />
-					Delete
-				</Button>
+				<div class="@container w-full">
+					<div class="grid gap-2 grid-cols-1 @[230px]:grid-cols-2">
+						<Button variant="secondary" size="sm" class="gap-2" onclick={() => openMovePane()}>
+							<Folder class="w-4 h-4" />
+							Move
+						</Button>
+						<Button
+							variant="destructive"
+							size="sm"
+							class="gap-2"
+							onclick={() => fm.deleteFile(fm.getSelected()) || toast('Could not delete files')}
+						>
+							<Trash2Icon class="w-4 h-4" />
+							Delete
+						</Button>
+					</div>
+				</div>
 			</div>
 		{:else}
 			<div class="flex-1 flex flex-col items-center justify-center text-muted-foreground p-4">
@@ -252,9 +271,45 @@
 	</aside>
 {/snippet}
 
+<AlertDialog.Root bind:open={movePaneOpen}>
+	<AlertDialog.Content>
+		<AlertDialog.Header>
+			<AlertDialog.Title>Move item(s)</AlertDialog.Title>
+		</AlertDialog.Header>
+		<!-- <div class="flex flex-col">
+			<div class="flex gap-4 items-center text-muted-foreground">
+				<PencilIcon size={50} />
+				<Input bind:value={moveValue} placeholder="New name" autofocus />
+				{#if renameExtension}
+					<p>.{renameExtension}</p>
+				{/if}
+			</div>
+
+		</div> -->
+		<TreeView.Root selectedId={moveValue}>
+			{@render recursiveNode(fm.root)}
+		</TreeView.Root>
+		{#if moveError}
+			<span class="text-red-400">{moveError}</span>
+		{/if}
+		<AlertDialog.Footer>
+			<AlertDialog.Cancel type="button">Cancel</AlertDialog.Cancel>
+			<AlertDialog.Action
+				disabled={!moveValue}
+				onclick={async () => {
+					moveError = await fm.moveItems(fm.getSelected(), moveValue);
+					if (!moveError) {
+						movePaneOpen = false;
+					}
+				}}>Move</AlertDialog.Action
+			>
+		</AlertDialog.Footer>
+	</AlertDialog.Content>
+</AlertDialog.Root>
+
 {#if fm.isMobile}
 	<Sheet.Root bind:open={fm.previewOpen}>
-		<Sheet.Content side="right" class="p-0 w-[300px]">
+		<Sheet.Content side="right" class="p-0 w-75">
 			{@render previewContent()}
 		</Sheet.Content>
 	</Sheet.Root>
@@ -273,3 +328,25 @@
 		{/if}
 	</Resizable.Pane>
 {/if}
+
+{#snippet recursiveNode(node: TreeDirectory)}
+	{#if node.directories.length}
+		<TreeView.Folder
+			open={false}
+			name={node.name}
+			id={node.id}
+			onclick={() => (moveValue = node.id)}
+		>
+			{#each node.directories as child}
+				{@render recursiveNode(child)}
+			{/each}
+		</TreeView.Folder>
+	{:else}
+		<TreeView.Folder
+			open={false}
+			name={node.name}
+			id={node.id}
+			onclick={() => (moveValue = node.id)}
+		/>
+	{/if}
+{/snippet}
