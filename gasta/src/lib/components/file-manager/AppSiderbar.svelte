@@ -220,7 +220,7 @@
 									bindFileInput,
 									setLoading,
 									resetFiles,
-									currentPath: fm.currentPath,
+									currentPath: fm.currentPath.type === 'Path' ? fm.currentPath.path : '/',
 									refreshManager: async () => await fm.refresh()
 								})}
 							{/if}
@@ -267,7 +267,9 @@
 					<h4 class="my-2 rounded-md px-4 text-xs text-muted-foreground">Quick Access</h4>
 					<div class="grid gap-1">
 						<Button
-							variant={fm.currentPath === '/' ? 'secondary' : 'ghost'}
+							variant={fm.currentPath.type === 'Path' && fm.currentPath.path === '/'
+								? 'secondary'
+								: 'ghost'}
 							class="w-full justify-start h-8"
 							onclick={() => fm.navigate('/')}
 						>
@@ -275,20 +277,21 @@
 							Home
 						</Button>
 						<Button
-							variant={fm.currentPath === 'Recent' ? 'secondary' : 'ghost'}
+							variant={fm.currentPath.type === 'Recent' ? 'secondary' : 'ghost'}
 							class="w-full justify-start h-8"
-							onclick={() => fm.navigate('Recent')}
+							onclick={() => fm.navigateSpecial('Recent')}
 						>
 							<History class="h-4 w-4" />
 							Recent
 						</Button>
+						<!-- TODO: Unused tab, where all files unused by Asta is put -->
 					</div>
 				</div>
 
 				<div class="mt-4">
 					<h4 class="mb-1 rounded-md px-4 text-xs text-muted-foreground">Filesystem</h4>
 					<div class="grid gap-1">
-						<TreeView.Root selectedId={fm.currentPath}>
+						<TreeView.Root selectedId={fm.currentPath.type === 'Path' ? fm.currentPath.path : ''}>
 							{#each fm.root.directories ?? [] as child}
 								{@render recursiveNode(child)}
 							{/each}

@@ -17,19 +17,21 @@ export class FileManager {
 		try {
 			this.#root = await this.#api.getFileTree();
 
-			// Sync current path to the new tree
-			if (this.#currentPath === '/') {
-				this.#currentDirectory = this.#root;
-			} else {
-				// Find the new object reference for the folder we are currently in
-				const updatedCurrentDir = this.#traverseTree(this.#currentPath);
-
-				if (updatedCurrentDir) {
-					this.#currentDirectory = updatedCurrentDir;
-				} else {
-					// Fallback to root if the folder was deleted!
-					this.#currentPath = '/';
+			if (this.#currentPath.type === 'Path') {
+				// Sync current path to the new tree
+				if (this.#currentPath.path === '/') {
 					this.#currentDirectory = this.#root;
+				} else {
+					// Find the new object reference for the folder we are currently in
+					const updatedCurrentDir = this.#traverseTree(this.#currentPath.path);
+
+					if (updatedCurrentDir) {
+						this.#currentDirectory = updatedCurrentDir;
+					} else {
+						// Fallback to root if the folder was deleted!
+						this.#currentPath.path = '/';
+						this.#currentDirectory = this.#root;
+					}
 				}
 			}
 		} catch (e) {
@@ -38,7 +40,10 @@ export class FileManager {
 	}
 
 	// Current active path and directory
-	#currentPath = $state('/');
+	#currentPath: { path: string; type: 'Path' } | { type: 'Recent' } = $state({
+		path: '/',
+		type: 'Path'
+	});
 	/** String of currently opened directory's path */
 	get currentPath() {
 		return this.#currentPath;
@@ -125,6 +130,15 @@ export class FileManager {
 	#api: FileManagerAPI;
 
 	async deleteFile(ids: (TreeFile | TreeDirectory)[]): Promise<boolean> {
+		for (const id of ids) {
+			if ('directories' in id && (id.directories.length || id.files)) {
+				if (confirm('Are you sure you want to delete the directory? It is not empty')) {
+					break;
+				} else {
+					return false;
+				}
+			}
+		}
 		try {
 			await this.#api.deleteFile(ids.map((t) => t.id));
 		} catch (e) {
@@ -200,17 +214,22 @@ export class FileManager {
 		if (typeof directory === 'string') {
 			const dir = this.#traverseTree(directory);
 			if (dir) {
-				this.#currentPath = dir.id;
+				this.#currentPath = { type: 'Path', path: dir.id };
 				this.#currentDirectory = dir;
 				this.clearSelection();
 			} else {
+				// Special dirs
 				console.error(`${directory} was not found`);
 			}
 		} else {
-			this.#currentPath = directory.id;
+			this.#currentPath = { type: 'Path', path: directory.id };
 			this.#currentDirectory = directory;
 			this.clearSelection();
 		}
+	}
+
+	navigateSpecial(type: 'Recent') {
+		this.#currentPath = { type };
 	}
 
 	#traverseTree(path: string): TreeDirectory | null {

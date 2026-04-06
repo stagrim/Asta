@@ -1,13 +1,12 @@
 <script lang="ts">
 	import FileIcon from './FileIcon.svelte';
 	import { Button } from '$lib/components/ui/button';
-	import { ScrollArea } from '$lib/components/ui/scroll-area';
 	import { Separator } from '$lib/components/ui/separator';
 	import LayoutGridIcon from '@lucide/svelte/icons/layout-grid';
 	import ListIcon from '@lucide/svelte/icons/list';
 	import PanelRightIcon from '@lucide/svelte/icons/panel-right';
 	import FolderIcon from '@lucide/svelte/icons/folder';
-	import { Folder, FolderTree } from '@lucide/svelte';
+	import { Folder, FolderTree, History } from '@lucide/svelte';
 	import { filesize } from 'filesize';
 	import { cn } from '$lib/utils';
 	import * as Breadcrumb from '$lib/components/ui/breadcrumb';
@@ -18,17 +17,31 @@
 	const fm = useFileManager();
 
 	const recursivePath = $derived(
-		fm.currentPath
-			.split('/')
-			.filter((s) => s)
-			.reduce(
-				(pre, name) => [...pre, { href: `${pre.at(-1)?.href ?? ''}/${name}`, name }],
-				[] as { href: string; name: string }[]
-			)
+		fm.currentPath.type === 'Path' &&
+			fm.currentPath.path
+				.split('/')
+				.filter((s) => s)
+				.reduce(
+					(pre, name) => [...pre, { href: `${pre.at(-1)?.href ?? ''}/${name}`, name }],
+					[] as { href: string; name: string }[]
+				)
 	);
 
 	const keys = new PressedKeys();
-	const items = $derived([...fm.currentSubDirectories, ...fm.currentFiles]);
+	const items = $derived.by(() => {
+		if (fm.currentPath.type === 'Path') {
+			return [...fm.currentSubDirectories, ...fm.currentFiles];
+		} else if (fm.currentPath.type === 'Recent') {
+			const files: TreeFile[] = [];
+			function treeToArray(item: TreeDirectory) {
+				item.directories.forEach((i) => treeToArray(i));
+				item.files.forEach((i) => files.push(i));
+			}
+			treeToArray(fm.root);
+			return files.toSorted((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+		}
+		throw Error('Not Implemented');
+	});
 	const isCtrlPressed = $derived(keys.has('Control'));
 	const isShiftPressed = $derived(keys.has('Shift'));
 
@@ -99,20 +112,26 @@
 			<Separator orientation="vertical" class="h-4 mx-2" />
 			<Breadcrumb.Root>
 				<Breadcrumb.List>
-					{#each [{ name: 'Home', href: '/' }, ...recursivePath] as dir, i}
+					{#if recursivePath}
+						{#each [{ name: 'Home', href: '/' }, ...recursivePath] as dir, i}
+							<Breadcrumb.Item>
+								{#if i === recursivePath.length}
+									<Breadcrumb.Page>
+										{dir.name}
+									</Breadcrumb.Page>
+								{:else}
+									<Breadcrumb.Link class="cursor-pointer" onclick={() => fm.navigate(dir.href)}>
+										{dir.name}
+									</Breadcrumb.Link>
+									<Breadcrumb.Separator />
+								{/if}
+							</Breadcrumb.Item>
+						{/each}
+					{:else if fm.currentPath.type === 'Recent'}
 						<Breadcrumb.Item>
-							{#if i === recursivePath.length}
-								<Breadcrumb.Page>
-									{dir.name}
-								</Breadcrumb.Page>
-							{:else}
-								<Breadcrumb.Link class="cursor-pointer" onclick={() => fm.navigate(dir.href)}>
-									{dir.name}
-								</Breadcrumb.Link>
-								<Breadcrumb.Separator />
-							{/if}
+							<Breadcrumb.Page>Recent</Breadcrumb.Page>
 						</Breadcrumb.Item>
-					{/each}
+					{/if}
 				</Breadcrumb.List>
 			</Breadcrumb.Root>
 		</div>
@@ -202,13 +221,27 @@
 								fm.isInClipboard(item) && 'opacity-40'
 							)}
 							onclick={() => selectItem(item, i)}
-							ondblclick={() => (fm.previewOpen = true)}
+							ondblclick={() => {
+								if (fm.currentPath.type === 'Path') {
+									fm.previewOpen = true;
+								} else {
+									fm.navigate(item.id.replace(item.name, ''));
+									fm.setSelection(item);
+									fm.previewOpen = true;
+								}
+							}}
 						>
 							<FileIcon extension={item.name.split('.').at(-1)} size="lg" />
 							<span class="mt-2 text-sm text-foreground text-center break-all w-full">
 								{item.name}
 							</span>
-							<span class="text-xs text-muted-foreground">{filesize(item.size)}</span>
+							<span class="text-xs text-muted-foreground">
+								{#if fm.currentPath.type === 'Path'}
+									{filesize(item.size)}
+								{:else}
+									{new Date(item.date).toLocaleString()}
+								{/if}
+							</span>
 						</button>
 					{/if}
 				{/each}

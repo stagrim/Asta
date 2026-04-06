@@ -9,15 +9,14 @@
 
 <script lang="ts">
 	import FileIcon from './FileIcon.svelte';
-	import { Button, buttonVariants } from '../ui/button';
-	import { ScrollArea } from '../ui/scroll-area';
+	import { Button } from '../ui/button';
 	import { Separator } from '../ui/separator';
 	import DownloadIcon from '@lucide/svelte/icons/download';
 	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import EyeIcon from '@lucide/svelte/icons/eye';
 	import { filesize } from 'filesize';
-	import { ExternalLink, Files, Folder } from '@lucide/svelte';
+	import { CheckIcon, CopyIcon, ExternalLink, Files, Folder } from '@lucide/svelte';
 	import * as Resizable from '../ui/resizable';
 	import { PressedKeys, watch } from 'runed';
 	import * as Sheet from '../ui/sheet';
@@ -27,6 +26,7 @@
 	import * as AlertDialog from '../ui/alert-dialog';
 	import { Input } from '../ui/input';
 	import * as TreeView from '../tree-view';
+	import * as InputGroup from '../ui/input-group';
 
 	// svelte-ignore non_reactive_update
 	let pane: ReturnType<typeof Resizable.Pane>;
@@ -81,6 +81,8 @@
 			}
 		}
 	);
+
+	let copied = $state(false);
 </script>
 
 {#snippet previewContent()}
@@ -117,6 +119,7 @@
 
 					<div class="space-y-4">
 						{#if 'size' in selectedItem}
+							{@const astaURL = `ASTA:/${selectedItem.id}`}
 							<div>
 								<h4 class="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
 									Details
@@ -133,6 +136,38 @@
 										</dd>
 									</div>
 								</dl>
+							</div>
+
+							<Separator class="my-4" />
+							<div>
+								<h4 class="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+									Asta URL
+								</h4>
+								<InputGroup.Root>
+									<InputGroup.Input value={astaURL} class="text-zinc-500" readonly />
+									<InputGroup.Addon align="inline-end">
+										<InputGroup.Button
+											aria-label="Copy"
+											title="Copy"
+											size="icon-xs"
+											onclick={async () => {
+												try {
+													await navigator.clipboard.writeText(astaURL);
+													copied = true;
+													setTimeout(() => (copied = false), 2000);
+												} catch (err) {
+													toast('Could not copy Uuid, ' + err);
+												}
+											}}
+										>
+											{#if copied}
+												<CheckIcon />
+											{:else}
+												<CopyIcon />
+											{/if}
+										</InputGroup.Button>
+									</InputGroup.Addon>
+								</InputGroup.Root>
 							</div>
 						{:else}
 							<div>
@@ -241,10 +276,16 @@
 				</div>
 			</div>
 		{:else if fm.nbrSelected() > 1}
-			<div class="flex-1 flex flex-col items-center justify-center text-muted-foreground p-4 gap-2">
+			<div class="flex flex-col items-center justify-center text-muted-foreground p-4 gap-2">
 				<Files class="w-12 h-12 mb-3 stroke-1" />
 				<p class="text-sm text-center">{fm.nbrSelected()} items selected</p>
+
+				<Separator class="my-2" />
+
 				<div class="@container w-full">
+					<h4 class="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+						Actions
+					</h4>
 					<div class="grid gap-2 grid-cols-1 @[230px]:grid-cols-2">
 						<Button variant="secondary" size="sm" class="gap-2" onclick={() => openMovePane()}>
 							<Folder class="w-4 h-4" />
@@ -276,16 +317,6 @@
 		<AlertDialog.Header>
 			<AlertDialog.Title>Move item(s)</AlertDialog.Title>
 		</AlertDialog.Header>
-		<!-- <div class="flex flex-col">
-			<div class="flex gap-4 items-center text-muted-foreground">
-				<PencilIcon size={50} />
-				<Input bind:value={moveValue} placeholder="New name" autofocus />
-				{#if renameExtension}
-					<p>.{renameExtension}</p>
-				{/if}
-			</div>
-
-		</div> -->
 		<TreeView.Root selectedId={moveValue}>
 			{@render recursiveNode(fm.root)}
 		</TreeView.Root>
