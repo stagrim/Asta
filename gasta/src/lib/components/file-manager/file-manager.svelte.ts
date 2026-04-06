@@ -40,7 +40,10 @@ export class FileManager {
 	}
 
 	// Current active path and directory
-	#currentPath: { path: string; type: 'Path' } | { type: 'Recent' } = $state({
+	#currentPath:
+		| { path: string; type: 'Path' }
+		| { type: 'Recent' }
+		| { search: string; type: 'Search' } = $state({
 		path: '/',
 		type: 'Path'
 	});
@@ -228,8 +231,12 @@ export class FileManager {
 		}
 	}
 
-	navigateSpecial(type: 'Recent') {
-		this.#currentPath = { type };
+	navigateRecent() {
+		this.#currentPath = { type: 'Recent' };
+	}
+
+	navigateSearch(search: string) {
+		this.#currentPath = { type: 'Search', search };
 	}
 
 	#traverseTree(path: string): TreeDirectory | null {

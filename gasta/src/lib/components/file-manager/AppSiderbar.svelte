@@ -43,6 +43,12 @@
 
 	let searchQuery = $state('');
 
+	$effect(() => {
+		if (searchQuery) {
+			fm.navigateSearch(searchQuery);
+		}
+	});
+
 	watch(
 		() => fm.sidebarOpen,
 		() => {
@@ -279,7 +285,7 @@
 						<Button
 							variant={fm.currentPath.type === 'Recent' ? 'secondary' : 'ghost'}
 							class="w-full justify-start h-8"
-							onclick={() => fm.navigateSpecial('Recent')}
+							onclick={() => fm.navigateRecent()}
 						>
 							<History class="h-4 w-4" />
 							Recent

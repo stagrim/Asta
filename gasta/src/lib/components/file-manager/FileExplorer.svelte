@@ -6,7 +6,7 @@
 	import ListIcon from '@lucide/svelte/icons/list';
 	import PanelRightIcon from '@lucide/svelte/icons/panel-right';
 	import FolderIcon from '@lucide/svelte/icons/folder';
-	import { Folder, FolderTree, History } from '@lucide/svelte';
+	import { Folder, FolderTree } from '@lucide/svelte';
 	import { filesize } from 'filesize';
 	import { cn } from '$lib/utils';
 	import * as Breadcrumb from '$lib/components/ui/breadcrumb';
@@ -39,6 +39,18 @@
 			}
 			treeToArray(fm.root);
 			return files.toSorted((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+		} else if (fm.currentPath.type === 'Search') {
+			const items: (TreeFile | TreeDirectory)[] = [];
+			const search = fm.currentPath.search.trim().toLowerCase();
+			function treeToArray(item: TreeDirectory) {
+				item.directories.forEach((i) => {
+					items.push(i);
+					treeToArray(i);
+				});
+				item.files.forEach((i) => items.push(i));
+			}
+			treeToArray(fm.root);
+			return items.filter((f) => f.name.toLowerCase().includes(search));
 		}
 		throw Error('Not Implemented');
 	});
@@ -127,9 +139,9 @@
 								{/if}
 							</Breadcrumb.Item>
 						{/each}
-					{:else if fm.currentPath.type === 'Recent'}
+					{:else}
 						<Breadcrumb.Item>
-							<Breadcrumb.Page>Recent</Breadcrumb.Page>
+							<Breadcrumb.Page>{fm.currentPath.type}</Breadcrumb.Page>
 						</Breadcrumb.Item>
 					{/if}
 				</Breadcrumb.List>
@@ -236,10 +248,10 @@
 								{item.name}
 							</span>
 							<span class="text-xs text-muted-foreground">
-								{#if fm.currentPath.type === 'Path'}
-									{filesize(item.size)}
-								{:else}
+								{#if fm.currentPath.type === 'Recent'}
 									{new Date(item.date).toLocaleString()}
+								{:else}
+									{filesize(item.size)}
 								{/if}
 							</span>
 						</button>
