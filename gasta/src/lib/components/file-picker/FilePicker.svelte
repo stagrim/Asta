@@ -6,13 +6,40 @@
 	import FileIcon from '../file-manager/FileIcon.svelte';
 	import { ScrollArea } from '../ui/scroll-area';
 	import type { Snippet } from 'svelte';
+	import { Label } from '../ui/label';
+	import * as InputGroup from '../ui/input-group';
+	import { Funnel } from '@lucide/svelte';
 
 	let {
-		root,
+		root: originalRoot,
 		onSelected,
 		children
-	}: { root: TreeDirectory; onSelected: (selected: TreeFile) => void; children: Snippet } =
-		$props();
+	}: {
+		root: TreeDirectory;
+		onSelected: (selected: TreeFile) => void;
+		children: Snippet;
+	} = $props();
+
+	let searchQuery = $state('');
+	let root = $derived.by(() => {
+		let root = structuredClone(originalRoot);
+		const search = searchQuery.trim().toLowerCase();
+
+		if (!search) {
+			return root;
+		}
+
+		/** Filters away files not matching searchQuery, and all folders no having a nested, matching file */
+		function recursiveFilterInPlace(item: TreeDirectory, searchQuery: string): boolean {
+			item.directories = item.directories.filter((i) => recursiveFilterInPlace(i, searchQuery));
+			item.files = item.files.filter((i) => i.name.toLowerCase().includes(searchQuery));
+
+			return item.directories.length > 0 || item.files.length > 0;
+		}
+
+		recursiveFilterInPlace(root, searchQuery);
+		return root;
+	});
 
 	let selectedId = $state('');
 	let selectedFile = $state<TreeFile | undefined>();
@@ -36,9 +63,22 @@
 			<AlertDialog.Title>Choose a file</AlertDialog.Title>
 		</AlertDialog.Header>
 
+		<div class="relative py-1">
+			<Label for="search" class="sr-only">Search</Label>
+			<InputGroup.Root>
+				<InputGroup.Input type="search" placeholder="Filter..." bind:value={searchQuery} />
+				<InputGroup.Addon>
+					<Funnel />
+				</InputGroup.Addon>
+			</InputGroup.Root>
+		</div>
+
 		<div class="flex-1 min-h-0 overflow-hidden">
 			<div class="flex h-full gap-4 flex-col lg:flex-row">
 				<ScrollArea class="min-h-0 pr-2 flex-1">
+					{#if !root.directories.length && !root.files.length}
+						<p class="p-4 text-muted-foreground">No files found.</p>
+					{/if}
 					<TreeView.Root bind:selectedId bind:complementryData={selectedFile}>
 						{#each root.directories ?? [] as child}
 							{@render recursiveNode(child)}
@@ -84,8 +124,8 @@
 </AlertDialog.Root>
 
 {#snippet recursiveNode(node: TreeDirectory)}
-	{#if node.directories.length}
-		<TreeView.Folder open={false} name={node.name} id={node.id}>
+	{#if node.directories.length || node.files.length}
+		<TreeView.Folder open={searchQuery !== ''} name={node.name} id={node.id}>
 			{#each node.directories as child}
 				{@render recursiveNode(child)}
 			{/each}
