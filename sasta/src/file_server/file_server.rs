@@ -102,7 +102,11 @@ impl From<&File> for TreeFile {
 impl From<&Directory> for TreeDirectory {
     fn from(value: &Directory) -> Self {
         TreeDirectory {
-            id: format!("{}/", value.path.clone()),
+            id: if value.path == "/" {
+                "/".to_string()
+            } else {
+                format!("{}/", value.path.clone())
+            },
             name: value.name.clone(),
             files: value
                 .files
@@ -1118,6 +1122,13 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_path_of_root() {
+        let server = setup_test_server().await;
+        let tree = server.get_paths_tree().await;
+        assert_eq!(tree.id, "/");
+    }
+
+    #[tokio::test]
     async fn test_add_file_creates_directories() {
         let mut server = setup_test_server().await;
 
@@ -1147,6 +1158,8 @@ mod tests {
             .find(|d| d.name == "nested")
             .unwrap();
 
+        assert_eq!(test_folder.id, "/test_folder/");
+        assert_eq!(nested.id, "/test_folder/nested/");
         assert_eq!(nested.files.len(), 1);
         assert_eq!(nested.files[0].name, "file.txt");
     }
