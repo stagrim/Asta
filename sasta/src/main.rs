@@ -11,7 +11,10 @@ use chrono::Local;
 use hyper::StatusCode;
 use read::Payload;
 use store::{schedule::Moment, store::Store};
-use tokio::sync::{Mutex, oneshot};
+use tokio::{
+    signal,
+    sync::{Mutex, oneshot},
+};
 use tower_http::services::ServeDir;
 use tracing::{Level, error, info, info_span};
 use tracing_subscriber::{FmtSubscriber, fmt::format::FmtSpan};
@@ -142,19 +145,47 @@ async fn main() {
         .route("/ws", get(ws_handler))
         .route("/display/{uuid}", get(casta_index))
         .route("/casta/{uuid}", get(casta_index))
+        .route("/ping", get(async || "pong"))
         .nest_service("/assets", ServeDir::new("assets"))
         .with_state(app_state);
 
     let addr = SocketAddr::from_str(&sasta_address).expect("Wrong address format");
-    info!("listening on http://{}", addr);
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+    info!("listening on http://{}", addr);
 
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
     )
+    .with_graceful_shutdown(shutdown_signal())
     .await
     .unwrap();
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+
+    tracing::info!("Signal received, Sasta shutting down");
 }
 
 mod read {

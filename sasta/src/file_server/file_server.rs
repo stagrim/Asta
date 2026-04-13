@@ -350,6 +350,7 @@ pub async fn add_files(State(state): State<AppState>, multipart: Multipart) -> R
             .await
         {
             Ok(f) => {
+                //TODO: avoid hard coding file_server dir
                 match TokioFile::create(format!("file_server/{}", f.file_server)).await {
                     Ok(mut file) => {
                         if let Err(e) = file.write_all(&file_item.content).await {
