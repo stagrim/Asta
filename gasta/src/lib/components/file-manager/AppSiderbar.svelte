@@ -26,7 +26,6 @@
 	import { watch } from 'runed';
 	import type { TreeDirectory } from '$lib/server/sasta_client';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
-	//TODO: break this out of component using snippets or something
 	import * as FileDropZone from '$lib/components/ui-extra/file-drop-zone';
 	import { Button as ButtonExtra } from '$lib/components/ui-extra/button';
 	import { XIcon } from '@lucide/svelte';
@@ -43,11 +42,18 @@
 
 	let searchQuery = $state('');
 
-	$effect(() => {
-		if (searchQuery) {
-			fm.navigateSearch(searchQuery);
+	let lastDirectory = $state(fm.root);
+	watch(
+		() => searchQuery,
+		() => {
+			if (searchQuery) {
+				lastDirectory = fm.currentDirectory;
+				fm.navigateSearch(searchQuery);
+			} else {
+				fm.navigate(lastDirectory);
+			}
 		}
-	});
+	);
 
 	watch(
 		() => fm.sidebarOpen,

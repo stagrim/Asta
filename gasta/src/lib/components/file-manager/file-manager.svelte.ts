@@ -160,7 +160,9 @@ export class FileManager {
 		}
 
 		try {
-			await this.#api.createFolder(this.currentPath + folderName);
+			await this.#api.createFolder(
+				this.currentPath.type == 'Path' ? this.currentPath.path : '/' + folderName
+			);
 			await this.refresh();
 		} catch (error: any) {
 			return error.body?.message || 'Folder creation failed';
@@ -170,7 +172,8 @@ export class FileManager {
 
 	async renameItem(id: TreeFile | TreeDirectory, newName: string): Promise<string> {
 		try {
-			await this.#api.renameItem(id.id, this.currentPath + newName);
+			// TODO: use id.id split magic, and for the love of god extract it into a utility function
+			await this.#api.renameItem(id.id, `${id.id.split('/').slice(0, -1).join('/')}/${newName}`);
 			await this.refresh();
 		} catch (error: any) {
 			return error.body?.message || 'Folder creation failed';

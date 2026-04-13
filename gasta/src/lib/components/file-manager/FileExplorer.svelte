@@ -6,7 +6,7 @@
 	import ListIcon from '@lucide/svelte/icons/list';
 	import PanelRightIcon from '@lucide/svelte/icons/panel-right';
 	import FolderIcon from '@lucide/svelte/icons/folder';
-	import { Folder, FolderTree } from '@lucide/svelte';
+	import { Folder, FolderTree, SearchIcon } from '@lucide/svelte';
 	import { filesize } from 'filesize';
 	import { cn } from '$lib/utils';
 	import * as Breadcrumb from '$lib/components/ui/breadcrumb';
@@ -101,6 +101,7 @@
 			if (keys.has('Control', 'X')) {
 				fm.setClipboard(fm.getSelected(), 'clip');
 			} else if (keys.has('Delete')) {
+				// TODO: don't delete when a dialog is open
 				fm.deleteFile(fm.getSelected());
 			}
 		}
@@ -191,10 +192,15 @@
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div class="p-4 flex-1 overflow-y-auto box-border" onclick={clearSelection}>
-		{#if fm.currentEmpty()}
+		{#if !items.length}
 			<div class="flex flex-col items-center justify-center h-64 text-muted-foreground">
-				<FolderIcon class="w-16 h-16 mb-4 stroke-1" />
-				<p>This folder is empty</p>
+				{#if fm.currentPath.type == 'Search'}
+					<SearchIcon class="w-16 h-16 mb-4 stroke-1" />
+					<p>No Items matched search</p>
+				{:else}
+					<FolderIcon class="w-16 h-16 mb-4 stroke-1" />
+					<p>This folder is empty</p>
+				{/if}
 			</div>
 		{:else if fm.viewMode === 'grid'}
 			{@const buttonClasses =

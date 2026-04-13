@@ -245,6 +245,8 @@
 													`${renameName}.${renameExtension}` === selectedItem.name ||
 													renameName === selectedItem.name}
 												onclick={async () => {
+													console.info(renameName);
+
 													renameError = await fm.renameItem(
 														selectedItem,
 														`${renameName}${renameExtension ? '.' + renameExtension : '/'}`
