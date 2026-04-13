@@ -24,12 +24,6 @@ if (env.OAUTH_GROUPS) {
 	console.log('OAUTH groups not set, anybody can log in');
 }
 
-if (env.REDIS_URL) {
-	console.log(`Listening to Redis on ${env.REDIS_URL}`);
-} else if (!building) {
-	throw new Error("REDIS_URL environment variable is not defined, can't connect to Redis");
-}
-
 export const defaultHandle: Handle = async ({ event, resolve }) => {
 	// Ensure browser security
 	if (

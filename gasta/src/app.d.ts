@@ -13,7 +13,6 @@ declare global {
 			SERVER_URL: string;
 			LDAP_URL: string;
 			LDAP_GROUPS: string;
-			REDIS_URL: string;
 		}
 
 		interface Locals {
