@@ -1,4 +1,4 @@
-FROM rust:latest as build
+FROM rust:latest AS build
 
 WORKDIR /sasta
 COPY casta_protocol /casta_protocol
@@ -6,11 +6,19 @@ COPY sasta .
 
 RUN cargo build --release
 
-# Switch to Alpine instead for smaller images?
-# FROM gcr.io/distroless/cc-debian10
-FROM debian:stable-slim
+FROM debian:stable
 
-COPY --from=build /sasta/target/release/sasta /
-COPY sasta/assets /assets
+RUN groupadd -r sasta && useradd -r -g sasta sasta
 
-CMD ["/sasta"]
+RUN mkdir /files && chown sasta:sasta /files
+
+WORKDIR /sasta
+
+COPY --from=build --chown=sasta:sasta /sasta/target/release/sasta .
+COPY --chown=sasta:sasta sasta/assets ./assets
+
+USER sasta
+
+EXPOSE 8080
+
+CMD ["./sasta"]
