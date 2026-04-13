@@ -4,13 +4,11 @@ use std::{fs::File, io::Write, net::TcpListener};
 use indoc::{printdoc, writedoc};
 
 fn main() {
-    let (sasta_db_port, gasta_db_port, sasta_port) =
-        get_available_ports(3).into_iter().collect_tuple().unwrap();
+    let (sasta_db_port, sasta_port) = get_available_ports(2).into_iter().collect_tuple().unwrap();
 
     let mut env_file = File::create(".env").unwrap();
     writedoc! {env_file, "
         SASTA_DB_PORT={sasta_db_port}
-        GASTA_DB_PORT={gasta_db_port}
     ",}
     .unwrap();
 
@@ -18,7 +16,6 @@ fn main() {
     writedoc! {env_file, "
         SERVER_URL=http://127.0.0.1:{sasta_port}
         LDAP_URL=ldap://localhost
-        REDIS_URL=redis://127.0.0.1:{gasta_db_port}
     "}
     .unwrap();
 
@@ -33,7 +30,6 @@ fn main() {
         Allocated ports for services
 
         Sasta db use port     {sasta_db_port}
-        Gasta db use port     {gasta_db_port}
         Sasta server use port {sasta_port}
 
         Run 'docker compose up -d' here to start databases
