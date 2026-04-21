@@ -4,21 +4,20 @@ WORKDIR /sasta
 COPY casta_protocol /casta_protocol
 COPY sasta .
 
-RUN cargo build --release
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/sasta/target \
+    cargo build --release && \
+    cp /sasta/target/release/sasta /sasta/sasta_bin
 
-FROM debian:stable
-
-RUN groupadd -r sasta && useradd -r -g sasta sasta
-
-RUN mkdir /files && chown sasta:sasta /files
-
+FROM debian:stable-slim
+RUN useradd -r sasta
 WORKDIR /sasta
 
-COPY --from=build --chown=sasta:sasta /sasta/target/release/sasta .
-COPY --chown=sasta:sasta sasta/assets ./assets
+COPY --from=build --chown=sasta:root /sasta/sasta_bin ./sasta
+COPY --chown=sasta:root sasta/assets ./assets
+
+RUN mkdir /files && chown sasta:root /files && chmod -R g=u /files /sasta
 
 USER sasta
-
 EXPOSE 8080
-
 CMD ["./sasta"]
