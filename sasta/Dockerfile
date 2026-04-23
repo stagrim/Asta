@@ -10,6 +10,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     cp /sasta/target/release/sasta /sasta/sasta_bin
 
 FROM debian:stable-slim
+# TODO: LABEL env variables
 RUN useradd -r sasta
 WORKDIR /sasta
 

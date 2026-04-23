@@ -1,6 +1,7 @@
 @import 'tailwindcss';
-
 @import 'tw-animate-css';
+
+@plugin "@tailwindcss/forms";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -72,6 +73,30 @@
 	--shadow-2xl: 1px 0.5px 12.5px -3px hsl(0 0% 0% / 0.63);
 	--tracking-normal: 0em;
 	--spacing: 0.25rem;
+
+	--animate-collapsible-down: collapsible-down 0.2s ease-out;
+	--animate-collapsible-up: collapsible-up 0.2s ease-out;
+
+	--animate-accordion-down: collapsible-down 0.2s ease-out;
+	--animate-accordion-up: collapsible-up 0.2s ease-out;
+
+	@keyframes collapsible-down {
+		from {
+			height: 0;
+		}
+		to {
+			height: var(--radix-collapsible-content-height);
+		}
+	}
+
+	@keyframes collapsible-up {
+		from {
+			height: var(--radix-collapsible-content-height);
+		}
+		to {
+			height: 0;
+		}
+	}
 }
 
 .dark {

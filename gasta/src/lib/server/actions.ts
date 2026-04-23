@@ -28,7 +28,6 @@ export const return_handling = async ({
 	let payload: Payload;
 	try {
 		payload = JSON.parse(text);
-		// console.log(payload);
 	} catch {
 		console.log(text);
 		return fail(400, { message: text });
