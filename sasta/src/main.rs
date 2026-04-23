@@ -79,11 +79,7 @@ async fn main() {
     dotenvy::dotenv().ok();
     let redis_url = env::var("REDIS_URL").expect("REDIS_URL variable must be set");
     let sasta_address = env::var("ADDRESS").unwrap_or("127.0.0.1:8080".into());
-    let subscriber = FmtSubscriber::builder()
-        .with_span_events(FmtSpan::NEW)
-        .with_max_level(Level::TRACE)
-        .finish();
-    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
+    tracing_subscriber::fmt::init();
 
     minify();
     info!("JS and CSS minified");
