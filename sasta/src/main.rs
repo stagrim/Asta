@@ -16,8 +16,7 @@ use tokio::{
     sync::{Mutex, oneshot},
 };
 use tower_http::services::ServeDir;
-use tracing::{Level, error, info, info_span};
-use tracing_subscriber::{FmtSubscriber, fmt::format::FmtSpan};
+use tracing::{error, info, info_span};
 use utoipa::OpenApi;
 use utoipa_axum::{router::OpenApiRouter, routes};
 use utoipa_rapidoc::RapiDoc;
@@ -47,6 +46,8 @@ impl From<(u8, String)> for read::Payload {
 }
 
 // TODO: Race conditions possible in like all API routes. Use Mutex instead?
+// Probably instead rewrite to fit kubernetis model, and don't store state in
+// app, and only in redis
 
 #[derive(Clone)]
 pub struct AppState {

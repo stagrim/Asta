@@ -222,10 +222,9 @@
 							<Upload /> Upload
 						</AlertDialog.Trigger>
 						<AlertDialog.Content>
-							<AlertDialog.Header
-								><AlertDialog.Title>Upload Files</AlertDialog.Title></AlertDialog.Header
-							>
-							<!-- TODO: Make this into a snippet to be able to pass it into the api or something like that -->
+							<AlertDialog.Header>
+								<AlertDialog.Title>Upload Files</AlertDialog.Title>
+							</AlertDialog.Header>
 							{#if uploadFormSnippet}
 								{@render uploadFormSnippet({
 									InternalUI: InternalFileUploadUI,

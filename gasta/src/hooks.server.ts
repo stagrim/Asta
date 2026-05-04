@@ -41,7 +41,7 @@ export const defaultHandle: Handle = async ({ event, resolve }) => {
 	const session = await event.locals.auth();
 	if (
 		!event.url.pathname.startsWith('/login') &&
-		// TODO: Make a error page instead?
+		// TODO: Make an error page instead?
 		!event.url.pathname.startsWith('/not-authorized') &&
 		!event.url.pathname.startsWith('/not-supported')
 	) {

@@ -420,7 +420,6 @@ pub async fn rename_files(
 
     let mut errors = Vec::new();
 
-    //TODO: Don't interrupt on errors, let it delete all values, and then return all which did not succeed
     for (from, to) in files.ids_from.iter().zip(files.ids_to.iter()) {
         if from.ends_with('/') && to.ends_with('/') {
             match file_server.move_dir(from, to).await {
@@ -487,7 +486,6 @@ pub async fn delete_files(
 
     let mut errors = Vec::new();
 
-    //TODO: Don't interrupt on errors, let it delete all values, and then return all which did not succeed
     for id in files.ids {
         if id.ends_with('/') {
             match file_server.delete_dir(id).await {
