@@ -569,8 +569,7 @@ pub struct FileServer {
     #[cfg(not(test))]
     con: AsyncMutex<MultiplexedConnection>,
     root: Directory,
-    // TODO: Do file operations inside methods and avoid exposing
-    pub path: PathBuf,
+    path: PathBuf,
 }
 
 pub static FILE_PATH_REGEX: LazyLock<Regex> =
