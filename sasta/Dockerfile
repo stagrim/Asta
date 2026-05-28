@@ -9,8 +9,10 @@ RUN cargo build --release
 # Switch to Alpine instead for smaller images?
 # FROM gcr.io/distroless/cc-debian10
 FROM debian:stable-slim
+WORKDIR /sasta
 
-COPY --from=build /sasta/target/release/sasta /
-COPY sasta/assets /assets
+COPY --from=build /sasta/target/release/sasta /sasta/
+COPY sasta/assets /sasta/assets
 
-CMD ["/sasta"]
+VOLUME /sasta/files
+CMD ["/sasta/sasta"]
