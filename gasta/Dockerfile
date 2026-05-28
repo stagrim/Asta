@@ -1,4 +1,4 @@
-FROM denoland/deno:latest
+FROM docker.io/denoland/deno:latest
 
 WORKDIR /gasta
 
