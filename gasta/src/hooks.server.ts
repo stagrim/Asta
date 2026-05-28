@@ -13,7 +13,7 @@ if (env.SERVER_URL) {
 if (env.AUTH_AUTHENTIK_ISSUER) {
 	console.log(`Using ODIC with endpoint on ${env.AUTH_AUTHENTIK_ISSUER}`);
 } else if (!building) {
-	throw new Error(
+	console.error(
 		"AUTH_AUTHENTIK_ISSUER environment variable is not defined, can't connect to Authentik"
 	);
 }

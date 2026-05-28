@@ -158,10 +158,9 @@ export class FileManager {
 		if (folderName.includes('/')) {
 			return "Folder name can not include slashes ('/')";
 		}
-
 		try {
 			await this.#api.createFolder(
-				this.currentPath.type == 'Path' ? this.currentPath.path : '/' + folderName
+				(this.currentPath.type == 'Path' ? this.currentPath.path : '/') + folderName + '/'
 			);
 			await this.refresh();
 		} catch (error: any) {

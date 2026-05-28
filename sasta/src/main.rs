@@ -80,15 +80,20 @@ async fn main() {
     dotenvy::dotenv().ok();
     let redis_url = env::var("REDIS_URL").expect("REDIS_URL variable must be set");
     let sasta_address = env::var("ADDRESS").unwrap_or("127.0.0.1:8080".into());
+    let sasta_file_path = env::var("FILE_PATH").unwrap_or("./files".into());
     tracing_subscriber::fmt::init();
-
+    info!("REDIS_URL={redis_url}");
+    info!("ADDRESS={sasta_address}");
+    info!("FILE_PATH={sasta_file_path}");
     minify();
     info!("JS and CSS minified");
     let htmx_hash = compute_hash();
     info!("Computed Hash for Casta Htmx");
 
     let store = Arc::new(Store::new(&redis_url).await);
-    let file_server = Arc::new(Mutex::new(FileServer::new(&redis_url).await));
+    let file_server = Arc::new(Mutex::new(
+        FileServer::new(&redis_url, sasta_file_path).await,
+    ));
 
     let store_copy = store.clone();
     let (tx, rx) = oneshot::channel::<()>();

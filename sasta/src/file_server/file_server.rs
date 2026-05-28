@@ -1,7 +1,8 @@
 use std::{
     collections::{LinkedList, VecDeque},
     ffi::OsString,
-    path::Path,
+    io::Write,
+    path::{Path, PathBuf},
     sync::{Arc, LazyLock, Mutex},
 };
 
@@ -18,12 +19,9 @@ use hyper::{Request, StatusCode, Uri};
 use redis::{Client, JsonAsyncCommands, aio::MultiplexedConnection};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use tokio::fs;
 #[cfg(not(test))]
 use tokio::sync::Mutex as AsyncMutex;
-use tokio::{
-    fs::{self, File as TokioFile},
-    io::AsyncWriteExt,
-};
 use tower::ServiceExt;
 use tower_http::services::ServeFile;
 use tracing::warn;
@@ -235,7 +233,7 @@ pub async fn get_file(State(state): State<AppState>, uri: Uri) -> impl IntoRespo
                 .uri(uri.clone())
                 .body(Body::empty())
                 .unwrap();
-            let f = ServeFile::new(format!("file_server/{p}"));
+            let f = ServeFile::new(file_server.path.join(&p));
             f.oneshot(req)
                 .await
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("{e}")))
@@ -285,7 +283,6 @@ impl FileUpload {
                     .await
                     .unwrap_or(String::new())
                     .trim()
-                    .trim_end_matches("/")
                     .to_string();
                 info_span!("Got directory name", dir);
                 directory = Some(dir);
@@ -333,7 +330,10 @@ pub async fn add_files(State(state): State<AppState>, multipart: Multipart) -> R
             Err(message) => {
                 return Err((
                     StatusCode::BAD_REQUEST,
-                    Json(Payload::Error { code: 3, message }),
+                    Json(Payload::Error {
+                        code: 3,
+                        message: format!("{message} ({})", upload.directory),
+                    }),
                 ));
             }
         }
@@ -342,25 +342,14 @@ pub async fn add_files(State(state): State<AppState>, multipart: Multipart) -> R
     let mut errors = Vec::new();
 
     for file_item in upload.files {
-        match file_server
+        if let Err(message) = file_server
             .add_file(
                 format!("{}/{}", upload.directory, file_item.name),
-                file_item.content.len(),
+                file_item.content,
             )
             .await
         {
-            Ok(f) => {
-                //TODO: avoid hard coding file_server dir
-                match TokioFile::create(format!("file_server/{}", f.file_server)).await {
-                    Ok(mut file) => {
-                        if let Err(e) = file.write_all(&file_item.content).await {
-                            errors.push(e.to_string());
-                        }
-                    }
-                    Err(e) => errors.push(e.to_string()),
-                };
-            }
-            Err(message) => errors.push(message),
+            errors.push(message);
         }
     }
 
@@ -580,6 +569,8 @@ pub struct FileServer {
     #[cfg(not(test))]
     con: AsyncMutex<MultiplexedConnection>,
     root: Directory,
+    // TODO: Do file operations inside methods and avoid exposing
+    pub path: PathBuf,
 }
 
 pub static FILE_PATH_REGEX: LazyLock<Regex> =
@@ -657,7 +648,9 @@ impl<'a> VirtualPath<'a> {
 
 impl FileServer {
     #[cfg(not(test))]
-    pub async fn new(redis_url: &str) -> Self {
+    pub async fn new(redis_url: &str, path: impl Into<PathBuf>) -> Self {
+        let path = path.into();
+        fs::create_dir_all(&path).await.unwrap();
         let client = Client::open(redis_url).unwrap();
         let mut con = client.get_multiplexed_tokio_connection().await.unwrap();
 
@@ -680,11 +673,15 @@ impl FileServer {
         Self {
             con: AsyncMutex::new(con),
             root,
+            path,
         }
     }
 
     #[cfg(test)]
-    pub async fn new(_redis_url: &str) -> Self {
+    pub async fn new(_redis_url: &str, path: impl Into<PathBuf>) -> Self {
+        let path = path.into();
+        fs::create_dir_all(&path).await.unwrap();
+
         // Return a fresh, empty in-memory tree for every test
         Self {
             root: Directory {
@@ -693,6 +690,7 @@ impl FileServer {
                 files: Arc::new(Mutex::new(vec![])),
                 children: Arc::new(Mutex::new(vec![])),
             },
+            path,
         }
     }
 
@@ -707,7 +705,7 @@ impl FileServer {
     /// Add file name to directory tree, and create folder if they don't already exists
     ///
     /// Does not call write to avoid writing when not all files are returning Ok()
-    pub async fn add_file(&mut self, file_path: String, size: usize) -> Result<File, String> {
+    pub async fn add_file(&mut self, file_path: String, content: Vec<u8>) -> Result<File, String> {
         info_span!("Adding file with ", file_path);
         let path = VirtualPath::parse(&file_path, true)?;
 
@@ -717,26 +715,33 @@ impl FileServer {
         match files.binary_search_by_key(&path.name(), |f| &f.name) {
             Ok(_) => Err(format!("File {} already exists", path.to_string_path())),
             Err(pos) => {
-                files.insert(
-                    pos,
-                    File {
-                        name: path.name().to_string(),
-                        file_server: format!(
-                            "{}.{}",
-                            Uuid::new_v4(),
-                            Path::new(path.name())
-                                .extension()
-                                .unwrap_or(&OsString::from("txt"))
-                                .to_str()
-                                .unwrap()
-                        ),
-                        path: path.to_string_path(),
-                        size,
-                        date: Local::now(),
-                    },
-                );
+                let file = File {
+                    name: path.name().to_string(),
+                    file_server: format!(
+                        "{}.{}",
+                        Uuid::new_v4(),
+                        Path::new(path.name())
+                            .extension()
+                            .unwrap_or(&OsString::from("txt"))
+                            .to_str()
+                            .unwrap()
+                    ),
+                    path: path.to_string_path(),
+                    size: content.len(),
+                    date: Local::now(),
+                };
 
-                Ok(files[pos].clone())
+                match std::fs::File::create(self.path.join(&file.file_server)) {
+                    Ok(mut file) => {
+                        if let Err(e) = file.write_all(&content) {
+                            return Err(e.to_string());
+                        }
+                    }
+                    Err(e) => return Err(e.to_string()),
+                };
+
+                files.insert(pos, file.clone());
+                Ok(file)
             }
         }
     }
@@ -831,7 +836,7 @@ impl FileServer {
             }
         };
 
-        match fs::remove_file(format!("file_server/{}", file.file_server)).await {
+        match fs::remove_file(self.path.join(&file.file_server)).await {
             Ok(_) => Ok(file),
             Err(e) => Err(e.to_string()),
         }
@@ -987,7 +992,7 @@ impl FileServer {
         }
 
         for f in files {
-            if let Err(e) = fs::remove_file(format!("file_server/{}", f.file_server)).await {
+            if let Err(e) = fs::remove_file(self.path.join(&f.file_server)).await {
                 warn!("Error deleting file {:?}", e);
             }
         }
@@ -1077,11 +1082,11 @@ mod tests {
     use tokio::net::TcpListener;
     use tokio::sync::Mutex as AsyncMutex;
 
+    const FILE_PATH: &'static str = "./test_files";
+
     /// Helper function
     async fn setup_test_server() -> FileServer {
-        let _ = fs::create_dir_all("file_server").await;
-
-        FileServer::new("not used since in test environment").await
+        FileServer::new("not used since in test environment", FILE_PATH).await
     }
 
     #[tokio::test]
@@ -1133,7 +1138,7 @@ mod tests {
 
         let path = "/test_folder/nested/file.txt".to_string();
         let file = server
-            .add_file(path.clone(), 1024)
+            .add_file(path.clone(), vec![0x00; 1024])
             .await
             .expect("Failed to add file");
 
@@ -1141,7 +1146,7 @@ mod tests {
         assert_eq!(file.path, "/test_folder/nested/file.txt");
         assert_eq!(file.size, 1024);
 
-        let no_file_ext = server.add_file("/test".to_string(), 1024).await;
+        let no_file_ext = server.add_file("/test".to_string(), vec![]).await;
         assert_eq!(no_file_ext.unwrap_err(), "Illegal file name".to_string());
 
         let tree = server.get_paths_tree().await;
@@ -1169,9 +1174,9 @@ mod tests {
 
         let path = "/duplicates/file.txt".to_string();
 
-        let _ = server.add_file(path.clone(), 100).await.unwrap();
+        let _ = server.add_file(path.clone(), vec![]).await.unwrap();
 
-        let result = server.add_file(path.clone(), 200).await;
+        let result = server.add_file(path.clone(), vec![]).await;
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
@@ -1184,9 +1189,9 @@ mod tests {
         let mut server = setup_test_server().await;
         let path = "/to_delete/delete_me.txt".to_string();
 
-        let file = server.add_file(path.clone(), 10).await.unwrap();
+        let file = server.add_file(path.clone(), vec![]).await.unwrap();
 
-        let disk_path = format!("file_server/{}", file.file_server);
+        let disk_path = format!("{FILE_PATH}/{}", file.file_server);
         fs::write(&disk_path, b"dummy data").await.unwrap();
 
         let deleted = server
@@ -1215,10 +1220,10 @@ mod tests {
         server.add_dir(&dir_path).await.expect("Failed to add dir");
 
         let file = server
-            .add_file("/my_folder/child_folder/test.txt".to_string(), 0)
+            .add_file("/my_folder/child_folder/test.txt".to_string(), vec![])
             .await
             .unwrap();
-        let disk_path = format!("file_server/{}", file.file_server);
+        let disk_path = format!("{FILE_PATH}/{}", file.file_server);
         fs::write(&disk_path, b"data").await.unwrap();
 
         let deleted_dir = server
@@ -1249,7 +1254,7 @@ mod tests {
 
         let weird_path = "///weird////path//file.txt".to_string();
 
-        let file = server.add_file(weird_path, 50).await.unwrap();
+        let file = server.add_file(weird_path, vec![]).await.unwrap();
         assert_eq!(file.path, "/weird/path/file.txt");
 
         let tree = server.get_paths_tree().await;
@@ -1264,7 +1269,7 @@ mod tests {
 
         let weird_path = "/../wonky/.file/....path..txt".to_string();
 
-        let file = server.add_file(weird_path, 50).await;
+        let file = server.add_file(weird_path, vec![]).await;
         assert_eq!(file.unwrap_err(), "Illegal file name");
     }
 
@@ -1274,7 +1279,7 @@ mod tests {
         server.add_dir(&"/folder_a/".to_string()).await.unwrap();
         server.add_dir(&"/folder_b/".to_string()).await.unwrap();
         server
-            .add_file("/folder_a/test.txt".to_string(), 10)
+            .add_file("/folder_a/test.txt".to_string(), vec![])
             .await
             .unwrap();
 
@@ -1318,15 +1323,15 @@ mod tests {
         let mut server = setup_test_server().await;
         server.add_dir(&"/docs/".to_string()).await.unwrap();
         server
-            .add_file("/docs/apple.txt".to_string(), 10)
+            .add_file("/docs/apple.txt".to_string(), vec![])
             .await
             .unwrap();
         server
-            .add_file("/docs/banana.txt".to_string(), 10)
+            .add_file("/docs/banana.txt".to_string(), vec![])
             .await
             .unwrap();
         server
-            .add_file("/docs/zebra.txt".to_string(), 10)
+            .add_file("/docs/zebra.txt".to_string(), vec![])
             .await
             .unwrap();
 
@@ -1353,15 +1358,15 @@ mod tests {
     async fn test_move_file_collisions_and_errors() {
         let mut server = setup_test_server().await;
         server
-            .add_file("/docs/file1.txt".to_string(), 10)
+            .add_file("/docs/file1.txt".to_string(), vec![])
             .await
             .unwrap();
         server
-            .add_file("/docs/file2.txt".to_string(), 10)
+            .add_file("/docs/file2.txt".to_string(), vec![])
             .await
             .unwrap();
         server
-            .add_file("/archive/file1.txt".to_string(), 10)
+            .add_file("/archive/file1.txt".to_string(), vec![])
             .await
             .unwrap();
 
@@ -1400,7 +1405,7 @@ mod tests {
     async fn test_move_dir_recursive_path_updates() {
         let mut server = setup_test_server().await;
         server
-            .add_file("/parent/child/deep/file.txt".to_string(), 10)
+            .add_file("/parent/child/deep/file.txt".to_string(), vec![])
             .await
             .unwrap();
         server.add_dir(&"/archive/".to_string()).await.unwrap();

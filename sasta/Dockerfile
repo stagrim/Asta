@@ -14,6 +14,8 @@ FROM debian:stable-slim
 RUN useradd -r sasta
 WORKDIR /sasta
 
+ENV FILE_PATH="/files"
+
 COPY --from=build --chown=sasta:root /sasta/sasta_bin ./sasta
 COPY --chown=sasta:root sasta/assets ./assets
 
