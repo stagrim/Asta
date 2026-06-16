@@ -125,6 +125,19 @@ export class FileManager {
 		return this.#clipboardMode;
 	}
 
+	get clipboardEmpty() {
+		return this.#clipboard.size == 0;
+	}
+
+	get clipboardSize() {
+		return this.#clipboard.size;
+	}
+
+	/** Get items in clipboard */
+	getClipboard(): (TreeFile | TreeDirectory)[] {
+		return [...this.#clipboard.values()];
+	}
+
 	// Layout State
 	viewMode = $state<'grid' | 'list'>('grid');
 	sidebarOpen = $state(!this.#isMobile.current);
@@ -190,6 +203,7 @@ export class FileManager {
 		} catch (error: any) {
 			return error.body?.message || 'Folder creation failed';
 		}
+		this.#clipboard.clear();
 		return '';
 	}
 
