@@ -4,6 +4,7 @@ import { SvelteSet } from 'svelte/reactivity';
 import type { TreeDirectory, TreeFile } from '$lib/server/sasta_client';
 import { CurrentPathType, FileManagerSearchParams, type FileManagerAPI } from './types';
 import { useSearchParams } from 'runed/kit';
+import { pushState } from '$app/navigation';
 
 const FM_KEY = Symbol('FILE_MANAGER');
 
@@ -18,21 +19,9 @@ export class FileManager {
 		try {
 			this.#root = await this.#api.getFileTree();
 
-			if (this.#currentPath.type === CurrentPathType.Path) {
-				// Sync current path to the new tree
-				if (this.#currentPath.path === '/') {
-					this.#currentDirectory = this.#root;
-				} else {
-					// Find the new object reference for the folder we are currently in
-					const updatedCurrentDir = this.#traverseTree(this.#currentPath.path);
-
-					if (updatedCurrentDir) {
-						this.#currentDirectory = updatedCurrentDir;
-					} else {
-						// Fallback to root if the folder was deleted!
-						this.#currentPath.path = '/';
-						this.#currentDirectory = this.#root;
-					}
+			if (this.currentPath.type === CurrentPathType.Path) {
+				if (!this.#traverseTree(this.currentPath.path)) {
+					this.#params.path = '/';
 				}
 			}
 		} catch (e) {
@@ -40,24 +29,38 @@ export class FileManager {
 		}
 	}
 
-	#params = useSearchParams(FileManagerSearchParams);
+	#params = useSearchParams(FileManagerSearchParams, { pushHistory: false });
 
-	// Current active path and directory
-	#currentPath:
-		| { path: string; type: CurrentPathType.Path }
-		| { type: CurrentPathType.Recent }
-		| { search: string; type: CurrentPathType.Search };
-	/** String of currently opened directory's path */
-	get currentPath() {
-		return this.#currentPath;
+	/** Computed property: Always reflects the current URL parameters */
+	get currentPath():
+		| {
+				type: CurrentPathType.Search;
+				search: string;
+		  }
+		| {
+				type: CurrentPathType.Recent;
+		  }
+		| {
+				type: CurrentPathType.Path;
+				path: string;
+		  } {
+		if (this.#params.type === CurrentPathType.Search) {
+			return { type: CurrentPathType.Search, search: this.#params.search };
+		} else if (this.#params.type === CurrentPathType.Recent) {
+			return { type: CurrentPathType.Recent };
+		}
+		return { type: CurrentPathType.Path, path: this.#params.path };
 	}
 
 	#isMobile: IsMobile = new IsMobile();
 
-	#currentDirectory: TreeDirectory;
-	/** Object of currently active Directory */
+	/** Computed property: Finds the active directory based on the URL path */
 	get currentDirectory() {
-		return this.#currentDirectory;
+		if (this.currentPath.type === CurrentPathType.Path) {
+			// Traverse the tree. If the URL points to a deleted/invalid folder, fallback to root.
+			return this.#traverseTree(this.currentPath.path) || this.#root;
+		}
+		return this.#root;
 	}
 
 	// Selection & UI
@@ -211,34 +214,17 @@ export class FileManager {
 
 	constructor(api: FileManagerAPI, initialRoot: TreeDirectory) {
 		this.#api = api;
-		this.#root = $state(initialRoot);
-		this.#currentDirectory = $state(initialRoot);
-		this.#currentPath = $state({ type: CurrentPathType.Path, path: '/' });
-
-		let currentPath: any = {};
-		currentPath.type = this.#params.type;
-		if (currentPath.type === 'Path') {
-			currentPath.path = this.#params.path;
-			this.navigate(this.#params.path);
-		} else if (currentPath.type === 'Search') {
-			this.#params.search = this.#params.search;
-			this.navigateSearch(this.#params.search);
-		} else {
-			this.navigateRecent();
-		}
-
-		$inspect(this.currentPath);
-		console.info({ currentPath, actual: this.#currentPath });
+		this.#root = $state<TreeDirectory>(initialRoot);
 	}
 
 	/** Get the files in the currently active Directory */
 	get currentFiles() {
-		return this.#currentDirectory?.files ?? [];
+		return this.currentDirectory?.files ?? [];
 	}
 
 	/** Get the direct subdirectories of the currently active Directory */
 	get currentSubDirectories() {
-		return this.#currentDirectory?.directories ?? [];
+		return this.currentDirectory?.directories ?? [];
 	}
 
 	/** If the current Directory is empty */
@@ -246,52 +232,50 @@ export class FileManager {
 		return this.currentFiles.length == 0 && this.currentSubDirectories.length == 0;
 	}
 
-	private updateURLSearchParams() {
-		console.info({ params: this.#params.toURLSearchParams(), new: this.#currentPath });
-
-		this.#params.type = this.#currentPath.type;
-		if (this.#currentPath.type === CurrentPathType.Path) {
-			this.#params.path = this.#currentPath.path;
-			this.#params.search = '';
-		} else if (this.#currentPath.type === CurrentPathType.Search) {
-			//TODO: push history only if last change wasn't search type. Otherwise replace
-			this.#params.search = this.#currentPath.search;
-			this.#params.path = '/';
-		} else {
-			this.#params.path = '/';
-			this.#params.search = '';
-		}
-	}
-
 	/** Change currently active directory, either by string path, or by a `TreeDirectory` object */
 	navigate(directory: TreeDirectory | string) {
-		if (typeof directory === 'string') {
-			const dir = this.#traverseTree(directory);
-			if (dir) {
-				this.#currentPath = { type: CurrentPathType.Path, path: dir.id };
-				this.#currentDirectory = dir;
-				this.clearSelection();
-			} else {
-				// Special dirs
-				console.error(`${directory} was not found`);
-				return;
-			}
-		} else {
-			this.#currentPath = { type: CurrentPathType.Path, path: directory.id };
-			this.#currentDirectory = directory;
-			this.clearSelection();
+		const targetPath = typeof directory === 'string' ? directory : directory.id;
+
+		if (typeof directory === 'string' && !this.#traverseTree(targetPath)) {
+			console.error(`${directory} was not found`);
+			return;
 		}
-		this.updateURLSearchParams();
+
+		this.clearSelection();
+		this.#params.type = CurrentPathType.Path;
+		this.#params.path = targetPath;
+		this.#params.search = '';
+		this.pushCurrentHistoryState();
 	}
 
 	navigateRecent() {
-		this.#currentPath = { type: CurrentPathType.Recent };
-		this.updateURLSearchParams();
+		this.clearSelection();
+		this.#params.type = CurrentPathType.Recent;
+		this.#params.path = '/';
+		this.#params.search = '';
+		this.pushCurrentHistoryState();
 	}
 
 	navigateSearch(search: string) {
-		this.#currentPath = { type: CurrentPathType.Search, search };
-		this.updateURLSearchParams();
+		const isAlreadySearching = this.currentPath.type === CurrentPathType.Search;
+
+		this.clearSelection();
+		this.#params.type = CurrentPathType.Search;
+		this.#params.path = '/';
+		this.#params.search = search;
+
+		if (!isAlreadySearching) {
+			this.pushCurrentHistoryState();
+		}
+	}
+
+	private pushCurrentHistoryState() {
+		pushState('', {});
+	}
+
+	/** Get current URLSearchParam search value. Returns `''` if the `currentPath` isn't of type `Search` */
+	get searchQuery() {
+		return this.#params.search;
 	}
 
 	#traverseTree(path: string): TreeDirectory | null {

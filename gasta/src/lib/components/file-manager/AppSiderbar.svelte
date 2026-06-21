@@ -10,6 +10,14 @@
 		currentPath: string;
 		refreshManager: () => Promise<void>;
 	};
+
+	function debounce<T extends (...args: any[]) => void>(fn: T, ms: number) {
+		let timer: ReturnType<typeof setTimeout>;
+		return (...args: Parameters<T>) => {
+			clearTimeout(timer);
+			timer = setTimeout(() => fn(...args), ms);
+		};
+	}
 </script>
 
 <script lang="ts">
@@ -41,17 +49,40 @@
 
 	const fm = useFileManager();
 
-	let searchQuery = $state('');
+	let localSearchQuery = $state(fm.searchQuery);
 
-	let lastDirectory = $state<TreeDirectory | undefined>(undefined);
+	let lastPath = $state<
+		| {
+				type: CurrentPathType.Recent;
+		  }
+		| {
+				type: CurrentPathType.Path;
+				path: string;
+		  }
+	>();
+	const executeSearch = debounce((query: string) => {
+		if (query) {
+			if (fm.currentPath.type !== CurrentPathType.Search) {
+				lastPath = fm.currentPath;
+			}
+			fm.navigateSearch(query);
+		} else if (fm.currentPath.type === CurrentPathType.Search) {
+			if (lastPath) {
+				lastPath.type === CurrentPathType.Path ? fm.navigate(lastPath.path) : fm.navigateRecent();
+			} else {
+				fm.navigate(fm.root);
+			}
+		}
+	}, 250);
+
+	// Sync search field with url parameters
 	watch(
-		() => searchQuery,
+		() => fm.currentPath.type,
 		() => {
-			if (searchQuery) {
-				lastDirectory = fm.currentDirectory;
-				fm.navigateSearch(searchQuery);
-			} else if (lastDirectory) {
-				fm.navigate(lastDirectory);
+			if (fm.currentPath.type !== CurrentPathType.Search) {
+				localSearchQuery = '';
+			} else {
+				localSearchQuery = fm.searchQuery;
 			}
 		}
 	);
@@ -208,7 +239,12 @@
 				<div class="relative py-1">
 					<Label for="search" class="sr-only">Search</Label>
 					<InputGroup.Root>
-						<InputGroup.Input type="search" placeholder="Search..." bind:value={searchQuery} />
+						<InputGroup.Input
+							type="search"
+							placeholder="Search..."
+							bind:value={localSearchQuery}
+							oninput={() => executeSearch(localSearchQuery)}
+						/>
 						<InputGroup.Addon>
 							<Search />
 						</InputGroup.Addon>
