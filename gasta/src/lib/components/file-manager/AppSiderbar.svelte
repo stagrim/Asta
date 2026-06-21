@@ -32,6 +32,7 @@
 	import { toast } from 'svelte-sonner';
 	import { Separator } from '$lib/components/ui/separator';
 	import { Input } from '$lib/components/ui/input';
+	import { CurrentPathType } from './types';
 
 	let { uploadFormSnippet }: { uploadFormSnippet?: Snippet<[FormContext]> } = $props();
 
@@ -42,14 +43,14 @@
 
 	let searchQuery = $state('');
 
-	let lastDirectory = $state(fm.root);
+	let lastDirectory = $state<TreeDirectory | undefined>(undefined);
 	watch(
 		() => searchQuery,
 		() => {
 			if (searchQuery) {
 				lastDirectory = fm.currentDirectory;
 				fm.navigateSearch(searchQuery);
-			} else {
+			} else if (lastDirectory) {
 				fm.navigate(lastDirectory);
 			}
 		}
@@ -231,7 +232,8 @@
 									bindFileInput,
 									setLoading,
 									resetFiles,
-									currentPath: fm.currentPath.type === 'Path' ? fm.currentPath.path : '/',
+									currentPath:
+										fm.currentPath.type === CurrentPathType.Path ? fm.currentPath.path : '/',
 									refreshManager: async () => await fm.refresh()
 								})}
 							{/if}
@@ -278,7 +280,7 @@
 					<h4 class="my-2 rounded-md px-4 text-xs text-muted-foreground">Quick Access</h4>
 					<div class="grid gap-1">
 						<Button
-							variant={fm.currentPath.type === 'Path' && fm.currentPath.path === '/'
+							variant={fm.currentPath.type === CurrentPathType.Path && fm.currentPath.path === '/'
 								? 'secondary'
 								: 'ghost'}
 							class="w-full justify-start h-8"
@@ -288,7 +290,7 @@
 							Home
 						</Button>
 						<Button
-							variant={fm.currentPath.type === 'Recent' ? 'secondary' : 'ghost'}
+							variant={fm.currentPath.type === CurrentPathType.Recent ? 'secondary' : 'ghost'}
 							class="w-full justify-start h-8"
 							onclick={() => fm.navigateRecent()}
 						>
@@ -302,7 +304,9 @@
 				<div class="mt-4">
 					<h4 class="mb-1 rounded-md px-4 text-xs text-muted-foreground">Filesystem</h4>
 					<div class="grid gap-1">
-						<TreeView.Root selectedId={fm.currentPath.type === 'Path' ? fm.currentPath.path : ''}>
+						<TreeView.Root
+							selectedId={fm.currentPath.type === CurrentPathType.Path ? fm.currentPath.path : ''}
+						>
 							{#each fm.root.directories ?? [] as child}
 								{@render recursiveNode(child)}
 							{/each}

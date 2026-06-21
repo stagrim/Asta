@@ -2,7 +2,8 @@ import { setContext, getContext } from 'svelte';
 import { IsMobile } from '$lib/hooks/is-mobile.svelte';
 import { SvelteSet } from 'svelte/reactivity';
 import type { TreeDirectory, TreeFile } from '$lib/server/sasta_client';
-import type { FileManagerAPI } from './types';
+import { CurrentPathType, FileManagerSearchParams, type FileManagerAPI } from './types';
+import { useSearchParams } from 'runed/kit';
 
 const FM_KEY = Symbol('FILE_MANAGER');
 
@@ -17,7 +18,7 @@ export class FileManager {
 		try {
 			this.#root = await this.#api.getFileTree();
 
-			if (this.#currentPath.type === 'Path') {
+			if (this.#currentPath.type === CurrentPathType.Path) {
 				// Sync current path to the new tree
 				if (this.#currentPath.path === '/') {
 					this.#currentDirectory = this.#root;
@@ -39,14 +40,13 @@ export class FileManager {
 		}
 	}
 
+	#params = useSearchParams(FileManagerSearchParams);
+
 	// Current active path and directory
 	#currentPath:
-		| { path: string; type: 'Path' }
-		| { type: 'Recent' }
-		| { search: string; type: 'Search' } = $state({
-		path: '/',
-		type: 'Path'
-	});
+		| { path: string; type: CurrentPathType.Path }
+		| { type: CurrentPathType.Recent }
+		| { search: string; type: CurrentPathType.Search };
 	/** String of currently opened directory's path */
 	get currentPath() {
 		return this.#currentPath;
@@ -54,7 +54,7 @@ export class FileManager {
 
 	#isMobile: IsMobile = new IsMobile();
 
-	#currentDirectory;
+	#currentDirectory: TreeDirectory;
 	/** Object of currently active Directory */
 	get currentDirectory() {
 		return this.#currentDirectory;
@@ -173,7 +173,9 @@ export class FileManager {
 		}
 		try {
 			await this.#api.createFolder(
-				(this.currentPath.type == 'Path' ? this.currentPath.path : '/') + folderName + '/'
+				(this.currentPath.type == CurrentPathType.Path ? this.currentPath.path : '/') +
+					folderName +
+					'/'
 			);
 			await this.refresh();
 		} catch (error: any) {
@@ -210,7 +212,23 @@ export class FileManager {
 	constructor(api: FileManagerAPI, initialRoot: TreeDirectory) {
 		this.#api = api;
 		this.#root = $state(initialRoot);
-		this.#currentDirectory = $state(this.#root);
+		this.#currentDirectory = $state(initialRoot);
+		this.#currentPath = $state({ type: CurrentPathType.Path, path: '/' });
+
+		let currentPath: any = {};
+		currentPath.type = this.#params.type;
+		if (currentPath.type === 'Path') {
+			currentPath.path = this.#params.path;
+			this.navigate(this.#params.path);
+		} else if (currentPath.type === 'Search') {
+			this.#params.search = this.#params.search;
+			this.navigateSearch(this.#params.search);
+		} else {
+			this.navigateRecent();
+		}
+
+		$inspect(this.currentPath);
+		console.info({ currentPath, actual: this.#currentPath });
 	}
 
 	/** Get the files in the currently active Directory */
@@ -228,31 +246,52 @@ export class FileManager {
 		return this.currentFiles.length == 0 && this.currentSubDirectories.length == 0;
 	}
 
+	private updateURLSearchParams() {
+		console.info({ params: this.#params.toURLSearchParams(), new: this.#currentPath });
+
+		this.#params.type = this.#currentPath.type;
+		if (this.#currentPath.type === CurrentPathType.Path) {
+			this.#params.path = this.#currentPath.path;
+			this.#params.search = '';
+		} else if (this.#currentPath.type === CurrentPathType.Search) {
+			//TODO: push history only if last change wasn't search type. Otherwise replace
+			this.#params.search = this.#currentPath.search;
+			this.#params.path = '/';
+		} else {
+			this.#params.path = '/';
+			this.#params.search = '';
+		}
+	}
+
 	/** Change currently active directory, either by string path, or by a `TreeDirectory` object */
 	navigate(directory: TreeDirectory | string) {
 		if (typeof directory === 'string') {
 			const dir = this.#traverseTree(directory);
 			if (dir) {
-				this.#currentPath = { type: 'Path', path: dir.id };
+				this.#currentPath = { type: CurrentPathType.Path, path: dir.id };
 				this.#currentDirectory = dir;
 				this.clearSelection();
 			} else {
 				// Special dirs
 				console.error(`${directory} was not found`);
+				return;
 			}
 		} else {
-			this.#currentPath = { type: 'Path', path: directory.id };
+			this.#currentPath = { type: CurrentPathType.Path, path: directory.id };
 			this.#currentDirectory = directory;
 			this.clearSelection();
 		}
+		this.updateURLSearchParams();
 	}
 
 	navigateRecent() {
-		this.#currentPath = { type: 'Recent' };
+		this.#currentPath = { type: CurrentPathType.Recent };
+		this.updateURLSearchParams();
 	}
 
 	navigateSearch(search: string) {
-		this.#currentPath = { type: 'Search', search };
+		this.#currentPath = { type: CurrentPathType.Search, search };
+		this.updateURLSearchParams();
 	}
 
 	#traverseTree(path: string): TreeDirectory | null {

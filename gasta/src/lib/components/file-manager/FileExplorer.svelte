@@ -14,11 +14,12 @@
 	import { useFileManager } from './file-manager.svelte';
 	import { PressedKeys, watch } from 'runed';
 	import type { TreeDirectory, TreeFile } from '$lib/server/sasta_client';
+	import { CurrentPathType } from './types';
 
 	const fm = useFileManager();
 
 	const recursivePath = $derived(
-		fm.currentPath.type === 'Path' &&
+		fm.currentPath.type === CurrentPathType.Path &&
 			fm.currentPath.path
 				.split('/')
 				.filter((s) => s)
@@ -30,9 +31,9 @@
 
 	const keys = new PressedKeys();
 	const items = $derived.by(() => {
-		if (fm.currentPath.type === 'Path') {
+		if (fm.currentPath.type === CurrentPathType.Path) {
 			return [...fm.currentSubDirectories, ...fm.currentFiles];
-		} else if (fm.currentPath.type === 'Recent') {
+		} else if (fm.currentPath.type === CurrentPathType.Recent) {
 			const files: TreeFile[] = [];
 			function treeToArray(item: TreeDirectory) {
 				item.directories.forEach((i) => treeToArray(i));
@@ -40,7 +41,7 @@
 			}
 			treeToArray(fm.root);
 			return files.toSorted((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-		} else if (fm.currentPath.type === 'Search') {
+		} else if (fm.currentPath.type === CurrentPathType.Search) {
 			const items: (TreeFile | TreeDirectory)[] = [];
 			const search = fm.currentPath.search.trim().toLowerCase();
 			function treeToArray(item: TreeDirectory) {
@@ -108,7 +109,7 @@
 				fm.setClipboard(fm.getSelected(), 'clip');
 			} else if (keys.has('Delete')) {
 				fm.deleteFile(fm.getSelected());
-			} else if (keys.has('Control', 'V') && fm.currentPath.type == 'Path') {
+			} else if (keys.has('Control', 'V') && fm.currentPath.type == CurrentPathType.Path) {
 				fm.moveItems(fm.getClipboard(), fm.currentPath.path);
 			}
 		}
@@ -133,9 +134,10 @@
 		</ContextMenu.Item>
 		<ContextMenu.Item
 			inset
-			disabled={fm.clipboardEmpty || fm.currentPath.type != 'Path'}
+			disabled={fm.clipboardEmpty || fm.currentPath.type != CurrentPathType.Path}
 			onclick={() =>
-				fm.currentPath.type == 'Path' && fm.moveItems(fm.getClipboard(), fm.currentPath.path)}
+				fm.currentPath.type == CurrentPathType.Path &&
+				fm.moveItems(fm.getClipboard(), fm.currentPath.path)}
 		>
 			Paste
 			{#if !fm.clipboardEmpty}
@@ -244,7 +246,7 @@
 		<div class="p-4 flex-1 overflow-y-auto box-border" onclick={clearSelection}>
 			{#if !items.length}
 				<div class="flex flex-col items-center justify-center h-64 text-muted-foreground">
-					{#if fm.currentPath.type == 'Search'}
+					{#if fm.currentPath.type == CurrentPathType.Search}
 						<SearchIcon class="w-16 h-16 mb-4 stroke-1" />
 						<p>No Items matched search</p>
 					{:else}
@@ -290,7 +292,7 @@
 								)}
 								onclick={() => selectItem(item, i)}
 								ondblclick={() => {
-									if (fm.currentPath.type === 'Path') {
+									if (fm.currentPath.type === CurrentPathType.Path) {
 										fm.previewOpen = true;
 									} else {
 										fm.navigate(item.id.replace(item.name, ''));
@@ -304,7 +306,7 @@
 									{item.name}
 								</span>
 								<span class="text-xs text-muted-foreground">
-									{#if fm.currentPath.type === 'Recent'}
+									{#if fm.currentPath.type === CurrentPathType.Recent}
 										{new Date(item.date).toLocaleString()}
 									{:else}
 										{filesize(item.size)}
