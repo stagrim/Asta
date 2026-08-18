@@ -1,0 +1,18 @@
+{
+  "lsp": {
+    "rust-analyzer": {
+      "initialization_options": {
+        // === RUST: PROD MODE (Checks not(test) code) ===
+        // "check": { "allTargets": false },
+        // "cargo": { "allTargets": false },
+        // "cfg": { "setTest": false },
+
+        // === RUST: TEST MODE (Checks test code) ===
+        // To test, comment out the block above, and uncomment this block:
+        "check": { "allTargets": true },
+        "cargo": { "allTargets": true },
+        "cfg": { "setTest": true },
+      },
+    },
+  },
+}

@@ -113,7 +113,7 @@ impl Schedule {
                                 std::cmp::Ordering::Less => None,
                                 std::cmp::Ordering::Equal => {
                                     warn!(
-                                        "Start and end action happening at the same moment in schedule {} playlist {playlist} ({})", 
+                                        "Start and end action happening at the same moment in schedule {} playlist {playlist} ({})",
                                         self.name,
                                         last_start.to_string()
                                     );

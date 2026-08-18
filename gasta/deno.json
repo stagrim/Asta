@@ -1,5 +1,6 @@
 {
   "imports": {
     "crypto": "node:crypto"
-  }
+  },
+  "allowScripts": ["npm:esbuild@0.25.12", "npm:svelte-preprocess@6.0.3"]
 }

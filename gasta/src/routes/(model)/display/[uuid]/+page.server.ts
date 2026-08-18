@@ -1,6 +1,6 @@
-import type { Actions } from '@sveltejs/kit';
+import { fail, type Actions } from '@sveltejs/kit';
 import type { UpdateDisplay } from '$lib/api_bindings/update/UpdateDisplay';
-import { delete_action, update } from '$lib/server/actions';
+import { delete_action, return_handling, update } from '$lib/server/actions';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = ({ params }) => {

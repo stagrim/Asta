@@ -1,26 +1,25 @@
 <script lang="ts">
 	import * as Sidebar from '$lib/components/ui/sidebar';
 	import * as Collapsible from '$lib/components/ui/collapsible';
-	import { useSidebar } from '$lib/components/ui/sidebar/index.js';
+	import { useSidebar } from '$lib/components/ui/sidebar';
 
 	import { page } from '$app/state';
 	import type { LayoutData } from '../routes/$types';
 	import sanitizeHtml from 'sanitize-html';
-	import type { Display } from './api_bindings/read/Display';
-	import type { Schedule } from './api_bindings/read/Schedule';
-	import type { Playlist } from './api_bindings/read/Playlist';
 	import {
 		CalendarClock,
-		Camera,
 		ChevronRight,
+		File,
 		Funnel,
 		ListVideo,
 		Monitor,
-		Plus,
-		SearchIcon
+		Plus
 	} from '@lucide/svelte';
 	import Label from './components/ui/label/label.svelte';
 	import { capitalize } from './utils';
+	import { Badge } from './components/ui/badge';
+	import { Separator } from './components/ui/separator';
+	import type { Display, Playlist, Schedule } from './server/sasta_client';
 
 	let { data }: { data: LayoutData } = $props();
 
@@ -172,6 +171,26 @@
 				</Sidebar.Group>
 			</Collapsible.Root>
 		{/each}
+
+		<Separator />
+
+		<Sidebar.Group>
+			<Sidebar.GroupContent>
+				<Sidebar.Menu>
+					<Sidebar.MenuItem>
+						<Sidebar.MenuButton>
+							{#snippet child({ props })}
+								<a href="/files" onclick={drawerClose} {...props}>
+									<File />
+									<span>Files</span>
+									<Badge>Beta</Badge>
+								</a>
+							{/snippet}
+						</Sidebar.MenuButton>
+					</Sidebar.MenuItem>
+				</Sidebar.Menu>
+			</Sidebar.GroupContent>
+		</Sidebar.Group>
 	</Sidebar.Content>
 </Sidebar.Root>
 
