@@ -1,4 +1,4 @@
-FROM denoland/deno:alpine
+FROM docker.io/denoland/deno:latest
 
 USER deno
 

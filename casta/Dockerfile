@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM rust:slim as build
+FROM --platform=$BUILDPLATFORM docker.io/rust:slim as build
 ENV PKG_CONFIG_ALLOW_CROSS=1 \
     CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER=arm-linux-gnueabihf-gcc \
     CC_armv7_unknown_Linux_gnueabihf=arm-linux-gnueabihf-gcc \
@@ -24,7 +24,7 @@ RUN if [ "$TARGETARCH" = "arm" ] && [ "$TARGETVARIANT" = "v7" ];\
     cargo build --release; \
     fi
 
-FROM --platform=$BUILDPLATFORM node:16-slim as build2
+FROM --platform=$BUILDPLATFORM docker.io/node:16-slim as build2
 WORKDIR /casta
 COPY casta .
 
@@ -32,7 +32,7 @@ RUN npm install && npm run build
 
 # Switch to Alpine instead for smaller images?
 # FROM gcr.io/distroless/cc-debian10
-FROM debian:stable-slim
+FROM docker.io/debian:stable-slim
 
 COPY --from=build /casta/target/release/casta /
 COPY --from=build2 /casta/static/ /static/
