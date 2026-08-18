@@ -13,7 +13,7 @@ if (env.SERVER_URL) {
 if (env.AUTH_AUTHENTIK_ISSUER) {
 	console.log(`Using ODIC with endpoint on ${env.AUTH_AUTHENTIK_ISSUER}`);
 } else if (!building) {
-	throw new Error(
+	console.error(
 		"AUTH_AUTHENTIK_ISSUER environment variable is not defined, can't connect to Authentik"
 	);
 }
@@ -22,12 +22,6 @@ if (env.OAUTH_GROUPS) {
 	console.log(`OAUTH groups allowed to log in: ${env.OAUTH_GROUPS}`);
 } else if (!building) {
 	console.log('OAUTH groups not set, anybody can log in');
-}
-
-if (env.REDIS_URL) {
-	console.log(`Listening to Redis on ${env.REDIS_URL}`);
-} else if (!building) {
-	throw new Error("REDIS_URL environment variable is not defined, can't connect to Redis");
 }
 
 export const defaultHandle: Handle = async ({ event, resolve }) => {
@@ -47,7 +41,7 @@ export const defaultHandle: Handle = async ({ event, resolve }) => {
 	const session = await event.locals.auth();
 	if (
 		!event.url.pathname.startsWith('/login') &&
-		// TODO: Make a error page instead?
+		// TODO: Make an error page instead?
 		!event.url.pathname.startsWith('/not-authorized') &&
 		!event.url.pathname.startsWith('/not-supported')
 	) {
@@ -66,29 +60,33 @@ export const defaultHandle: Handle = async ({ event, resolve }) => {
 	}
 
 	if (event.request.method === 'POST') {
-		const clone = event.request.clone();
-		const entries = [...(await clone.formData()).entries()];
+		try {
+			const clone = event.request.clone();
+			const entries = [...(await clone.formData()).entries()];
 
-		console.log(
-			JSON.stringify(
-				{
-					type: 'POST request',
-					name: session?.user,
-					url: clone.url,
-					body: entries.reduce((prev, [key, val]) => {
-						try {
-							// Try to convert value to JSON and replace val with the parsed data
-							val = JSON.parse(val.toString());
-						} catch {
-							console.log('Failed to parse: ' + val.toString());
-						}
-						return Object.assign(prev, { [key.toString()]: val });
-					}, {})
-				},
-				null,
-				2
-			)
-		);
+			console.log(
+				JSON.stringify(
+					{
+						type: 'POST request',
+						name: session?.user,
+						url: clone.url,
+						body: entries.reduce((prev, [key, val]) => {
+							try {
+								// Try to convert value to JSON and replace val with the parsed data
+								val = JSON.parse(val.toString());
+							} catch {
+								console.log('Failed to parse: ' + val.toString());
+							}
+							return Object.assign(prev, { [key.toString()]: val });
+						}, {})
+					},
+					null,
+					2
+				)
+			);
+		} catch (e) {
+			console.error(`Could not log POST request: ${e}`);
+		}
 	}
 
 	return resolve(event);

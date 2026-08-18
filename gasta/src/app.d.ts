@@ -1,8 +1,6 @@
 // See https://kit.svelte.dev/docs/types#app
 
-import type { Display } from '$lib/api_bindings/read/Display';
-import type { Playlist } from '$lib/api_bindings/read/Playlist';
-import type { Schedule } from '$lib/api_bindings/read/Schedule';
+import type { Display, Playlist, Schedule } from '$lib/server/sasta_client';
 
 // for information about these interfaces
 declare global {
@@ -15,7 +13,6 @@ declare global {
 			SERVER_URL: string;
 			LDAP_URL: string;
 			LDAP_GROUPS: string;
-			REDIS_URL: string;
 		}
 
 		interface Locals {

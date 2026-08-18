@@ -20,20 +20,23 @@ declare module '@auth/sveltekit' {
 	}
 }
 
-let providers: Provider[] = [
-	Authentik({
-		clientId: process.env.AUTH_AUTHENTIK_ID,
-		clientSecret: process.env.AUTH_AUTHENTIK_SECRET,
-		issuer: process.env.AUTH_AUTHENTIK_ISSUER,
-		profile: (profile: AuthentikProfile) => {
-			return {
-				userId: profile.preferred_username,
-				name: profile.name,
-				group_list: profile['groups'] ?? []
-			};
-		}
-	})
-];
+let providers: Provider[] = [];
+if (env.AUTH_AUTHENTIK_ISSUER) {
+	providers.push(
+		Authentik({
+			clientId: process.env.AUTH_AUTHENTIK_ID,
+			clientSecret: process.env.AUTH_AUTHENTIK_SECRET,
+			issuer: process.env.AUTH_AUTHENTIK_ISSUER,
+			profile: (profile: AuthentikProfile) => {
+				return {
+					userId: profile.preferred_username,
+					name: profile.name,
+					group_list: profile['groups'] ?? []
+				};
+			}
+		})
+	);
+}
 
 // Activate Mock login
 if (isInDevEnvironment) {
@@ -57,7 +60,10 @@ export const {
 	signOut
 } = SvelteKitAuth({
 	trustHost: true,
-	secret: process.env.AUTH_SECRET,
+	secret:
+		isInDevEnvironment && !process.env.AUTH_SECRET
+			? 'dev-mock-secret-1234'
+			: process.env.AUTH_SECRET,
 	providers,
 	callbacks: {
 		signIn({ profile }) {

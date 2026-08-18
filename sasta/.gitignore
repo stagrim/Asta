@@ -1,6 +1,7 @@
 target/
 content.json
 redis-data/
-/file_server/
 .env
 assets/*.min.*
+files/
+test_files/

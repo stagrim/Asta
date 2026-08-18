@@ -1,5 +1,5 @@
 import { env } from '$env/dynamic/private';
-import type { ScheduleInfo } from '$lib/api_bindings/read/ScheduleInfo';
+import type { ScheduleInfo } from '$lib/server/sasta_client';
 import { json } from '@sveltejs/kit';
 
 export async function GET({ params }) {

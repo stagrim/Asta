@@ -2,9 +2,6 @@
 	import { form_action } from '$lib/form_action';
 	import { enhance } from '$app/forms';
 	import lodash from 'lodash';
-	import type { Playlist } from '$lib/api_bindings/read/Playlist';
-	import type { Display } from '$lib/api_bindings/read/Display';
-	import type { Schedule } from '$lib/api_bindings/read/Schedule';
 	import type { DisplayState, ScheduleState, State } from '../app';
 	import * as Card from '$lib/components/ui/card';
 	import { Button, buttonVariants } from './components/ui/button';
@@ -12,7 +9,8 @@
 	import type { Snippet } from 'svelte';
 	import { watch } from 'runed';
 	import { Badge } from './components/ui/badge';
-	import { CalendarClock, ListVideo, Monitor } from '@lucide/svelte';
+	import { CalendarClock, Monitor } from '@lucide/svelte';
+	import type { Display, Playlist, Schedule } from './server/sasta_client';
 
 	type DisplayType = { type: 'Display'; content: Display };
 	type ScheduleType = { type: 'Schedule'; content: Schedule };

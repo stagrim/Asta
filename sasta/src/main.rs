@@ -1,21 +1,24 @@
 use std::{collections::HashSet, env, net::SocketAddr, str::FromStr, sync::Arc, vec};
 
 use axum::{
+    Json, Router,
     extract::{ConnectInfo, Path, State, WebSocketUpgrade},
     response::IntoResponse,
-    routing::{delete, get, post, put},
-    Json, Router,
+    routing::get,
 };
 use axum_macros::debug_handler;
 use chrono::Local;
 use hyper::StatusCode;
 use read::Payload;
 use store::{schedule::Moment, store::Store};
-use tokio::sync::{oneshot, Mutex};
+use tokio::{
+    signal,
+    sync::{Mutex, oneshot},
+};
 use tower_http::services::ServeDir;
-use tracing::{error, info, info_span, Level};
-use tracing_subscriber::{fmt::format::FmtSpan, FmtSubscriber};
+use tracing::{error, info, info_span};
 use utoipa::OpenApi;
+use utoipa_axum::{router::OpenApiRouter, routes};
 use utoipa_rapidoc::RapiDoc;
 use utoipa_redoc::{Redoc, Servable};
 use utoipa_swagger_ui::SwaggerUi;
@@ -24,7 +27,7 @@ use uuid::Uuid;
 use crate::{
     casta::casta::{casta_index, compute_hash, minify},
     connection::connection::client_connection,
-    file_server::file_server::{add_files, get_all_paths, get_file, FileServer},
+    file_server::file_server::{FileServer, file_api_router, get_file},
     store::{schedule, store::DisplayMaterial},
 };
 
@@ -43,6 +46,8 @@ impl From<(u8, String)> for read::Payload {
 }
 
 // TODO: Race conditions possible in like all API routes. Use Mutex instead?
+// Probably instead rewrite to fit kubernetis model, and don't store state in
+// app, and only in redis
 
 #[derive(Clone)]
 pub struct AppState {
@@ -53,26 +58,19 @@ pub struct AppState {
 
 #[derive(OpenApi)]
 #[openapi(
-    paths(
-        read_display,
-        read_schedule,
-        read_playlist,
-        // create_display,
-        // create_schedule,
-        // create_playlist,
-        update_display,
-        // update_schedule,
-        // update_playlist,
-        delete_display,
-        delete_schedule,
-        delete_playlist,
+    tags(
+        (name = "display", description = "Display management"),
+        (name = "schedule", description = "Schedule management"),
+        (name = "playlist", description = "Playlist management"),
+        (name = "files", description = "File server management API")
     ),
     components(
-        schemas(read::Payload)
-    ),
-    modifiers(),
-    tags(
-        (name = "todo", description = "Todo items management API")
+        schemas(
+            read::Payload,
+            read::Display,
+            read::Schedule,
+            read::Playlist
+        )
     )
 )]
 struct ApiDoc;
@@ -82,19 +80,20 @@ async fn main() {
     dotenvy::dotenv().ok();
     let redis_url = env::var("REDIS_URL").expect("REDIS_URL variable must be set");
     let sasta_address = env::var("ADDRESS").unwrap_or("127.0.0.1:8080".into());
-    let subscriber = FmtSubscriber::builder()
-        .with_span_events(FmtSpan::NEW)
-        .with_max_level(Level::TRACE)
-        .finish();
-    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
-
+    let sasta_file_path = env::var("FILE_PATH").unwrap_or("./files".into());
+    tracing_subscriber::fmt::init();
+    info!("REDIS_URL={redis_url}");
+    info!("ADDRESS={sasta_address}");
+    info!("FILE_PATH={sasta_file_path}");
     minify();
     info!("JS and CSS minified");
     let htmx_hash = compute_hash();
     info!("Computed Hash for Casta Htmx");
 
     let store = Arc::new(Store::new(&redis_url).await);
-    let file_server = Arc::new(Mutex::new(FileServer::new(&redis_url).await));
+    let file_server = Arc::new(Mutex::new(
+        FileServer::new(&redis_url, sasta_file_path).await,
+    ));
 
     let store_copy = store.clone();
     let (tx, rx) = oneshot::channel::<()>();
@@ -113,67 +112,82 @@ async fn main() {
         htmx_hash,
     };
 
-    let app = Router::new()
-        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
-        .merge(Redoc::with_url("/redoc", ApiDoc::openapi()))
-        // There is no need to create `RapiDoc::with_openapi` because the OpenApi is served
-        // via SwaggerUi instead we only make rapidoc to point to the existing doc.
-        // .merge(RapiDoc::new("/api-docs/openapi.json").path("/rapidoc"))
-        // Alternative to above
-        .merge(RapiDoc::with_openapi("/api-docs/openapi2.json", ApiDoc::openapi()).path("/rapidoc"))
+    let (api_router, openapi) = OpenApiRouter::with_openapi(ApiDoc::openapi())
         .nest(
             "/api",
-            Router::new()
-                .nest(
-                    "/display",
-                    Router::new()
-                        .route("/", get(read_display))
-                        .route("/", post(create_display))
-                        .route("/{uuid}", put(update_display))
-                        .route("/{uuid}", delete(delete_display)),
-                )
-                .nest(
-                    "/playlist",
-                    Router::new()
-                        .route("/", post(create_playlist))
-                        .route("/", get(read_playlist))
-                        .route("/{uuid}", put(update_playlist))
-                        .route("/{uuid}", delete(delete_playlist)),
-                )
-                .nest(
-                    "/schedule",
-                    Router::new()
-                        .route("/", post(create_schedule))
-                        .route("/", get(read_schedule))
-                        .route("/{uuid}", get(schedule_info))
-                        .route("/{uuid}", put(update_schedule))
-                        .route("/{uuid}", delete(delete_schedule)),
-                )
-                .nest(
-                    "/files",
-                    Router::new()
-                        .route("/", get(get_all_paths))
-                        .route("/", post(add_files)),
-                ),
+            OpenApiRouter::new()
+                // Display
+                .routes(routes!(read_displays))
+                .routes(routes!(create_display))
+                .routes(routes!(update_display))
+                .routes(routes!(delete_display))
+                // Playlist
+                .routes(routes!(read_playlist))
+                .routes(routes!(create_playlist))
+                .routes(routes!(update_playlist))
+                .routes(routes!(delete_playlist))
+                // Schedule
+                .routes(routes!(read_schedule))
+                .routes(routes!(create_schedule))
+                .routes(routes!(schedule_info))
+                .routes(routes!(update_schedule))
+                .routes(routes!(delete_schedule))
+                // Files
+                .nest("/files", file_api_router()),
         )
+        .split_for_parts();
+
+    let app = Router::new()
+        .merge(api_router)
+        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", openapi.clone()))
+        .merge(Redoc::with_url("/redoc", openapi.clone()))
+        .merge(RapiDoc::with_openapi("/api-docs/openapi2.json", openapi).path("/rapidoc"))
         .nest("/files", Router::new().fallback(get_file))
         .route("/", get(ws_handler))
         .route("/ws", get(ws_handler))
         .route("/display/{uuid}", get(casta_index))
         .route("/casta/{uuid}", get(casta_index))
+        .route("/ping", get(async || "pong"))
         .nest_service("/assets", ServeDir::new("assets"))
         .with_state(app_state);
 
     let addr = SocketAddr::from_str(&sasta_address).expect("Wrong address format");
-    info!("listening on http://{}", addr);
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+    info!("listening on http://{}", addr);
 
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
     )
+    .with_graceful_shutdown(shutdown_signal())
     .await
     .unwrap();
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+
+    tracing::info!("Signal received, Sasta shutting down");
 }
 
 mod read {
@@ -263,7 +277,7 @@ mod read {
         }
     }
 
-    #[derive(Serialize, TS)]
+    #[derive(Serialize, TS, ToSchema)]
     #[ts(export, export_to = "api_bindings/read/")]
     pub struct ScheduleInfo {
         #[ts(type = "string")]
@@ -271,7 +285,7 @@ mod read {
         pub next: Option<NextMoment>,
     }
 
-    #[derive(Serialize, TS)]
+    #[derive(Serialize, TS, ToSchema)]
     #[ts(export, export_to = "api_bindings/read/")]
     pub struct NextMoment {
         /// Amount of milliseconds until change
@@ -284,12 +298,13 @@ mod read {
 mod create {
     use serde::Deserialize;
     use ts_rs::TS;
+    use utoipa::ToSchema;
     use uuid::Uuid;
 
     pub use crate::read::Response;
     use crate::store::store::DisplayMaterial;
 
-    #[derive(Debug, Deserialize, TS)]
+    #[derive(Debug, Deserialize, TS, ToSchema)]
     #[ts(export, export_to = "api_bindings/create/", rename = "CreateDisplay")]
     pub struct Display {
         #[ts(type = "string", optional)]
@@ -298,13 +313,13 @@ mod create {
         pub display_material: DisplayMaterial,
     }
 
-    #[derive(Deserialize, TS)]
+    #[derive(Deserialize, TS, ToSchema)]
     #[ts(export, export_to = "api_bindings/create/", rename = "CreatePlaylist")]
     pub struct Playlist {
         pub name: String,
     }
 
-    #[derive(Deserialize, TS)]
+    #[derive(Deserialize, TS, ToSchema)]
     #[ts(export, export_to = "api_bindings/create/", rename = "CreateSchedule")]
     pub struct Schedule {
         pub name: String,
@@ -353,6 +368,17 @@ mod update {
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/display",
+    tag = "display",
+    request_body(content = create::Display),
+    responses(
+        (status = 200, description = "Display created", body = read::Payload),
+        (status = 400, description = "Bad Request (e.g., name taken)", body = read::Payload),
+        (status = 500, description = "Server Error", body = read::Payload)
+    )
+)]
 #[debug_handler]
 async fn create_display(
     State(state): State<AppState>,
@@ -429,6 +455,17 @@ async fn create_display(
     };
 }
 
+#[utoipa::path(
+    post,
+    path = "/playlist",
+    tag = "playlist",
+    request_body(content = create::Playlist),
+    responses(
+        (status = 200, description = "Playlist created", body = read::Payload),
+        (status = 400, description = "Bad Request", body = read::Payload),
+        (status = 500, description = "Server Error", body = read::Payload)
+    )
+)]
 async fn create_playlist(
     State(state): State<AppState>,
     Json(playlist): Json<create::Playlist>,
@@ -466,9 +503,9 @@ async fn create_playlist(
 
     return if let Some(p) = store.read().await.playlists.get(&uuid) {
         info!("[Api] Created Playlist {uuid}");
-        Ok(Json(read::Payload::Playlist(
-            vec![(uuid, p.clone()).into()],
-        )))
+        Ok(Json(read::Payload::Playlist(vec![
+            (uuid, p.clone()).into(),
+        ])))
     } else {
         error!("[Api] No Playlist with {uuid} could be found while reading after write");
         Err((
@@ -478,6 +515,17 @@ async fn create_playlist(
     };
 }
 
+#[utoipa::path(
+    post,
+    path = "/schedule",
+    tag = "schedule",
+    request_body(content = create::Schedule),
+    responses(
+        (status = 200, description = "Schedule created", body = read::Payload),
+        (status = 400, description = "Bad Request", body = read::Payload),
+        (status = 500, description = "Server Error", body = read::Payload)
+    )
+)]
 async fn create_schedule(
     State(state): State<AppState>,
     Json(schedule): Json<create::Schedule>,
@@ -518,9 +566,9 @@ async fn create_schedule(
 
     return if let Some(s) = store.read().await.schedules.get(&uuid) {
         info!("[Api] Created Schedule {uuid}");
-        Ok(Json(read::Payload::Schedule(
-            vec![(uuid, s.clone()).into()],
-        )))
+        Ok(Json(read::Payload::Schedule(vec![
+            (uuid, s.clone()).into(),
+        ])))
     } else {
         error!("[Api] No Schedule with {uuid} could be found while reading after write");
         Err((
@@ -532,10 +580,10 @@ async fn create_schedule(
 
 #[utoipa::path(
     get,
-    path = "/api/display",
+    path = "/display",
     tag = "display",
     responses(
-        (status = 200, description = "Get all Displays", body = inline(read::Payload),
+        (status = 200, description = "Get all Displays", body = inline(Vec<read::Display>),
             example = json!(
                 read::Payload::Display(vec![
                         read::Display { uuid: Uuid::new_v4(), name: "name1".into(), display_material: DisplayMaterial::Schedule(Uuid::new_v4()) },
@@ -546,8 +594,8 @@ async fn create_schedule(
         ),
     )
 )]
-async fn read_display(State(state): State<AppState>) -> read::Response {
-    return Ok(Json(read::Payload::Display(
+async fn read_displays(State(state): State<AppState>) -> Json<Vec<read::Display>> {
+    return Json(
         state
             .store
             .read()
@@ -556,15 +604,15 @@ async fn read_display(State(state): State<AppState>) -> read::Response {
             .iter()
             .map(|(u, d)| (*u, d.clone()).into())
             .collect(),
-    )));
+    );
 }
 
 #[utoipa::path(
     get,
-    path = "/api/playlist",
+    path = "/playlist",
     tag = "playlist",
     responses(
-        (status = 200, description = "Get all Playlists", body = inline(read::Payload),
+        (status = 200, description = "Get all Playlists", body = inline(Vec<read::Playlist>),
             example = json!(
                 read::Payload::Playlist(vec![
                         read::Playlist { uuid: Uuid::new_v4(), name: "name1".into(), items: vec![
@@ -582,8 +630,8 @@ async fn read_display(State(state): State<AppState>) -> read::Response {
         ),
     )
 )]
-async fn read_playlist(State(state): State<AppState>) -> read::Response {
-    return Ok(Json(read::Payload::Playlist(
+async fn read_playlist(State(state): State<AppState>) -> Json<Vec<read::Playlist>> {
+    return Json(
         state
             .store
             .read()
@@ -591,16 +639,16 @@ async fn read_playlist(State(state): State<AppState>) -> read::Response {
             .playlists
             .iter()
             .map(|(u, p)| (*u, p.clone()).into())
-            .collect::<Vec<_>>(),
-    )));
+            .collect(),
+    );
 }
 
 #[utoipa::path(
     get,
-    path = "/api/schedule",
+    path = "/schedule",
     tag = "schedule",
     responses(
-        (status = 200, description = "Get all Schedules", body = inline(read::Payload),
+        (status = 200, description = "Get all Schedules", body = inline(Vec<read::Schedule>),
             example = json!(
                 read::Payload::Schedule(vec![
                     read::Schedule { uuid: Uuid::new_v4(), name: "name1".into(), playlist: Uuid::new_v4(), scheduled: Some(vec![
@@ -616,8 +664,8 @@ async fn read_playlist(State(state): State<AppState>) -> read::Response {
         ),
     )
 )]
-async fn read_schedule(State(state): State<AppState>) -> read::Response {
-    return Ok(Json(read::Payload::Schedule(
+async fn read_schedule(State(state): State<AppState>) -> Json<Vec<read::Schedule>> {
+    return Json(
         state
             .store
             .read()
@@ -625,15 +673,15 @@ async fn read_schedule(State(state): State<AppState>) -> read::Response {
             .schedules
             .iter()
             .map(|(u, s)| (*u, s.clone()).into())
-            .collect::<Vec<_>>(),
-    )));
+            .collect(),
+    );
 }
 
 #[utoipa::path(
     put,
-    path = "/api/display/{uuid}",
+    path = "/display/{uuid}",
     tag = "display",
-    request_body(content = inline(update::Display)),
+    request_body(content = update::Display),
     responses(
         (status = 200, description = "Display updated", body = inline(read::Payload),
             example = json!(
@@ -679,7 +727,7 @@ async fn update_display(
     if let Some((uuid, _)) = read
         .displays
         .iter()
-        .find(|(&u, d)| d.name == display.name && u != uuid)
+        .find(|(u, d)| d.name == display.name && **u != uuid)
     {
         error!("[Api] Name is already used by Display {}", uuid);
         return Err((
@@ -711,7 +759,7 @@ async fn update_display(
     return if let Some(d) = store.read().await.displays.get(&uuid) {
         info!("[Api] Updated and read Display {uuid}");
         Ok(Json(update::Payload::Display(vec![
-            (uuid, d.clone()).into()
+            (uuid, d.clone()).into(),
         ])))
     } else {
         error!("[Api] Could not find Display with {uuid} after update");
@@ -728,6 +776,20 @@ async fn update_display(
     };
 }
 
+#[utoipa::path(
+    put,
+    path = "/playlist/{uuid}",
+    tag = "playlist",
+    request_body(content = update::Playlist),
+    responses(
+        (status = 200, description = "Playlist updated", body = read::Payload),
+        (status = 400, description = "Bad Request", body = read::Payload),
+        (status = 500, description = "Server Error", body = read::Payload)
+    ),
+    params(
+        ("uuid" = Uuid, Path, description = "Uuid of Playlist to update")
+    )
+)]
 async fn update_playlist(
     State(state): State<AppState>,
     Path(uuid): Path<Uuid>,
@@ -746,7 +808,7 @@ async fn update_playlist(
     if let Some((uuid, _)) = read
         .playlists
         .iter()
-        .find(|(&u, p)| p.name == playlist.name && u != uuid)
+        .find(|(u, p)| p.name == playlist.name && **u != uuid)
     {
         error!("[Api] Name is already used by Playlist {}", uuid);
         return Err((
@@ -779,7 +841,7 @@ async fn update_playlist(
     return if let Some(p) = store.read().await.playlists.get(&uuid) {
         info!("[Api] Updated and read Playlist {uuid}");
         Ok(Json(update::Payload::Playlist(vec![
-            (uuid, p.clone()).into()
+            (uuid, p.clone()).into(),
         ])))
     } else {
         error!("[Api] Could not find Playlist with {uuid} after update");
@@ -796,6 +858,20 @@ async fn update_playlist(
     };
 }
 
+#[utoipa::path(
+    put,
+    path = "/schedule/{uuid}",
+    tag = "schedule",
+    request_body(content = update::Schedule),
+    responses(
+        (status = 200, description = "Schedule updated", body = read::Payload),
+        (status = 400, description = "Bad Request", body = read::Payload),
+        (status = 500, description = "Server Error", body = read::Payload)
+    ),
+    params(
+        ("uuid" = Uuid, Path, description = "Uuid of Schedule to update")
+    )
+)]
 async fn update_schedule(
     State(state): State<AppState>,
     Path(uuid): Path<Uuid>,
@@ -814,7 +890,7 @@ async fn update_schedule(
     if let Some((uuid, _)) = read
         .schedules
         .iter()
-        .find(|(&u, s)| s.name == schedule.name && u != uuid)
+        .find(|(u, s)| s.name == schedule.name && **u != uuid)
     {
         error!("[Api] Name is already used by Schedule {}", uuid);
         return Err((
@@ -862,7 +938,7 @@ async fn update_schedule(
     return if let Some(s) = store.read().await.schedules.get(&uuid) {
         info!("[Api] Updated and read Schedule {uuid}");
         Ok(Json(update::Payload::Schedule(vec![
-            (uuid, s.clone()).into()
+            (uuid, s.clone()).into(),
         ])))
     } else {
         error!("[Api] Could not find Schedule with {uuid} after update");
@@ -883,7 +959,7 @@ async fn update_schedule(
 
 #[utoipa::path(
     delete,
-    path = "/api/display/{uuid}",
+    path = "/display/{uuid}",
     tag = "display",
     responses(
         (status = 200, description = "Display deleted", body = Payload,
@@ -931,7 +1007,7 @@ async fn delete_display(State(state): State<AppState>, Path(uuid): Path<Uuid>) -
 
 #[utoipa::path(
     delete,
-    path = "/api/playlist/{uuid}",
+    path = "/playlist/{uuid}",
     tag = "playlist",
     responses(
         (status = 200, description = "Playlist deleted", body = Payload,
@@ -1023,9 +1099,9 @@ pub(crate) async fn delete_playlist(
     }
 
     if let Some(d) = read.playlists.get(&uuid) {
-        res = Ok(Json(read::Payload::Playlist(
-            vec![(uuid, d.clone()).into()],
-        )));
+        res = Ok(Json(read::Payload::Playlist(vec![
+            (uuid, d.clone()).into(),
+        ])));
     } else {
         error!("[Api] No Playlist with {uuid} was found");
         return Err((
@@ -1049,7 +1125,7 @@ pub(crate) async fn delete_playlist(
 
 #[utoipa::path(
     delete,
-    path = "/api/schedule/{uuid}",
+    path = "/schedule/{uuid}",
     tag = "schedule",
     responses(
         (status = 200, description = "Schedule deleted", body = Payload,
@@ -1111,9 +1187,9 @@ async fn delete_schedule(State(state): State<AppState>, Path(uuid): Path<Uuid>) 
     }
 
     if let Some(s) = read.schedules.get(&uuid) {
-        res = Ok(Json(read::Payload::Schedule(
-            vec![(uuid, s.clone()).into()],
-        )));
+        res = Ok(Json(read::Payload::Schedule(vec![
+            (uuid, s.clone()).into(),
+        ])));
     } else {
         error!("[Api] No Schedule with {uuid} was found");
         return Err((
@@ -1135,6 +1211,18 @@ async fn delete_schedule(State(state): State<AppState>, Path(uuid): Path<Uuid>) 
     res
 }
 
+#[utoipa::path(
+    get,
+    path = "/schedule/{uuid}",
+    tag = "schedule",
+    params(
+        ("uuid" = Uuid, Path, description = "Uuid of Schedule to fetch info for")
+    ),
+    responses(
+        (status = 200, description = "Schedule information", body = read::ScheduleInfo),
+        (status = 404, description = "Schedule not found")
+    )
+)]
 async fn schedule_info(State(state): State<AppState>, Path(uuid): Path<Uuid>) -> impl IntoResponse {
     let current_moment = Local::now();
     let store = state.store.read().await;

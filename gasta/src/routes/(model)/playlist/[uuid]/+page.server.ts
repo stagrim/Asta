@@ -2,11 +2,14 @@ import type { Actions } from '@sveltejs/kit';
 import { delete_action, update } from '$lib/server/actions';
 import type { UpdatePlaylist } from '$lib/api_bindings/update/UpdatePlaylist';
 import type { PageServerLoad } from './$types';
+import { getAllPathsTree } from '$lib/server/sasta_client';
 
 const type = 'Playlist';
 
 export const load: PageServerLoad = async ({ params }) => {
-	return { uuid: params.uuid };
+	const files = await getAllPathsTree();
+	if (files.error || !files.data) throw new Error('Could not load files list');
+	return { uuid: params.uuid, files: files.data };
 };
 
 export const actions = {

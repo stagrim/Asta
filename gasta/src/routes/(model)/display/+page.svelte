@@ -1,5 +1,4 @@
 <script lang="ts">
-	import * as Card from '$lib/components/ui/card';
 	import { enhance } from '$app/forms';
 	import { form_action } from '$lib/form_action';
 	import TypePicker from '$lib/TypePicker.svelte';
