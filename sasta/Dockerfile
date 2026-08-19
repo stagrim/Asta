@@ -15,12 +15,12 @@ FROM docker.io/debian:stable-slim
 RUN useradd -r sasta
 WORKDIR /sasta
 
-ENV FILE_PATH="/files"
+ENV FILE_PATH="/sasta/files"
 
 COPY --from=build --chown=sasta:root /sasta/sasta_bin ./sasta
 COPY --chown=sasta:root sasta/assets ./assets
 
-RUN mkdir /files && chown sasta:root /files && chmod -R g=u /files /sasta
+RUN mkdir /sasta/files && chown sasta:root /sasta/files && chmod -R g=u /sasta
 
 USER sasta
 EXPOSE 8080
