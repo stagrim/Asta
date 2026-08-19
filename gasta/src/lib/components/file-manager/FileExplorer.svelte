@@ -6,7 +6,7 @@
 	import ListIcon from '@lucide/svelte/icons/list';
 	import PanelRightIcon from '@lucide/svelte/icons/panel-right';
 	import FolderIcon from '@lucide/svelte/icons/folder';
-	import { Folder, FolderTree, SearchIcon } from '@lucide/svelte';
+	import { Folder, FolderTree, History, House, Search, SearchIcon } from '@lucide/svelte';
 	import { filesize } from 'filesize';
 	import { cn } from '$lib/utils';
 	import * as Breadcrumb from '$lib/components/ui/breadcrumb';
@@ -19,14 +19,15 @@
 	const fm = useFileManager();
 
 	const recursivePath = $derived(
-		fm.currentPath.type === CurrentPathType.Path &&
-			fm.currentPath.path
-				.split('/')
-				.filter((s) => s)
-				.reduce(
-					(pre, name) => [...pre, { href: `${pre.at(-1)?.href ?? ''}/${name}`, name }],
-					[] as { href: string; name: string }[]
-				)
+		fm.currentPath.type === CurrentPathType.Path
+			? fm.currentPath.path
+					.split('/')
+					.filter((s) => s)
+					.reduce(
+						(pre, name) => [...pre, { href: `${pre.at(-1)?.href ?? ''}/${name}`, name }],
+						[] as { href: string; name: string }[]
+					)
+			: []
 	);
 
 	const keys = new PressedKeys();
@@ -100,8 +101,12 @@
 	watch(
 		() => keys.all,
 		() => {
+			const active = document.activeElement;
+			const isTyping = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement;
+
 			const isDialogOpen = document.querySelector('[role="alertdialog"]') !== null;
-			if (isDialogOpen) {
+
+			if (isTyping || isDialogOpen) {
 				return;
 			}
 
@@ -177,10 +182,31 @@
 				<Separator orientation="vertical" class="h-4 mx-2" />
 				<Breadcrumb.Root>
 					<Breadcrumb.List>
+						<Breadcrumb.Item>
+							{#if fm.currentPath.type === CurrentPathType.Path}
+								{#if recursivePath?.length}
+									<Breadcrumb.Link
+										class="cursor-pointer inline-flex items-center gap-1"
+										onclick={() => fm.navigate('/')}
+									>
+										<House size={18} />
+									</Breadcrumb.Link>
+									<Breadcrumb.Separator />
+								{:else}
+									<Breadcrumb.Page class="inline-flex items-center gap-1">
+										<House size={18} />
+									</Breadcrumb.Page>
+								{/if}
+							{:else if fm.currentPath.type === CurrentPathType.Search}
+								<Breadcrumb.Page><Search size={18} /></Breadcrumb.Page>
+							{:else}
+								<Breadcrumb.Page><History size={18} /></Breadcrumb.Page>
+							{/if}
+						</Breadcrumb.Item>
 						{#if recursivePath}
-							{#each [{ name: 'Home', href: '/' }, ...recursivePath] as dir, i}
+							{#each recursivePath as dir, i}
 								<Breadcrumb.Item>
-									{#if i === recursivePath.length}
+									{#if i === recursivePath.length - 1}
 										<Breadcrumb.Page>
 											{dir.name}
 										</Breadcrumb.Page>
@@ -192,10 +218,6 @@
 									{/if}
 								</Breadcrumb.Item>
 							{/each}
-						{:else}
-							<Breadcrumb.Item>
-								<Breadcrumb.Page>{fm.currentPath.type}</Breadcrumb.Page>
-							</Breadcrumb.Item>
 						{/if}
 					</Breadcrumb.List>
 				</Breadcrumb.Root>

@@ -36,12 +36,12 @@
 	<form
 		enctype="multipart/form-data"
 		class="flex w-full flex-col gap-2 p-6"
-		{...uploadFile.enhance(async ({ form, submit }) => {
+		{...uploadFile.enhance(async ({ element, submit }) => {
 			setLoading(true);
 			try {
 				await submit().updates(getFiles());
 
-				form.reset();
+				element.reset();
 				resetFiles();
 				directory.set(currentPath);
 

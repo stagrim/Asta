@@ -1,12 +1,14 @@
 <script lang="ts">
-	import FileTextIcon from '@lucide/svelte/icons/file-text';
-	import FileSpreadsheetIcon from '@lucide/svelte/icons/file-spreadsheet';
-	import FileCodeIcon from '@lucide/svelte/icons/file-code';
-	import ImageIcon from '@lucide/svelte/icons/image';
 	import VideoIcon from '@lucide/svelte/icons/video';
-	import MusicIcon from '@lucide/svelte/icons/music';
-	import ArchiveIcon from '@lucide/svelte/icons/archive';
 	import FileIcon from '@lucide/svelte/icons/file';
+	import {
+		FileArchive,
+		FileCode,
+		FileImage,
+		FileMusic,
+		FileSpreadsheet,
+		FileText
+	} from '@lucide/svelte';
 
 	let {
 		extension,
@@ -29,7 +31,10 @@
 		jpg: 'image',
 		jpeg: 'image',
 		webp: 'image',
-		txt: 'document'
+		svg: 'image',
+		txt: 'document',
+		zip: 'archive',
+		tar: 'archive'
 	};
 
 	let type = $derived(extension ? extLookup[extension] : 'archive');
@@ -46,14 +51,14 @@
 	};
 
 	const icons: Record<string, typeof FileIcon> = {
-		pdf: FileTextIcon,
-		document: FileTextIcon,
-		spreadsheet: FileSpreadsheetIcon,
-		code: FileCodeIcon,
-		image: ImageIcon,
+		pdf: FileText,
+		document: FileText,
+		spreadsheet: FileSpreadsheet,
+		code: FileCode,
+		image: FileImage,
 		video: VideoIcon,
-		audio: MusicIcon,
-		archive: ArchiveIcon
+		audio: FileMusic,
+		archive: FileArchive
 	};
 
 	const IconComponent = $derived(icons[type] || FileIcon);
