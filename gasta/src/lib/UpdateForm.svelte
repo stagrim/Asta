@@ -59,14 +59,15 @@
 						.entries()
 						.filter(
 							([, v]) =>
-								v.display_material.type === 'playlist' && v.display_material.uuid === content.uuid
+								v.display_material.type === 'playlist' && v.display_material.uuid === content?.uuid
 						)
 						.map(([, content]) => ({ type: 'Display', content }) satisfies DisplayType),
 					...dependant_state.schedules.content
 						.entries()
 						.filter(
 							([, v]) =>
-								v.playlist === content.uuid || v.scheduled?.some((i) => i.playlist === content.uuid)
+								v.playlist === content?.uuid ||
+								v.scheduled?.some((i) => i.playlist === content?.uuid)
 						)
 						.map(([, content]) => ({ type: 'Schedule', content }) satisfies ScheduleType)
 				];
