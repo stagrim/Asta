@@ -14,7 +14,7 @@ use futures_util::{
     SinkExt, StreamExt,
     stream::{SplitSink, SplitStream},
 };
-use maud::html;
+use maud::{PreEscaped, html};
 use tokio::{
     sync::Mutex,
     time::{Instant, sleep_until, timeout},
@@ -36,6 +36,16 @@ impl IntoHtmx for DisplayPayload {
                 div #text { (data.content) }
             }
             DisplayPayload::Image(data) => img src=(data.content);,
+            DisplayPayload::PortableDocumentFormat(data) => {
+                canvas #pdf-canvas {
+                    script {
+                        (PreEscaped(format!(
+                            "renderFirstPage(document.getElementById('pdf-canvas'), '{}');",
+                            data.content
+                        )))
+                    }
+                }
+            }
         }
     }}
         .into_string()
@@ -230,6 +240,17 @@ pub async fn client_connection(
                         DisplayPayload::Image(WebsitePayload { content: src })
                     }
                     PlaylistItem::BackgroundAudio { .. } => todo!(),
+                    PlaylistItem::PortableDocumentFormat {
+                        id: name,
+                        settings: ImageData { mut src, duration },
+                    } => {
+                        if src.starts_with(ASTA_FLE_PREFIX) {
+                            src = src.replace(ASTA_FLE_PREFIX, "/files/");
+                        }
+                        info!("[{who} ({client_name})] Sending PDF '{name}'");
+                        sleep_duration = duration;
+                        DisplayPayload::PortableDocumentFormat(WebsitePayload { content: src })
+                    }
                 };
 
                 let msg = if htmx {

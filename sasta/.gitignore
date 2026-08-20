@@ -2,6 +2,7 @@ target/
 content.json
 redis-data/
 .env
-assets/*.min.*
-files/
+assets/script.min.js
+assets/style.min.css
+/files/
 test_files/

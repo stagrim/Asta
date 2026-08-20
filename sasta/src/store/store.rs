@@ -117,6 +117,12 @@ pub enum PlaylistItem {
         id: String,
         settings: ImageData,
     },
+    #[serde(rename = "PDF")]
+    PortableDocumentFormat {
+        #[serde(alias = "name")]
+        id: String,
+        settings: ImageData,
+    },
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, ToSchema, TS)]

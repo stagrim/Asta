@@ -10,7 +10,7 @@ use lightningcss::{
     printer::PrinterOptions,
     stylesheet::{MinifyOptions, ParserOptions, StyleSheet},
 };
-use maud::{html, Markup, PreEscaped, DOCTYPE};
+use maud::{DOCTYPE, Markup, PreEscaped, html};
 use minify_js::{Session, TopLevelMode};
 #[cfg(not(debug_assertions))]
 use sha2::Sha256;
@@ -25,8 +25,9 @@ pub async fn casta_index(Path(uuid): Path<Uuid>) -> Markup {
                 meta charset="UTF-8";
                 meta name="viewport" content="width=device-width, initial-scale=1.0";
                 link rel="stylesheet" href="/assets/style.min.css";
-                script src="https://unpkg.com/htmx.org@1.9.2" {}
-                script src="https://unpkg.com/htmx.org/dist/ext/ws.js" {}
+                script src="/assets/htmx@1.9.2.min.js" {}
+                script src="/assets/htmx-ext-ws.min.js" {}
+                script src="/assets/pdf@3.11.174.min.js" {}
                 script { (PreEscaped("let uuid=\"")) (uuid) (PreEscaped("\"")) }
                 script src="/assets/script.min.js" {}
             }

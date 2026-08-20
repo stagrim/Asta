@@ -29,6 +29,7 @@ pub enum DisplayPayload {
     Website(WebsitePayload),
     Text(WebsitePayload),
     Image(WebsitePayload),
+    PortableDocumentFormat(WebsitePayload),
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]

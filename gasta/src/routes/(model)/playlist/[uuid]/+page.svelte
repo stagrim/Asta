@@ -74,7 +74,7 @@
 			</span>
 		</Select.Trigger>
 		<Select.Content>
-			{#each ['WEBSITE', 'IMAGE', 'TEXT'] as t}
+			{#each ['WEBSITE', 'IMAGE', 'TEXT', 'PDF'] as t}
 				<Select.Item value={t}>{capitalize(t)}</Select.Item>
 			{/each}
 		</Select.Content>
@@ -98,6 +98,18 @@
 			</InputGroup.Addon>
 		</InputGroup.Root>
 	{:else if item.type == 'IMAGE'}
+		<InputGroup.Root>
+			<InputGroup.Input class={cn(base, 'w-full')} bind:value={item.settings.src} />
+			<InputGroup.Addon align="inline-end">
+				<FilePicker
+					onSelected={(selected) => (item.settings.src = `ASTA:/${selected.id}`)}
+					root={data.files}
+				>
+					<InputGroup.Button variant="secondary"><Paperclip /></InputGroup.Button>
+				</FilePicker>
+			</InputGroup.Addon>
+		</InputGroup.Root>
+	{:else if item.type == 'PDF'}
 		<InputGroup.Root>
 			<InputGroup.Input class={cn(base, 'w-full')} bind:value={item.settings.src} />
 			<InputGroup.Addon align="inline-end">
