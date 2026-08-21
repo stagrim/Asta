@@ -68,7 +68,7 @@
 		filter: string
 	) {
 		if (filter) {
-			const regex = new RegExp(`(${filter})`, 'gi');
+			const regex = new RegExp(`(${filter})`, 'i');
 			return kind
 				.filter(({ title_name }) => regex.test(title_name))
 				.map((k) => {
@@ -142,7 +142,7 @@
 														class:scale-y-100={active}
 														class:scale-y-0={!active}
 													></div>
-													<span>{@html title_name}</span>
+													<span class="overflow-visible!">{@html title_name}</span>
 												</a>
 											{/snippet}
 										</Sidebar.MenuSubButton>
@@ -180,7 +180,13 @@
 					<Sidebar.MenuItem>
 						<Sidebar.MenuButton>
 							{#snippet child({ props })}
+								{@const active = '/files' === page.url.pathname}
 								<a href="/files" onclick={drawerClose} {...props}>
+									<div
+										class="w-1 h-full rounded-2xl bg-foreground transition-transform"
+										class:scale-y-100={active}
+										class:scale-y-0={!active}
+									></div>
 									<File />
 									<span>Files</span>
 									<Badge>Beta</Badge>
@@ -206,39 +212,15 @@
 		border-radius: 0.15rem;
 	}
 
-	:global(.variant-filled-primary span.highlight) {
-		background-color: var(--highlight-color-active);
-		box-shadow: 0 0 0 1px var(--highlight-color-active);
-		animation: pulse-active 0.2s normal;
-	}
-
 	@keyframes pulse {
 		0% {
-			/* -moz-box-shadow: 0 0 0 0 var(--highlight-color); */
 			box-shadow: 0 0 0 1px var(--highlight-color);
 		}
 		50% {
-			/* -moz-box-shadow: 0 0 0 10px var(--highlight-color); */
-			box-shadow: 0 0 0 2px var(--highlight-color);
+			box-shadow: 0 0 0 3px var(--highlight-color);
 		}
 		100% {
-			/* -moz-box-shadow: 0 0 0 0 var(--highlight-color); */
 			box-shadow: 0 0 0 1px var(--highlight-color);
-		}
-	}
-
-	@keyframes pulse-active {
-		0% {
-			/* -moz-box-shadow: 0 0 0 0 var(--highlight-color-active); */
-			box-shadow: 0 0 0 1px var(--highlight-color-active);
-		}
-		50% {
-			/* -moz-box-shadow: 0 0 0 10px var(--highlight-color-active); */
-			box-shadow: 0 0 0 2px var(--highlight-color-active);
-		}
-		100% {
-			/* -moz-box-shadow: 0 0 0 0 var(--highlight-color-active); */
-			box-shadow: 0 0 0 1px var(--highlight-color-active);
 		}
 	}
 </style>
