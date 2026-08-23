@@ -21,7 +21,7 @@ use tokio::{
 };
 use tracing::{error, info, trace, warn};
 
-use crate::store::store::{Change, ImageData, PlaylistItem, Store, TextData, WebsiteData};
+use crate::store::store::{Change, ImageData, PDFData, PlaylistItem, Store, TextData, WebsiteData};
 
 trait IntoHtmx {
     fn into_htmx(&self) -> String;
@@ -242,14 +242,14 @@ pub async fn client_connection(
                     PlaylistItem::BackgroundAudio { .. } => todo!(),
                     PlaylistItem::PortableDocumentFormat {
                         id: name,
-                        settings: ImageData { mut src, duration },
+                        settings: PDFData { mut path, duration },
                     } => {
-                        if src.starts_with(ASTA_FLE_PREFIX) {
-                            src = src.replace(ASTA_FLE_PREFIX, "/files/");
+                        if path.starts_with(ASTA_FLE_PREFIX) {
+                            path = path.replace(ASTA_FLE_PREFIX, "/files/");
                         }
                         info!("[{who} ({client_name})] Sending PDF '{name}'");
                         sleep_duration = duration;
-                        DisplayPayload::PortableDocumentFormat(WebsitePayload { content: src })
+                        DisplayPayload::PortableDocumentFormat(WebsitePayload { content: path })
                     }
                 };
 

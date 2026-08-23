@@ -70,12 +70,12 @@
 			size="sm"
 		>
 			<span data-slot="select-value">
-				{capitalize(item.type)}
+				{item.type !== 'PDF' ? capitalize(item.type) : item.type}
 			</span>
 		</Select.Trigger>
 		<Select.Content>
-			{#each ['WEBSITE', 'IMAGE', 'TEXT', 'PDF'] as t}
-				<Select.Item value={t}>{capitalize(t)}</Select.Item>
+			{#each ['WEBSITE', 'IMAGE', 'PDF', 'TEXT'] as t}
+				<Select.Item value={t}>{t !== 'PDF' ? capitalize(t) : t}</Select.Item>
 			{/each}
 		</Select.Content>
 	</Select.Root>
@@ -104,6 +104,7 @@
 				<FilePicker
 					onSelected={(selected) => (item.settings.src = `ASTA:/${selected.id}`)}
 					root={data.files}
+					defaultFilterFileType="image"
 				>
 					<InputGroup.Button variant="secondary"><Paperclip /></InputGroup.Button>
 				</FilePicker>
@@ -111,11 +112,12 @@
 		</InputGroup.Root>
 	{:else if item.type == 'PDF'}
 		<InputGroup.Root>
-			<InputGroup.Input class={cn(base, 'w-full')} bind:value={item.settings.src} />
+			<InputGroup.Input class={cn(base, 'w-full')} bind:value={item.settings.path} />
 			<InputGroup.Addon align="inline-end">
 				<FilePicker
-					onSelected={(selected) => (item.settings.src = `ASTA:/${selected.id}`)}
+					onSelected={(selected) => (item.settings.path = `ASTA:/${selected.id}`)}
 					root={data.files}
+					defaultFilterFileType="pdf"
 				>
 					<InputGroup.Button variant="secondary"><Paperclip /></InputGroup.Button>
 				</FilePicker>

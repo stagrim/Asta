@@ -23,3 +23,15 @@ export const FileManagerSearchParams = v.object({
 	path: v.optional(v.string(), '/'),
 	search: v.optional(v.string(), '')
 });
+
+export enum FileTypes {
+	PDF = 'pdf',
+	Document = 'document',
+	Spreadsheet = 'spreadsheet',
+	Code = 'code',
+	Image = 'image',
+	Video = 'video',
+	Audio = 'audio',
+	Archive = 'archive',
+	Unknown = 'unknown'
+}

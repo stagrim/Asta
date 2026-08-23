@@ -9,14 +9,19 @@
 	import { Label } from '../ui/label';
 	import * as InputGroup from '../ui/input-group';
 	import { Funnel } from '@lucide/svelte';
+	import * as Select from '../ui/select';
+	import { FileTypes } from '../file-manager/types';
+	import { fileExtensionType } from '../file-manager/utils';
 
 	let {
 		root: originalRoot,
 		onSelected,
+		defaultFilterFileType = $bindable('all'),
 		children
 	}: {
 		root: TreeDirectory;
 		onSelected: (selected: TreeFile) => void;
+		defaultFilterFileType?: ValidFileTypeFilters;
 		children: Snippet;
 	} = $props();
 
@@ -24,20 +29,25 @@
 	let root = $derived.by(() => {
 		let root = structuredClone(originalRoot);
 		const search = searchQuery.trim().toLowerCase();
+		const filterFileType = selectedFileType?.type;
 
-		if (!search) {
+		if (!search && !filterFileType) {
 			return root;
 		}
 
-		/** Filters away files not matching searchQuery, and all folders no having a nested, matching file */
+		/** Filters away files not matching searchQuery, and all folders not having a nested, matching file */
 		function recursiveFilterInPlace(item: TreeDirectory, searchQuery: string): boolean {
 			item.directories = item.directories.filter((i) => recursiveFilterInPlace(i, searchQuery));
-			item.files = item.files.filter((i) => i.name.toLowerCase().includes(searchQuery));
+			item.files = item.files.filter(
+				(i) =>
+					i.name.toLowerCase().includes(searchQuery) &&
+					(filterFileType ? fileExtensionType(i.name.split('.').at(-1)) === filterFileType : true)
+			);
 
-			return item.directories.length > 0 || item.files.length > 0;
+			return search ? item.directories.length > 0 || item.files.length > 0 : true;
 		}
 
-		recursiveFilterInPlace(root, searchQuery);
+		recursiveFilterInPlace(root, search);
 		return root;
 	});
 
@@ -45,6 +55,15 @@
 	let selectedFile = $state<TreeFile | undefined>();
 
 	let open = $state(false);
+
+	export type ValidFileTypeFilters = 'all' | 'image' | 'pdf';
+	const fileTypes: { value: ValidFileTypeFilters; label: string; type?: FileTypes }[] = [
+		{ value: 'all', label: 'All files' },
+		{ value: 'image', label: 'Images', type: FileTypes.Image },
+		{ value: 'pdf', label: 'PDFs', type: FileTypes.PDF }
+	];
+	let selectedFileTypeValue: ValidFileTypeFilters = $state(defaultFilterFileType);
+	let selectedFileType = $derived(fileTypes.find((i) => i.value === selectedFileTypeValue));
 </script>
 
 <AlertDialog.Root
@@ -63,7 +82,7 @@
 			<AlertDialog.Title>Choose a file</AlertDialog.Title>
 		</AlertDialog.Header>
 
-		<div class="relative py-1">
+		<div class="relative py-1 flex-row flex gap-2">
 			<Label for="search" class="sr-only">Search</Label>
 			<InputGroup.Root>
 				<InputGroup.Input type="search" placeholder="Filter..." bind:value={searchQuery} />
@@ -71,6 +90,16 @@
 					<Funnel />
 				</InputGroup.Addon>
 			</InputGroup.Root>
+			<Select.Root required={true} bind:value={selectedFileTypeValue} type="single">
+				<Select.Trigger class="w-45">
+					{selectedFileType?.label}
+				</Select.Trigger>
+				<Select.Content>
+					{#each fileTypes as type (type.value)}
+						<Select.Item value={type.value}>{type.label}</Select.Item>
+					{/each}
+				</Select.Content>
+			</Select.Root>
 		</div>
 
 		<div class="flex-1 min-h-0 overflow-hidden">

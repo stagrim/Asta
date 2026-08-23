@@ -9,6 +9,8 @@
 		FileSpreadsheet,
 		FileText
 	} from '@lucide/svelte';
+	import { FileTypes } from './types';
+	import { fileExtensionType } from './utils';
 
 	let {
 		extension,
@@ -25,19 +27,7 @@
 		xl: 'w-24 h-24'
 	};
 
-	const extLookup: Record<string, string> = {
-		pdf: 'pdf',
-		png: 'image',
-		jpg: 'image',
-		jpeg: 'image',
-		webp: 'image',
-		svg: 'image',
-		txt: 'document',
-		zip: 'archive',
-		tar: 'archive'
-	};
-
-	let type = $derived(extension ? extLookup[extension] : 'archive');
+	// let type = $derived(extension ? extLookup[extension] : 'archive');
 
 	const iconColors: Record<string, string> = {
 		pdf: 'text-red-500',
@@ -50,19 +40,19 @@
 		archive: 'text-gray-500'
 	};
 
-	const icons: Record<string, typeof FileIcon> = {
-		pdf: FileText,
-		document: FileText,
-		spreadsheet: FileSpreadsheet,
-		code: FileCode,
-		image: FileImage,
-		video: VideoIcon,
-		audio: FileMusic,
-		archive: FileArchive
+	const icons: Record<FileTypes, [typeof FileIcon, string]> = {
+		[FileTypes.PDF]: [FileText, 'text-red-500'],
+		[FileTypes.Document]: [FileText, 'text-red-500'],
+		[FileTypes.Spreadsheet]: [FileSpreadsheet, 'text-green-500'],
+		[FileTypes.Code]: [FileCode, 'text-yellow-500'],
+		[FileTypes.Image]: [FileImage, 'text-purple-500'],
+		[FileTypes.Video]: [VideoIcon, 'text-pink-500'],
+		[FileTypes.Audio]: [FileMusic, 'text-orange-500'],
+		[FileTypes.Archive]: [FileArchive, 'text-gray-500'],
+		[FileTypes.Unknown]: [FileArchive, 'text-gray-500']
 	};
 
-	const IconComponent = $derived(icons[type] || FileIcon);
-	const colorClass = $derived(iconColors[type] || 'text-gray-400');
+	const [IconComponent, colorClass] = $derived(icons[fileExtensionType(extension)]);
 	const sizeClass = $derived(sizeClasses[size]);
 </script>
 

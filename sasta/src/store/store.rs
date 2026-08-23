@@ -121,7 +121,7 @@ pub enum PlaylistItem {
     PortableDocumentFormat {
         #[serde(alias = "name")]
         id: String,
-        settings: ImageData,
+        settings: PDFData,
     },
 }
 
@@ -143,6 +143,13 @@ pub struct TextData {
 #[ts(export, export_to = "api_bindings/update/")]
 pub struct ImageData {
     pub src: String,
+    pub duration: u64,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, ToSchema, TS)]
+#[ts(export, export_to = "api_bindings/update/")]
+pub struct PDFData {
+    pub path: String,
     pub duration: u64,
 }
 
