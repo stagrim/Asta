@@ -651,7 +651,7 @@ impl FileServer {
         let path = path.into();
         fs::create_dir_all(&path).await.unwrap();
         let client = Client::open(redis_url).unwrap();
-        let mut con = client.get_multiplexed_tokio_connection().await.unwrap();
+        let mut con = client.get_multiplexed_async_connection().await.unwrap();
 
         let root = match con.json_get::<_, _, String>("files", ".").await {
             Ok(str) => serde_json::from_str(&str).unwrap(),
