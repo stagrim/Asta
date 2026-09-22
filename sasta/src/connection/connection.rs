@@ -63,7 +63,7 @@ const ASTA_FLE_PREFIX: &'static str = "ASTA://";
 pub async fn client_connection(
     socket: WebSocket,
     who: SocketAddr,
-    store: Arc<Store>,
+    store: Arc<Mutex<Store>>,
     htmx_hash: String,
 ) {
     let (client_send, mut client_receive) = socket.split();
@@ -97,11 +97,12 @@ pub async fn client_connection(
     ));
 
     let mut client_handle = tokio::spawn(async move {
-        let mut rx = store.receiver();
+        let mut rx = store.lock().await.receiver();
         loop {
             let display_option = store
-                .read()
+                .lock()
                 .await
+                .content
                 .displays
                 .get(&client_uuid)
                 .and_then(|d| Some(d.clone()));
@@ -185,6 +186,7 @@ pub async fn client_connection(
 
         // outer loop collects the PlaylistItems(s) before entering the repeating send loop
         'outer_send_loop: loop {
+            let store = store.lock().await;
             let (schedule_uuid, playlist_uuid) =
                 store.get_display_uuids(&client_uuid).await.unwrap();
             let mut playlist = match store.get_display_playlist_items(&client_uuid).await {
@@ -194,6 +196,7 @@ pub async fn client_connection(
                     return;
                 }
             };
+            drop(store);
 
             // If playlist is empty, add text stating such to display loop
             if playlist.is_empty() {
