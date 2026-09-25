@@ -4,14 +4,14 @@ use axum::{
 };
 use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
-use tracing::{error, info, info_span};
+use tracing::{error, info_span};
 use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
 use uuid::Uuid;
 
 use crate::{
     AppState,
-    store::store::{self, DisplayMaterial},
+    store::store::{Display, DisplayMaterial},
 };
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -20,16 +20,14 @@ pub struct CreateDisplay {
     pub name: String,
     pub display_material: DisplayMaterial,
 }
-
 #[derive(Serialize, ToSchema)]
 pub struct ReadDisplay {
     pub uuid: Uuid,
     pub name: String,
     pub display_material: DisplayMaterial,
 }
-
-impl From<(Uuid, store::Display)> for ReadDisplay {
-    fn from((uuid, d): (Uuid, store::Display)) -> Self {
+impl From<(Uuid, Display)> for ReadDisplay {
+    fn from((uuid, d): (Uuid, Display)) -> Self {
         Self {
             uuid,
             name: d.name,
@@ -37,14 +35,12 @@ impl From<(Uuid, store::Display)> for ReadDisplay {
         }
     }
 }
-
 #[derive(Deserialize, ToSchema)]
 #[schema(title = "UpdateDisplay")]
 pub struct UpdateDisplay {
     pub name: String,
     pub display_material: DisplayMaterial,
 }
-
 type Response = Result<Json<ReadDisplay>, (StatusCode, String)>;
 
 #[utoipa::path(
@@ -63,14 +59,8 @@ async fn create_display(
     Json(disp): Json<CreateDisplay>,
 ) -> Response {
     info_span!("[Api] Creating Display", display = ?disp);
-    let mut store = state.store.lock().await;
-    if let Some((uuid, _)) = store
-        .content
-        .displays
-        .iter()
-        .find(|(_, d)| d.name == disp.name)
-    {
-        error!("[Api] Name is already used by Display {}", uuid);
+    let displays = state.store.displays().await.map_err(internal)?;
+    if displays.values().any(|d| d.name == disp.name) {
         return Err((
             StatusCode::BAD_REQUEST,
             format!(
@@ -79,49 +69,26 @@ async fn create_display(
             ),
         ));
     }
-
-    if let Some(uuid) = disp.uuid {
-        if store.content.displays.contains_key(&uuid) {
-            error!("[Api] Uuid is already used by another Display");
-            return Err((
-                StatusCode::BAD_REQUEST,
-                format!(
-                    "Avoid using the Uuid {} as it is already used by another display",
-                    disp.name
-                ),
-            ));
-        }
-    }
-
-    let uuid = match disp.uuid {
-        Some(u) => u,
-        None => Uuid::new_v4(),
-    };
-    info!("[Api] Using Uuid {uuid} for new Display");
-
-    if let Err(e) = store
-        .create_display(uuid, disp.name, disp.display_material)
-        .await
-    {
+    let uuid = disp.uuid.unwrap_or_else(Uuid::new_v4);
+    if displays.contains_key(&uuid) {
         return Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Could not write changes to db ({e})"),
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Avoid using the Uuid {} as it is already used by another display",
+                disp.name
+            ),
         ));
     }
-
-    return if let Some(d) = store.content.displays.get(&uuid).cloned() {
-        info!("[Api] Created Display {uuid}");
-        Ok(Json((uuid, d).into()))
-    } else {
-        error!(
-            "[Api] No Display with {} could be found while reading after write",
-            uuid
-        );
-        Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Something went wrong with the creation"),
-        ))
+    let display = Display {
+        name: disp.name,
+        display_material: disp.display_material,
     };
+    state
+        .store
+        .create_display(uuid, display.clone())
+        .await
+        .map_err(internal)?;
+    Ok(Json((uuid, display).into()))
 }
 
 #[utoipa::path(
@@ -140,18 +107,11 @@ async fn create_display(
         ),
     )
 )]
-async fn read_displays(State(state): State<AppState>) -> Json<Vec<ReadDisplay>> {
-    return Json(
-        state
-            .store
-            .lock()
-            .await
-            .content
-            .displays
-            .iter()
-            .map(|(u, d)| (*u, d.clone()).into())
-            .collect(),
-    );
+async fn read_displays(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<ReadDisplay>>, (StatusCode, String)> {
+    let displays = state.store.displays().await.map_err(internal)?;
+    Ok(Json(displays.into_iter().map(Into::into).collect()))
 }
 
 #[utoipa::path(
@@ -185,22 +145,17 @@ async fn update_display(
     Path(uuid): Path<Uuid>,
     Json(display): Json<UpdateDisplay>,
 ) -> Response {
-    info!("[Api] Updating Display {uuid}");
-    let mut store = state.store.lock().await;
-    if !store.content.displays.contains_key(&uuid) {
-        error!("[Api] No display with {uuid} was found");
+    let displays = state.store.displays().await.map_err(internal)?;
+    if !displays.contains_key(&uuid) {
         return Err((
             StatusCode::BAD_REQUEST,
             format!("No Display with the Uuid {uuid} was found"),
         ));
     }
-    if let Some((uuid, _)) = store
-        .content
-        .displays
+    if displays
         .iter()
-        .find(|(u, d)| d.name == display.name && **u != uuid)
+        .any(|(id, d)| *id != uuid && d.name == display.name)
     {
-        error!("[Api] Name is already used by Display {}", uuid);
         return Err((
             StatusCode::BAD_REQUEST,
             format!(
@@ -209,27 +164,16 @@ async fn update_display(
             ),
         ));
     }
-
-    if let Err(e) = store
-        .update_display(uuid, display.name, display.display_material)
-        .await
-    {
-        return Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Could not write changes to db ({e})"),
-        ));
-    }
-
-    return if let Some(d) = store.content.displays.get(&uuid) {
-        info!("[Api] Updated and read Display {uuid}");
-        Ok(Json((uuid, d.clone()).into()))
-    } else {
-        error!("[Api] Could not find Display with {uuid} after update");
-        Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Could not find Display with {uuid} after update"),
-        ))
+    let display = Display {
+        name: display.name,
+        display_material: display.display_material,
     };
+    state
+        .store
+        .update_display(uuid, display.clone())
+        .await
+        .map_err(internal)?;
+    Ok(Json((uuid, display).into()))
 }
 
 #[utoipa::path(
@@ -254,34 +198,121 @@ async fn update_display(
     )
 )]
 async fn delete_display(State(state): State<AppState>, Path(uuid): Path<Uuid>) -> Response {
-    info!("[Api] Deleting Display {uuid}");
-    let mut store = state.store.lock().await;
-    let res;
-    if let Some(d) = store.content.displays.get(&uuid) {
-        res = Ok(Json((uuid, d.clone()).into()));
-    } else {
-        error!("[Api] No display with {uuid} was found");
-        return Err((
-            StatusCode::BAD_REQUEST,
-            format!("No Display with the Uuid {uuid} was found"),
-        ));
-    }
-
-    if let Err(e) = store.delete_display(uuid).await {
-        return Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Could not write changes to db ({e})"),
-        ));
-    }
-
-    info!("[Api] Deleted Display {uuid}");
-    res
+    let display = state
+        .store
+        .display(uuid)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                format!("No Display with the Uuid {uuid} was found"),
+            )
+        })?;
+    state.store.delete_display(uuid).await.map_err(internal)?;
+    Ok(Json((uuid, display).into()))
 }
 
+fn internal<E: std::fmt::Display>(e: E) -> (StatusCode, String) {
+    error!("Redis error: {e}");
+    (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+}
 pub fn display_router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
         .routes(routes!(create_display))
         .routes(routes!(read_displays))
         .routes(routes!(update_display))
         .routes(routes!(delete_display))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::routes::test_support::{cleanup_test_content, test_prefix};
+
+    #[tokio::test]
+    async fn display_routes_support_crud() {
+        let state = crate::routes::test_support::app_state().await;
+        let prefix = test_prefix("display");
+        let uuid = Uuid::new_v4();
+        let initial_name = format!("{prefix}_initial");
+        let updated_name = format!("{prefix}_updated");
+        let initial_material = DisplayMaterial::Playlist(Uuid::new_v4());
+
+        let result: Result<(), String> = async {
+            let created = create_display(
+                State(state.clone()),
+                Json(CreateDisplay {
+                    uuid: Some(uuid),
+                    name: initial_name.clone(),
+                    display_material: initial_material,
+                }),
+            )
+            .await
+            .map_err(|(status, message)| format!("{status}: {message}"))?
+            .0;
+            if created.uuid != uuid || created.name != initial_name {
+                return Err("create returned unexpected display data".into());
+            }
+
+            let listed = read_displays(State(state.clone()))
+                .await
+                .map_err(|(status, message)| format!("{status}: {message}"))?
+                .0;
+            if !listed.iter().any(|display| display.uuid == uuid) {
+                return Err("created display was missing from list".into());
+            }
+
+            let updated = update_display(
+                State(state.clone()),
+                Path(uuid),
+                Json(UpdateDisplay {
+                    name: updated_name.clone(),
+                    display_material: DisplayMaterial::Schedule(Uuid::new_v4()),
+                }),
+            )
+            .await
+            .map_err(|(status, message)| format!("{status}: {message}"))?
+            .0;
+            if updated.name != updated_name {
+                return Err("update returned unexpected display data".into());
+            }
+
+            let listed = read_displays(State(state.clone()))
+                .await
+                .map_err(|(status, message)| format!("{status}: {message}"))?
+                .0;
+            let persisted = listed
+                .iter()
+                .find(|display| display.uuid == uuid)
+                .ok_or_else(|| "updated display was missing from list".to_string())?;
+            if persisted.name != updated_name
+                || !matches!(&persisted.display_material, DisplayMaterial::Schedule(_))
+            {
+                return Err("updated display was not persisted".into());
+            }
+
+            let deleted = delete_display(State(state.clone()), Path(uuid))
+                .await
+                .map_err(|(status, message)| format!("{status}: {message}"))?
+                .0;
+
+            if deleted.uuid != uuid
+                || state
+                    .store
+                    .displays()
+                    .await
+                    .is_ok_and(|displays| displays.contains_key(&uuid))
+            {
+                return Err("display was not deleted".into());
+            }
+
+            Ok(())
+        }
+        .await;
+
+        let cleanup = cleanup_test_content(&state, &prefix).await;
+        assert!(cleanup.is_ok(), "test cleanup failed: {cleanup:?}");
+        assert!(result.is_ok(), "display CRUD failed: {result:?}");
+    }
 }

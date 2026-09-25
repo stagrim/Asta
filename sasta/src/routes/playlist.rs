@@ -4,30 +4,28 @@ use axum::{
 };
 use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
-use tracing::{error, info};
+use tracing::error;
 use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
 use uuid::Uuid;
 
 use crate::{
     AppState,
-    store::store::{self, DisplayMaterial},
+    store::store::{self, Playlist},
 };
 
 #[derive(Deserialize, ToSchema)]
 pub struct CreatePlaylist {
     pub name: String,
 }
-
 #[derive(Serialize, ToSchema)]
 pub struct ReadPlaylist {
     pub uuid: Uuid,
     pub name: String,
     pub items: Vec<store::PlaylistItem>,
 }
-
-impl From<(Uuid, store::Playlist)> for ReadPlaylist {
-    fn from((uuid, p): (Uuid, store::Playlist)) -> Self {
+impl From<(Uuid, Playlist)> for ReadPlaylist {
+    fn from((uuid, p): (Uuid, Playlist)) -> Self {
         Self {
             uuid,
             name: p.name,
@@ -35,13 +33,11 @@ impl From<(Uuid, store::Playlist)> for ReadPlaylist {
         }
     }
 }
-
 #[derive(Deserialize, ToSchema)]
 pub struct UpdatePlaylist {
     pub name: String,
     pub items: Vec<store::PlaylistItem>,
 }
-
 type Response = Result<Json<ReadPlaylist>, (StatusCode, String)>;
 
 #[utoipa::path(
@@ -57,46 +53,29 @@ type Response = Result<Json<ReadPlaylist>, (StatusCode, String)>;
 )]
 async fn create_playlist(
     State(state): State<AppState>,
-    Json(playlist): Json<CreatePlaylist>,
+    Json(input): Json<CreatePlaylist>,
 ) -> Response {
-    info!("[Api] Creating Playlist with name {}", playlist.name);
-    let mut store = state.store.lock().await;
-    if let Some((uuid, _)) = store
-        .content
-        .playlists
-        .iter()
-        .find(|(_, p)| p.name == playlist.name)
-    {
-        error!("[Api] Name is already used by Playlist {}", uuid);
+    let playlists = state.store.playlists().await.map_err(internal)?;
+    if playlists.values().any(|p| p.name == input.name) {
         return Err((
             StatusCode::BAD_REQUEST,
             format!(
                 "Avoid using the name {} as it is already used by another Playlist",
-                playlist.name
+                input.name
             ),
         ));
     }
-
     let uuid = Uuid::new_v4();
-    info!("[Api] Generated Uuid {uuid} for new Playlist");
-
-    if let Err(e) = store.create_playlist(uuid, playlist.name).await {
-        return Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Could not write changes to db ({e})"),
-        ));
-    }
-
-    return if let Some(p) = store.content.playlists.get(&uuid) {
-        info!("[Api] Created Playlist {uuid}");
-        Ok(Json((uuid, p.clone()).into()))
-    } else {
-        error!("[Api] No Playlist with {uuid} could be found while reading after write");
-        Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Something went wrong with the creation"),
-        ))
+    let playlist = Playlist {
+        name: input.name,
+        items: vec![],
     };
+    state
+        .store
+        .create_playlist(uuid, playlist.clone())
+        .await
+        .map_err(internal)?;
+    Ok(Json((uuid, playlist).into()))
 }
 
 #[utoipa::path(
@@ -122,18 +101,11 @@ async fn create_playlist(
         ),
     )
 )]
-async fn read_playlist(State(state): State<AppState>) -> Json<Vec<ReadPlaylist>> {
-    return Json(
-        state
-            .store
-            .lock()
-            .await
-            .content
-            .playlists
-            .iter()
-            .map(|(u, p)| (*u, p.clone()).into())
-            .collect(),
-    );
+async fn read_playlist(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<ReadPlaylist>>, (StatusCode, String)> {
+    let playlists = state.store.playlists().await.map_err(internal)?;
+    Ok(Json(playlists.into_iter().map(Into::into).collect()))
 }
 
 #[utoipa::path(
@@ -153,53 +125,37 @@ async fn read_playlist(State(state): State<AppState>) -> Json<Vec<ReadPlaylist>>
 async fn update_playlist(
     State(state): State<AppState>,
     Path(uuid): Path<Uuid>,
-    Json(playlist): Json<UpdatePlaylist>,
+    Json(input): Json<UpdatePlaylist>,
 ) -> Response {
-    info!("[Api] Updating Playlist {uuid}");
-    let mut store = state.store.lock().await;
-    if !store.content.playlists.contains_key(&uuid) {
-        error!("[Api] No Playlist with {uuid} was found");
+    let playlists = state.store.playlists().await.map_err(internal)?;
+    if !playlists.contains_key(&uuid) {
         return Err((
             StatusCode::BAD_REQUEST,
             format!("No Playlist with the Uuid {uuid} was found"),
         ));
     }
-    if let Some((uuid, _)) = store
-        .content
-        .playlists
+    if playlists
         .iter()
-        .find(|(u, p)| p.name == playlist.name && **u != uuid)
+        .any(|(id, p)| *id != uuid && p.name == input.name)
     {
-        error!("[Api] Name is already used by Playlist {}", uuid);
         return Err((
             StatusCode::BAD_REQUEST,
             format!(
                 "Avoid using the name {} as it is already used by another Playlist",
-                playlist.name
+                input.name
             ),
         ));
     }
-
-    if let Err(e) = store
-        .update_playlist(uuid, playlist.name, playlist.items)
-        .await
-    {
-        return Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Could not write changes to db ({e})"),
-        ));
-    }
-
-    return if let Some(p) = store.content.playlists.get(&uuid) {
-        info!("[Api] Updated and read Playlist {uuid}");
-        Ok(Json((uuid, p.clone()).into()))
-    } else {
-        error!("[Api] Could not find Playlist with {uuid} after update");
-        Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Could not find Playlist with {uuid} after update"),
-        ))
+    let playlist = Playlist {
+        name: input.name,
+        items: input.items,
     };
+    state
+        .store
+        .update_playlist(uuid, playlist.clone())
+        .await
+        .map_err(internal)?;
+    Ok(Json((uuid, playlist).into()))
 }
 
 #[utoipa::path(
@@ -231,82 +187,136 @@ async fn update_playlist(
         ("uuid" = Uuid, Path, description = "Uuid of Playlist to delete")
     )
 )]
-pub(crate) async fn delete_playlist(
-    State(state): State<AppState>,
-    Path(uuid): Path<Uuid>,
-) -> Response {
-    info!("[Api] Deleting Playlist {uuid}");
-    let res;
-    let mut store = state.store.lock().await;
-
-    let dependant_schedules = store
-        .content
-        .schedules
-        .iter()
-        .filter_map(|(_, s)| {
-            if s.all_playlists().iter().any(|&p| p == &uuid) {
-                Some(s.name.clone())
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>();
-    if dependant_schedules.len() > 0 {
+async fn delete_playlist(State(state): State<AppState>, Path(uuid): Path<Uuid>) -> Response {
+    let playlist = state
+        .store
+        .playlist(uuid)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                format!("No Playlist with the Uuid {uuid} was found"),
+            )
+        })?;
+    let schedules = state.store.schedules().await.map_err(internal)?;
+    if schedules
+        .values()
+        .any(|s| s.all_playlists().iter().any(|id| **id == uuid))
+    {
         return Err((
             StatusCode::BAD_REQUEST,
-            format!(
-                "Unable to delete playlist since the Schedules ({}) depend on it",
-                dependant_schedules.join(", ")
-            ),
+            "Unable to delete playlist since a Schedule depends on it".into(),
         ));
     }
-
-    let dependant_displays = store
-        .content
-        .displays
-        .iter()
-        .filter_map(|(_, d)| match d.display_material {
-            DisplayMaterial::Playlist(playlist_uuid) if uuid == playlist_uuid => {
-                Some(d.name.clone())
-            }
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-    if dependant_displays.len() > 0 {
+    let displays = state.store.displays().await.map_err(internal)?;
+    if displays
+        .values()
+        .any(|d| matches!(d.display_material, store::DisplayMaterial::Playlist(id) if id == uuid))
+    {
         return Err((
             StatusCode::BAD_REQUEST,
-            format!(
-                "Unable to delete playlist since the Displays ({}) depend on it",
-                dependant_displays.join(", ")
-            ),
+            "Unable to delete playlist since a Display depends on it".into(),
         ));
     }
-
-    if let Some(d) = store.content.playlists.get(&uuid) {
-        res = Ok(Json((uuid, d.clone()).into()));
-    } else {
-        error!("[Api] No Playlist with {uuid} was found");
-        return Err((
-            StatusCode::BAD_REQUEST,
-            format!("No Playlist with the Uuid {uuid} was found"),
-        ));
-    }
-
-    if let Err(e) = store.delete_playlist(uuid).await {
-        return Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Could not write changes to db ({e})"),
-        ));
-    }
-
-    info!("[Api] Deleted Playlist {uuid}");
-    res
+    state.store.delete_playlist(uuid).await.map_err(internal)?;
+    Ok(Json((uuid, playlist).into()))
 }
 
+fn internal<E: std::fmt::Display>(e: E) -> (StatusCode, String) {
+    error!("Redis error: {e}");
+    (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+}
 pub fn playlist_router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
         .routes(routes!(create_playlist))
         .routes(routes!(read_playlist))
         .routes(routes!(update_playlist))
         .routes(routes!(delete_playlist))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::routes::test_support::{cleanup_test_content, test_prefix};
+
+    #[tokio::test]
+    async fn playlist_routes_support_crud() {
+        let state = crate::routes::test_support::app_state().await;
+        let prefix = test_prefix("playlist");
+        let initial_name = format!("{prefix}_initial");
+        let updated_name = format!("{prefix}_updated");
+
+        let result: Result<(), String> = async {
+            let created = create_playlist(
+                State(state.clone()),
+                Json(CreatePlaylist {
+                    name: initial_name.clone(),
+                }),
+            )
+            .await
+            .map_err(|(status, message)| format!("{status}: {message}"))?
+            .0;
+            let uuid = created.uuid;
+            if created.name != initial_name || !created.items.is_empty() {
+                return Err("create returned unexpected playlist data".into());
+            }
+
+            let listed = read_playlist(State(state.clone()))
+                .await
+                .map_err(|(status, message)| format!("{status}: {message}"))?
+                .0;
+            if !listed.iter().any(|playlist| playlist.uuid == uuid) {
+                return Err("created playlist was missing from list".into());
+            }
+
+            let updated = update_playlist(
+                State(state.clone()),
+                Path(uuid),
+                Json(UpdatePlaylist {
+                    name: updated_name.clone(),
+                    items: vec![],
+                }),
+            )
+            .await
+            .map_err(|(status, message)| format!("{status}: {message}"))?
+            .0;
+            if updated.name != updated_name {
+                return Err("update returned unexpected playlist data".into());
+            }
+
+            let listed = read_playlist(State(state.clone()))
+                .await
+                .map_err(|(status, message)| format!("{status}: {message}"))?
+                .0;
+            let persisted = listed
+                .iter()
+                .find(|playlist| playlist.uuid == uuid)
+                .ok_or_else(|| "updated playlist was missing from list".to_string())?;
+            if persisted.name != updated_name {
+                return Err("updated playlist was not persisted".into());
+            }
+
+            let deleted = delete_playlist(State(state.clone()), Path(uuid))
+                .await
+                .map_err(|(status, message)| format!("{status}: {message}"))?
+                .0;
+            if deleted.uuid != uuid
+                || state
+                    .store
+                    .playlists()
+                    .await
+                    .is_ok_and(|playlists| playlists.contains_key(&uuid))
+            {
+                return Err("playlist was not deleted".into());
+            }
+
+            Ok(())
+        }
+        .await;
+
+        let cleanup = cleanup_test_content(&state, &prefix).await;
+        assert!(cleanup.is_ok(), "test cleanup failed: {cleanup:?}");
+        assert!(result.is_ok(), "playlist CRUD failed: {result:?}");
+    }
 }

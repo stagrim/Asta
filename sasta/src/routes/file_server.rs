@@ -458,6 +458,7 @@ mod tests {
     use super::*;
     use axum::serve;
     use reqwest::multipart;
+    use std::env;
     use std::path::Path;
     use std::sync::Arc;
     use tokio::fs;
@@ -861,13 +862,15 @@ mod tests {
     #[tokio::test]
     async fn test_full_api_upload_read_delete() {
         let file_server = setup_test_server().await;
+        dotenvy::dotenv().ok();
+        let redis_url = env::var("REDIS_URL").expect("REDIS_URL variable must be set");
+        let (events, _) = tokio::sync::broadcast::channel(1024);
 
         let state = AppState {
             file_server: Arc::new(AsyncMutex::new(file_server)),
-            htmx_hash: String::new(),
-            store: Arc::new(tokio::sync::Mutex::new(
-                Store::new("again, not used in test environment").await,
-            )),
+            htmx_hash: Arc::<str>::from(""),
+            store: Store::new(&redis_url).await,
+            events,
         };
 
         let (app, _api) = file_api_router().with_state(state).split_for_parts();

@@ -16,7 +16,7 @@ use futures_util::{
 };
 use maud::{PreEscaped, html};
 use tokio::{
-    sync::Mutex,
+    sync::{Mutex, broadcast},
     time::{Instant, sleep_until, timeout},
 };
 use tracing::{error, info, trace, warn};
@@ -63,7 +63,8 @@ const ASTA_FLE_PREFIX: &'static str = "ASTA://";
 pub async fn client_connection(
     socket: WebSocket,
     who: SocketAddr,
-    store: Arc<Mutex<Store>>,
+    store: Store,
+    mut events: broadcast::Receiver<Change>,
     htmx_hash: String,
 ) {
     let (client_send, mut client_receive) = socket.split();
@@ -97,15 +98,14 @@ pub async fn client_connection(
     ));
 
     let mut client_handle = tokio::spawn(async move {
-        let mut rx = store.lock().await.receiver();
         loop {
-            let display_option = store
-                .lock()
-                .await
-                .content
-                .displays
-                .get(&client_uuid)
-                .and_then(|d| Some(d.clone()));
+            let display_option = match store.display(client_uuid).await {
+                Ok(display) => display,
+                Err(e) => {
+                    error!("[{who}] Could not read display: {e}");
+                    return;
+                }
+            };
             match display_option {
                 Some(d) => {
                     let mut w = client_name.write().unwrap();
@@ -143,11 +143,9 @@ pub async fn client_connection(
 
                     // Wait until display is updated change, then try again
                     loop {
-                        match rx.recv().await {
-                            Ok(msg) => match msg {
-                                Change::Display(m) if m.contains(&client_uuid) => break,
-                                _ => (),
-                            },
+                        match events.recv().await {
+                            Ok(Change::Display(id)) if id == client_uuid => break,
+                            Ok(_) => (),
                             Err(err) => {
                                 error!("[{who}] received error '{err:?}', exiting");
                                 return;
@@ -186,9 +184,22 @@ pub async fn client_connection(
 
         // outer loop collects the PlaylistItems(s) before entering the repeating send loop
         'outer_send_loop: loop {
-            let store = store.lock().await;
-            let (schedule_uuid, playlist_uuid) =
-                store.get_display_uuids(&client_uuid).await.unwrap();
+            let (schedule_uuid, playlist_uuid) = match store.get_display_uuids(&client_uuid).await {
+                Some(value) => value,
+                None => {
+                    error!("[{who} ({client_name})] Display state could not be resolved");
+                    return;
+                }
+            };
+            let next_schedule = match schedule_uuid {
+                Some(schedule_uuid) => store
+                    .schedule(schedule_uuid)
+                    .await
+                    .ok()
+                    .flatten()
+                    .and_then(|schedule| schedule.next_schedule(&chrono::Local::now())),
+                None => None,
+            };
             let mut playlist = match store.get_display_playlist_items(&client_uuid).await {
                 Some(p) => p,
                 None => {
@@ -196,7 +207,6 @@ pub async fn client_connection(
                     return;
                 }
             };
-            drop(store);
 
             // If playlist is empty, add text stating such to display loop
             if playlist.is_empty() {
@@ -293,19 +303,28 @@ pub async fn client_connection(
                     );
                     tokio::select! {
                         _ = sleep_until(sleep) => break,
-                        notification = rx.recv() => {
+                        _ = async {
+                            match next_schedule.as_ref() {
+                                Some(moment) => {
+                                    let duration = (moment.time - chrono::Local::now()).to_std().unwrap_or_default();
+                                    tokio::time::sleep(duration).await;
+                                }
+                                None => std::future::pending::<()>().await,
+                            }
+                        } => continue 'outer_send_loop,
+                        notification = events.recv() => {
                             match notification {
                                 Ok(c) => {
                                     match c {
-                                        Change::Display(d) if d.contains(&client_uuid) => {
+                                        Change::Display(d) if d == client_uuid => {
                                             info!("[{who} ({client_name})] Display {} has changed, restarting send loop", client_uuid);
                                             continue 'outer_send_loop
                                         },
-                                        Change::Playlist(p) if p.contains(&playlist_uuid)  => {
+                                        Change::Playlist(p) if p == playlist_uuid  => {
                                             info!("[{who} ({client_name})] Playlist {} has changed, restarting send loop", playlist_uuid);
                                             continue 'outer_send_loop
                                         },
-                                        Change::Schedule(s) if schedule_uuid.is_some_and(|u| s.contains(&u)) => {
+                                        Change::Schedule(s) if schedule_uuid.is_some_and(|u| s == u) => {
                                             info!("[{who} ({client_name})] Schedule {} has changed, restarting send loop", schedule_uuid.unwrap_or_default());
                                             continue 'outer_send_loop
                                         },

@@ -8,7 +8,7 @@ use axum::{
 use chrono::Local;
 use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
-use tracing::{error, info};
+use tracing::error;
 use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
 use uuid::Uuid;
@@ -16,7 +16,7 @@ use uuid::Uuid;
 use crate::{
     AppState,
     store::{
-        schedule::{self, Moment},
+        schedule::{self, Moment, Schedule},
         store::DisplayMaterial,
     },
 };
@@ -26,7 +26,6 @@ pub struct CreateSchedule {
     pub name: String,
     pub playlist: Uuid,
 }
-
 #[derive(Serialize, ToSchema)]
 pub struct ReadSchedule {
     pub uuid: Uuid,
@@ -34,7 +33,6 @@ pub struct ReadSchedule {
     pub playlist: Uuid,
     pub scheduled: Option<Vec<schedule::ScheduledPlaylistInput>>,
 }
-
 impl From<(Uuid, schedule::Schedule)> for ReadSchedule {
     fn from((uuid, s): (Uuid, schedule::Schedule)) -> Self {
         let s = schedule::ScheduleInput::from(s);
@@ -46,27 +44,22 @@ impl From<(Uuid, schedule::Schedule)> for ReadSchedule {
         }
     }
 }
-
 #[derive(Serialize, ToSchema)]
 pub struct ScheduleInfo {
     pub current: Uuid,
     pub next: Option<NextMoment>,
 }
-
 #[derive(Serialize, ToSchema)]
 pub struct NextMoment {
-    /// Amount of milliseconds until change
     pub in_ms: u64,
     pub playlist: Uuid,
 }
-
 #[derive(Deserialize, ToSchema)]
 pub struct UpdateSchedule {
     pub name: String,
     pub playlist: Uuid,
     pub scheduled: Option<Vec<schedule::ScheduledPlaylistInput>>,
 }
-
 type Response = Result<Json<ReadSchedule>, (StatusCode, String)>;
 
 #[utoipa::path(
@@ -82,49 +75,26 @@ type Response = Result<Json<ReadSchedule>, (StatusCode, String)>;
 )]
 async fn create_schedule(
     State(state): State<AppState>,
-    Json(schedule): Json<CreateSchedule>,
+    Json(input): Json<CreateSchedule>,
 ) -> Response {
-    info!("[Api] Creating Schedule with name {}", schedule.name);
-    let mut store = state.store.lock().await;
-    if let Some((uuid, _)) = store
-        .content
-        .schedules
-        .iter()
-        .find(|(_, s)| s.name == schedule.name)
-    {
-        error!("[Api] Name is already used by Schedule {}", uuid);
+    let schedules = state.store.schedules().await.map_err(internal)?;
+    if schedules.values().any(|s| s.name == input.name) {
         return Err((
             StatusCode::BAD_REQUEST,
             format!(
                 "Avoid using the name {} as it is already used by another Schedule",
-                schedule.name
+                input.name
             ),
         ));
     }
-
     let uuid = Uuid::new_v4();
-    info!("[Api] Generated Uuid {uuid} for new Schedule");
-
-    if let Err(e) = store
-        .create_schedule(uuid, schedule.name, schedule.playlist)
+    let schedule = Schedule::new(input.name, vec![], input.playlist).map_err(bad_request)?;
+    state
+        .store
+        .create_schedule(uuid, schedule.clone())
         .await
-    {
-        return Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Could not write changes to db ({e})"),
-        ));
-    }
-
-    return if let Some(s) = store.content.schedules.get(&uuid) {
-        info!("[Api] Created Schedule {uuid}");
-        Ok(Json((uuid, s.clone()).into()))
-    } else {
-        error!("[Api] No Schedule with {uuid} could be found while reading after write");
-        Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Something went wrong with the creation"),
-        ))
-    };
+        .map_err(internal)?;
+    Ok(Json((uuid, schedule).into()))
 }
 
 #[utoipa::path(
@@ -148,18 +118,11 @@ async fn create_schedule(
         ),
     )
 )]
-async fn read_schedules(State(state): State<AppState>) -> Json<Vec<ReadSchedule>> {
-    return Json(
-        state
-            .store
-            .lock()
-            .await
-            .content
-            .schedules
-            .iter()
-            .map(|(u, s)| (*u, s.clone()).into())
-            .collect(),
-    );
+async fn read_schedules(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<ReadSchedule>>, (StatusCode, String)> {
+    let schedules = state.store.schedules().await.map_err(internal)?;
+    Ok(Json(schedules.into_iter().map(Into::into).collect()))
 }
 
 #[utoipa::path(
@@ -175,27 +138,22 @@ async fn read_schedules(State(state): State<AppState>) -> Json<Vec<ReadSchedule>
     )
 )]
 async fn schedule_info(State(state): State<AppState>, Path(uuid): Path<Uuid>) -> impl IntoResponse {
-    let current_moment = Local::now();
-    let store = state.store.lock().await;
-
-    if let Some(schedule) = store.content.schedules.get(&uuid) {
-        let next_moment =
-            schedule
-                .next_schedule(&current_moment)
-                .and_then(|Moment { time, playlist }| {
-                    Some(NextMoment {
-                        in_ms: (time - current_moment).num_milliseconds() as u64,
-                        playlist,
-                    })
-                });
-
-        Ok(Json(ScheduleInfo {
-            current: schedule.current_playlist(&current_moment),
-            next: next_moment,
-        }))
-    } else {
-        Err(format!("Schedule '{uuid}' not found"))
-    }
+    let schedule = match state.store.schedule(uuid).await {
+        Ok(Some(s)) => s,
+        Ok(None) => return Err(format!("Schedule '{uuid}' not found")),
+        Err(e) => return Err(e.to_string()),
+    };
+    let now = Local::now();
+    let next = schedule
+        .next_schedule(&now)
+        .map(|Moment { time, playlist }| NextMoment {
+            in_ms: (time - now).num_milliseconds().max(0) as u64,
+            playlist,
+        });
+    Ok(Json(ScheduleInfo {
+        current: schedule.current_playlist(&now),
+        next,
+    }))
 }
 
 #[utoipa::path(
@@ -215,71 +173,48 @@ async fn schedule_info(State(state): State<AppState>, Path(uuid): Path<Uuid>) ->
 async fn update_schedule(
     State(state): State<AppState>,
     Path(uuid): Path<Uuid>,
-    Json(schedule): Json<UpdateSchedule>,
+    Json(input): Json<UpdateSchedule>,
 ) -> Response {
-    info!("[Api] Updating Schedule {uuid}");
-    let mut store = state.store.lock().await;
-    if !store.content.schedules.contains_key(&uuid) {
-        error!("[Api] No Schedule with {uuid} was found");
+    let schedules = state.store.schedules().await.map_err(internal)?;
+    if !schedules.contains_key(&uuid) {
         return Err((
             StatusCode::BAD_REQUEST,
             format!("No Schedule with the Uuid {uuid} was found"),
         ));
     }
-    if let Some((uuid, _)) = store
-        .content
-        .schedules
+    if schedules
         .iter()
-        .find(|(u, s)| s.name == schedule.name && **u != uuid)
+        .any(|(id, s)| *id != uuid && s.name == input.name)
     {
-        error!("[Api] Name is already used by Schedule {}", uuid);
         return Err((
             StatusCode::BAD_REQUEST,
             format!(
                 "Avoid using the name {} as it is already used by another Schedule",
-                schedule.name
+                input.name
             ),
         ));
     }
-
-    if let Some(scheduled) = &schedule.scheduled {
-        let mut uniq = HashSet::new();
-        uniq.insert(schedule.playlist);
-        // Checks if any playlist Uuid is a duplicate
-        if !scheduled.iter().all(|s| uniq.insert(s.playlist)) {
-            error!("[Api] Schedule contains duplicate Playlists");
+    if let Some(scheduled) = &input.scheduled {
+        let mut ids = HashSet::from([input.playlist]);
+        if !scheduled.iter().all(|s| ids.insert(s.playlist)) {
             return Err((
                 StatusCode::BAD_REQUEST,
-                format!(
-                    "Must not use the same Playlist more than once in a Schedule to avoid server meltdown"
-                ),
+                "Must not use the same Playlist more than once in a Schedule".into(),
             ));
         }
     }
-
-    if let Err(e) = store
-        .update_schedule(
-            uuid,
-            schedule.name,
-            schedule.playlist,
-            schedule.scheduled.unwrap_or(vec![]),
-        )
+    let schedule = Schedule::new(
+        input.name,
+        input.scheduled.unwrap_or_default(),
+        input.playlist,
+    )
+    .map_err(bad_request)?;
+    state
+        .store
+        .update_schedule(uuid, schedule.clone())
         .await
-    {
-        error!("[Api] Schedule update failed with error: {e}");
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("{e}")).into());
-    }
-
-    return if let Some(s) = store.content.schedules.get(&uuid) {
-        info!("[Api] Updated and read Schedule {uuid}");
-        Ok(Json((uuid, s.clone()).into()))
-    } else {
-        error!("[Api] Could not find Schedule with {uuid} after update");
-        Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Could not find Schedule with {uuid} after update to avoid server meltdown"),
-        ))
-    };
+        .map_err(internal)?;
+    Ok(Json((uuid, schedule).into()))
 }
 
 #[utoipa::path(
@@ -313,52 +248,38 @@ async fn update_schedule(
     )
 )]
 async fn delete_schedule(State(state): State<AppState>, Path(uuid): Path<Uuid>) -> Response {
-    info!("[Api] Deleting Schedule {uuid}");
-    let res;
-    let mut store = state.store.lock().await;
-
-    let dependant_displays = store
-        .content
-        .displays
-        .iter()
-        .filter_map(|(_, d)| match d.display_material {
-            DisplayMaterial::Schedule(schedule_uuid) if uuid == schedule_uuid => {
-                Some(d.name.clone())
-            }
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-    if dependant_displays.len() > 0 {
+    let schedule = state
+        .store
+        .schedule(uuid)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                format!("No Schedule with the Uuid {uuid} was found"),
+            )
+        })?;
+    let displays = state.store.displays().await.map_err(internal)?;
+    if displays
+        .values()
+        .any(|d| matches!(d.display_material, DisplayMaterial::Schedule(id) if id == uuid))
+    {
         return Err((
             StatusCode::BAD_REQUEST,
-            format!(
-                "Unable to delete playlist since the Displays ({}) depend on it",
-                dependant_displays.join(", ")
-            ),
+            "Unable to delete Schedule since a Display depends on it".into(),
         ));
     }
-
-    if let Some(s) = store.content.schedules.get(&uuid) {
-        res = Ok(Json((uuid, s.clone()).into()));
-    } else {
-        error!("[Api] No Schedule with {uuid} was found");
-        return Err((
-            StatusCode::BAD_REQUEST,
-            format!("No Schedule with the Uuid {uuid} was found"),
-        ));
-    }
-
-    if let Err(e) = store.delete_schedule(uuid).await {
-        return Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Could not write changes to db ({e})"),
-        ));
-    }
-
-    info!("[Api] Deleted Schedule {uuid}");
-    res
+    state.store.delete_schedule(uuid).await.map_err(internal)?;
+    Ok(Json((uuid, schedule).into()))
 }
 
+fn internal<E: std::fmt::Display>(e: E) -> (StatusCode, String) {
+    error!("Redis error: {e}");
+    (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+}
+fn bad_request(e: String) -> (StatusCode, String) {
+    (StatusCode::BAD_REQUEST, e)
+}
 pub fn schedule_router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
         .routes(routes!(create_schedule))
@@ -366,4 +287,94 @@ pub fn schedule_router() -> OpenApiRouter<AppState> {
         .routes(routes!(schedule_info))
         .routes(routes!(update_schedule))
         .routes(routes!(delete_schedule))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::routes::test_support::{cleanup_test_content, test_prefix};
+
+    #[tokio::test]
+    async fn schedule_routes_support_crud() {
+        let state = crate::routes::test_support::app_state().await;
+        let prefix = test_prefix("schedule");
+        let initial_name = format!("{prefix}_initial");
+        let updated_name = format!("{prefix}_updated");
+        let playlist = Uuid::new_v4();
+        let updated_playlist = Uuid::new_v4();
+
+        let result: Result<(), String> = async {
+            let created = create_schedule(
+                State(state.clone()),
+                Json(CreateSchedule {
+                    name: initial_name.clone(),
+                    playlist,
+                }),
+            )
+            .await
+            .map_err(|(status, message)| format!("{status}: {message}"))?
+            .0;
+            let uuid = created.uuid;
+            if created.name != initial_name || created.playlist != playlist {
+                return Err("create returned unexpected schedule data".into());
+            }
+
+            let listed = read_schedules(State(state.clone()))
+                .await
+                .map_err(|(status, message)| format!("{status}: {message}"))?
+                .0;
+            if !listed.iter().any(|schedule| schedule.uuid == uuid) {
+                return Err("created schedule was missing from list".into());
+            }
+
+            let updated = update_schedule(
+                State(state.clone()),
+                Path(uuid),
+                Json(UpdateSchedule {
+                    name: updated_name.clone(),
+                    playlist: updated_playlist,
+                    scheduled: Some(vec![]),
+                }),
+            )
+            .await
+            .map_err(|(status, message)| format!("{status}: {message}"))?
+            .0;
+            if updated.name != updated_name || updated.playlist != updated_playlist {
+                return Err("update returned unexpected schedule data".into());
+            }
+
+            let listed = read_schedules(State(state.clone()))
+                .await
+                .map_err(|(status, message)| format!("{status}: {message}"))?
+                .0;
+            let persisted = listed
+                .iter()
+                .find(|schedule| schedule.uuid == uuid)
+                .ok_or_else(|| "updated schedule was missing from list".to_string())?;
+            if persisted.name != updated_name || persisted.playlist != updated_playlist {
+                return Err("updated schedule was not persisted".into());
+            }
+
+            let deleted = delete_schedule(State(state.clone()), Path(uuid))
+                .await
+                .map_err(|(status, message)| format!("{status}: {message}"))?
+                .0;
+            if deleted.uuid != uuid
+                || state
+                    .store
+                    .schedules()
+                    .await
+                    .is_ok_and(|schedules| schedules.contains_key(&uuid))
+            {
+                return Err("schedule was not deleted".into());
+            }
+
+            Ok(())
+        }
+        .await;
+
+        let cleanup = cleanup_test_content(&state, &prefix).await;
+        assert!(cleanup.is_ok(), "test cleanup failed: {cleanup:?}");
+        assert!(result.is_ok(), "schedule CRUD failed: {result:?}");
+    }
 }

@@ -6,11 +6,7 @@ use axum::{
     response::IntoResponse,
     routing::get,
 };
-use store::store::Store;
-use tokio::{
-    signal,
-    sync::{Mutex, oneshot},
-};
+use tokio::{signal, sync::broadcast};
 use tower_http::services::ServeDir;
 use tracing::info;
 use utoipa::OpenApi;
@@ -29,7 +25,7 @@ use crate::{
         playlist::{ReadPlaylist, playlist_router},
         schedule::{ReadSchedule, schedule_router},
     },
-    store::schedule_loop::schedule_loop,
+    store::store::{Change, Store, redis_event_listener},
 };
 
 mod casta;
@@ -40,9 +36,10 @@ mod store;
 
 #[derive(Clone)]
 pub struct AppState {
-    store: Arc<Mutex<Store>>,
-    file_server: Arc<Mutex<FileServer>>,
-    htmx_hash: String,
+    pub store: Store,
+    pub file_server: Arc<tokio::sync::Mutex<FileServer>>,
+    pub events: broadcast::Sender<Change>,
+    pub htmx_hash: Arc<str>,
 }
 
 #[derive(OpenApi)]
@@ -54,12 +51,7 @@ pub struct AppState {
         (name = "files", description = "File server management API")
     ),
     components(
-        schemas(
-            ReadDisplay,
-            ReadSchedule,
-            ReadPlaylist,
-            ListView
-        )
+        schemas(ReadDisplay, ReadSchedule, ReadPlaylist, ListView)
     )
 )]
 struct ApiDoc;
@@ -74,28 +66,21 @@ async fn main() {
     info!("REDIS_URL={redis_url}");
     info!("ADDRESS={sasta_address}");
     info!("FILE_PATH={sasta_file_path}");
-    minify();
-    info!("JS and CSS minified");
-    let htmx_hash = compute_hash();
-    info!("Computed Hash for Casta Htmx");
 
-    let store = Arc::new(Mutex::new(Store::new(&redis_url).await));
-    let file_server = Arc::new(Mutex::new(
+    minify();
+    let htmx_hash = Arc::<str>::from(compute_hash());
+    let store = Store::new(&redis_url).await;
+    let file_server = Arc::new(tokio::sync::Mutex::new(
         FileServer::new(&redis_url, sasta_file_path).await,
     ));
 
-    let (tx, rx) = oneshot::channel::<()>();
-
-    let store_copy = store.clone();
-    tokio::spawn(async move {
-        schedule_loop(store_copy.clone(), tx).await;
-    });
-
-    rx.await.unwrap();
+    let (events, _) = broadcast::channel(1024);
+    tokio::spawn(redis_event_listener(store.client(), events.clone()));
 
     let app_state = AppState {
         store,
         file_server,
+        events,
         htmx_hash,
     };
 
@@ -106,7 +91,6 @@ async fn main() {
                 .nest("/display", display_router())
                 .nest("/schedule", schedule_router())
                 .nest("/playlist", playlist_router())
-                // Files
                 .nest("/files", file_api_router()),
         )
         .split_for_parts();
@@ -128,7 +112,6 @@ async fn main() {
     let addr = SocketAddr::from_str(&sasta_address).expect("Wrong address format");
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     info!("listening on http://{}", addr);
-    info!("View api docs at http://{}/swagger-ui", addr);
 
     axum::serve(
         listener,
@@ -161,7 +144,6 @@ async fn shutdown_signal() {
         _ = ctrl_c => {},
         _ = terminate => {},
     }
-
     tracing::info!("Signal received, Sasta shutting down");
 }
 
@@ -170,5 +152,13 @@ async fn ws_handler(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<AppState>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| client_connection(socket, addr, state.store, state.htmx_hash))
+    ws.on_upgrade(move |socket| {
+        client_connection(
+            socket,
+            addr,
+            state.store,
+            state.events.subscribe(),
+            state.htmx_hash.to_string(),
+        )
+    })
 }
