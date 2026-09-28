@@ -37,7 +37,7 @@ mod store;
 #[derive(Clone)]
 pub struct AppState {
     pub store: Store,
-    pub file_server: Arc<tokio::sync::Mutex<FileServer>>,
+    pub file_server: FileServer,
     pub events: broadcast::Sender<Change>,
     pub htmx_hash: Arc<str>,
 }
@@ -70,9 +70,7 @@ async fn main() {
     minify();
     let htmx_hash = Arc::<str>::from(compute_hash());
     let store = Store::new(&redis_url).await;
-    let file_server = Arc::new(tokio::sync::Mutex::new(
-        FileServer::new(&redis_url, sasta_file_path).await,
-    ));
+    let file_server = FileServer::new(&redis_url, sasta_file_path).await;
 
     let (events, _) = broadcast::channel(1024);
     tokio::spawn(redis_event_listener(store.client(), events.clone()));
