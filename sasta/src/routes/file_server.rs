@@ -301,7 +301,6 @@ pub async fn add_files(State(state): State<AppState>, multipart: Multipart) -> R
                 info_span!("No files in request; creating dirs");
                 transaction
                     .add_dir(&directory)
-                    .await
                     .map_err(|message| format!("{message} ({directory})"))?;
                 return Ok(Vec::new());
             }
@@ -310,8 +309,8 @@ pub async fn add_files(State(state): State<AppState>, multipart: Multipart) -> R
             for file_item in files.iter() {
                 if let Err(message) = transaction
                     .add_file(
-                        format!("{directory}/{}", file_item.name),
-                        file_item.content.clone(),
+                        &format!("{directory}/{}", file_item.name),
+                        &file_item.content,
                     )
                     .await
                 {
@@ -429,11 +428,11 @@ pub async fn rename_files(
             let mut errors = Vec::new();
             for (from, to) in renames {
                 if from.ends_with('/') && to.ends_with('/') {
-                    if let Err(message) = transaction.move_dir(&from, &to).await {
+                    if let Err(message) = transaction.move_dir(&from, &to) {
                         errors.push(message);
                     }
                 } else if !from.ends_with('/') && !to.ends_with('/') {
-                    if let Err(message) = transaction.move_file(&from, &to).await {
+                    if let Err(message) = transaction.move_file(&from, &to) {
                         errors.push(message);
                     }
                 } else {
@@ -483,10 +482,10 @@ pub async fn delete_files(
             let mut errors = Vec::new();
             for id in ids {
                 if id.ends_with('/') {
-                    if let Err(message) = transaction.delete_dir(id).await {
+                    if let Err(message) = transaction.delete_dir(&id) {
                         errors.push(message);
                     }
-                } else if let Err(message) = transaction.delete_file(id).await {
+                } else if let Err(message) = transaction.delete_file(&id) {
                     errors.push(message);
                 }
             }
@@ -518,7 +517,7 @@ pub fn file_api_router() -> OpenApiRouter<AppState> {
 mod tests {
     use crate::{
         file_server::file_server::{
-            DIR_REGEX, FILE_PATH_REGEX, FileServer, FileServerError, FileTransaction,
+            DIR_REGEX, FILE_PATH_REGEX, FileServer, FileServerError, VirtualPath,
         },
         routes::test_support::{app_state, cleanup_test_file_metadata},
     };
@@ -542,6 +541,18 @@ mod tests {
             events: state.events.clone(),
             htmx_hash: state.htmx_hash.clone(),
         }
+    }
+
+    pub fn get_file_in(root: &Directory, file_path: &str) -> Option<String> {
+        let path = VirtualPath::parse_file(file_path).ok()?;
+        let mut directory = root;
+        for parent in path.parent() {
+            directory = directory.children.get(*parent)?;
+        }
+        directory
+            .files
+            .get(path.name())
+            .map(|file| file.file_server.clone())
     }
 
     #[tokio::test]
@@ -593,7 +604,7 @@ mod tests {
         let server = app_state().await;
         let mut transaction = server.file_server.begin_transaction().await.unwrap();
         let file = transaction
-            .add_file("/nested/file.txt".to_string(), b"contents".to_vec())
+            .add_file("/nested/file.txt", b"contents")
             .await
             .unwrap();
 
@@ -605,7 +616,7 @@ mod tests {
         assert!(document["children"]["nested"]["files"].is_object());
         assert!(document["children"]["nested"]["files"]["file.txt"].is_object());
         assert_eq!(
-            FileTransaction::get_file_in(&reloaded, &"/nested/file.txt".to_string()),
+            get_file_in(&reloaded, "/nested/file.txt"),
             Some(file.file_server)
         );
     }
@@ -616,16 +627,10 @@ mod tests {
         let mut transaction = server.file_server.begin_transaction().await.unwrap();
         let mut stale = server.file_server.begin_transaction().await.unwrap();
 
-        transaction
-            .add_file("/committed.txt".to_string(), vec![1])
-            .await
-            .unwrap();
+        transaction.add_file("/committed.txt", &[1]).await.unwrap();
         transaction.write().await.unwrap();
 
-        let stale_file = stale
-            .add_file("/stale.txt".to_string(), vec![2])
-            .await
-            .unwrap();
+        let stale_file = stale.add_file("/stale.txt", &[2]).await.unwrap();
         let stale_disk_path = server.file_server.path.join(&stale_file.file_server);
         assert!(stale_disk_path.exists());
         assert!(matches!(
@@ -635,8 +640,8 @@ mod tests {
         assert!(!stale_disk_path.exists());
 
         let reloaded = server.file_server.read_tree().await.unwrap();
-        assert!(FileTransaction::get_file_in(&reloaded, &"/committed.txt".to_string()).is_some());
-        assert!(FileTransaction::get_file_in(&reloaded, &"/stale.txt".to_string()).is_none());
+        assert!(get_file_in(&reloaded, "/committed.txt").is_some());
+        assert!(get_file_in(&reloaded, "/stale.txt").is_none());
     }
 
     #[tokio::test]
@@ -644,9 +649,9 @@ mod tests {
         let server = app_state().await;
         let mut transaction = server.file_server.begin_transaction().await.unwrap();
 
-        let path = "/test_folder/nested/file.txt".to_string();
+        let path = "/test_folder/nested/file.txt";
         let file = transaction
-            .add_file(path.clone(), vec![0x00; 1024])
+            .add_file(path, &[0x00; 1024])
             .await
             .expect("Failed to add file");
 
@@ -654,8 +659,11 @@ mod tests {
         assert_eq!(file.path, path);
         assert_eq!(file.size, 1024);
 
-        let no_file_ext = transaction.add_file("/test".to_string(), vec![]).await;
-        assert_eq!(no_file_ext.unwrap_err(), "Illegal file name".to_string());
+        let no_file_ext = transaction.add_file("/test", &[]).await;
+        assert_eq!(
+            no_file_ext.unwrap_err(),
+            "Illegal file name '/test'".to_string()
+        );
 
         transaction.write().await.unwrap();
         let root = server.file_server.read_tree().await.unwrap();
@@ -676,6 +684,7 @@ mod tests {
         assert_eq!(nested.id, "/test_folder/nested/");
         assert_eq!(nested.files.len(), 1);
         assert_eq!(nested.files[0].name, "file.txt");
+        assert_eq!(nested.files[0].id, "/test_folder/nested/file.txt");
     }
 
     #[tokio::test]
@@ -683,11 +692,11 @@ mod tests {
         let server = app_state().await;
         let mut transaction = server.file_server.begin_transaction().await.unwrap();
 
-        let path = "/duplicates/file.txt".to_string();
+        let path = "/duplicates/file.txt";
 
-        let _ = transaction.add_file(path.clone(), vec![]).await.unwrap();
+        let _ = transaction.add_file(path, &[]).await.unwrap();
 
-        let result = transaction.add_file(path.clone(), vec![]).await;
+        let result = transaction.add_file(path, &[]).await;
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
@@ -699,16 +708,15 @@ mod tests {
     async fn test_delete_file_success_and_failure() {
         let server = app_state().await;
         let mut transaction = server.file_server.begin_transaction().await.unwrap();
-        let path = "/to_delete/delete_me.txt".to_string();
+        let path = "/to_delete/delete_me.txt";
 
-        let file = transaction.add_file(path.clone(), vec![]).await.unwrap();
+        let file = transaction.add_file(path, &[]).await.unwrap();
 
         let disk_path = server.file_server.path.join(&file.file_server);
         assert!(disk_path.exists());
 
         let deleted = transaction
-            .delete_file(path.clone())
-            .await
+            .delete_file(&path)
             .expect("Failed to delete file");
         assert_eq!(deleted.name, "delete_me.txt");
 
@@ -717,9 +725,7 @@ mod tests {
         assert!(!disk_path.exists());
 
         let mut followup = server.file_server.begin_transaction().await.unwrap();
-        let fail_result = followup
-            .delete_file("/to_delete/does_not_exist.txt".to_string())
-            .await;
+        let fail_result = followup.delete_file("/to_delete/does_not_exist.txt");
         assert!(fail_result.is_err());
         assert_eq!(
             fail_result.unwrap_err(),
@@ -732,22 +738,18 @@ mod tests {
         let server = app_state().await;
         let mut transaction = server.file_server.begin_transaction().await.unwrap();
 
-        let dir_path = "/my_folder/child_folder/".to_string();
-        transaction
-            .add_dir(&dir_path)
-            .await
-            .expect("Failed to add dir");
+        let dir_path = "/my_folder/child_folder/";
+        transaction.add_dir(dir_path).expect("Failed to add dir");
 
         let file = transaction
-            .add_file("/my_folder/child_folder/test.txt".to_string(), vec![])
+            .add_file("/my_folder/child_folder/test.txt", &[])
             .await
             .unwrap();
         let disk_path = server.file_server.path.join(&file.file_server);
         assert!(disk_path.exists());
 
         let deleted_dir = transaction
-            .delete_dir("/my_folder/".to_string())
-            .await
+            .delete_dir("/my_folder/")
             .expect("Failed to delete dir");
         assert_eq!(deleted_dir.name, "my_folder");
 
@@ -766,7 +768,7 @@ mod tests {
         let mut transaction = server.file_server.begin_transaction().await.unwrap();
 
         // Attempting to delete "/" should be blocked
-        let result = transaction.delete_dir("/".to_string()).await;
+        let result = transaction.delete_dir("/");
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "Will not delete root folder");
     }
@@ -776,14 +778,17 @@ mod tests {
         let server = app_state().await;
         let mut transaction = server.file_server.begin_transaction().await.unwrap();
 
-        let weird_path = "///weird////path//file.txt".to_string();
+        let weird_path = "///weird////path//file.txt";
 
-        let file = transaction.add_file(weird_path, vec![]).await.unwrap();
+        let file = transaction.add_file(weird_path, &[]).await.unwrap();
         assert_eq!(file.path, "/weird/path/file.txt");
 
-        let weird_path = "/../wonky/.file/....path..txt".to_string();
-        let file = transaction.add_file(weird_path, vec![]).await;
-        assert_eq!(file.unwrap_err(), "Illegal file name");
+        let weird_path = "/../wonky/.file/....path..txt";
+        let file = transaction.add_file(weird_path, &[]).await;
+        assert_eq!(
+            file.unwrap_err(),
+            format!("Illegal file name '{weird_path}'")
+        );
 
         transaction.write().await.unwrap();
         let root = server.file_server.read_tree().await.unwrap();
@@ -802,26 +807,16 @@ mod tests {
     async fn test_move_file_cross_directory_and_rename() {
         let server = app_state().await;
         let mut transaction = server.file_server.begin_transaction().await.unwrap();
+        transaction.add_dir("/folder_a/").unwrap();
+        transaction.add_dir("/folder_b/").unwrap();
         transaction
-            .add_dir(&"/folder_a/".to_string())
-            .await
-            .unwrap();
-        transaction
-            .add_dir(&"/folder_b/".to_string())
-            .await
-            .unwrap();
-        transaction
-            .add_file("/folder_a/test.txt".to_string(), vec![])
+            .add_file("/folder_a/test.txt", &[])
             .await
             .unwrap();
 
         // Move and rename at the same time
         let moved_file = transaction
-            .move_file(
-                &"/folder_a/test.txt".to_string(),
-                &"/folder_b/moved.txt".to_string(),
-            )
-            .await
+            .move_file("/folder_a/test.txt", "/folder_b/moved.txt")
             .expect("Failed to move file");
 
         assert_eq!(moved_file.path, "/folder_b/moved.txt");
@@ -856,28 +851,15 @@ mod tests {
     async fn test_move_file_rename_index_shift_bug() {
         let server = app_state().await;
         let mut transaction = server.file_server.begin_transaction().await.unwrap();
-        transaction.add_dir(&"/docs/".to_string()).await.unwrap();
-        transaction
-            .add_file("/docs/apple.txt".to_string(), vec![])
-            .await
-            .unwrap();
-        transaction
-            .add_file("/docs/banana.txt".to_string(), vec![])
-            .await
-            .unwrap();
-        transaction
-            .add_file("/docs/zebra.txt".to_string(), vec![])
-            .await
-            .unwrap();
+        transaction.add_dir("/docs/").unwrap();
+        transaction.add_file("/docs/apple.txt", &[]).await.unwrap();
+        transaction.add_file("/docs/banana.txt", &[]).await.unwrap();
+        transaction.add_file("/docs/zebra.txt", &[]).await.unwrap();
 
         // Rename apple to carrot. It must be inserted between banana and zebra.
         // If the index shift bug isn't fixed, it will break the alphabetical order.
         transaction
-            .move_file(
-                &"/docs/apple.txt".to_string(),
-                &"/docs/carrot.txt".to_string(),
-            )
-            .await
+            .move_file("/docs/apple.txt", "/docs/carrot.txt")
             .unwrap();
 
         transaction.write().await.unwrap();
@@ -895,46 +877,28 @@ mod tests {
     async fn test_move_file_collisions_and_errors() {
         let server = app_state().await;
         let mut transaction = server.file_server.begin_transaction().await.unwrap();
+        transaction.add_file("/docs/file1.txt", &[]).await.unwrap();
+        transaction.add_file("/docs/file2.txt", &[]).await.unwrap();
         transaction
-            .add_file("/docs/file1.txt".to_string(), vec![])
-            .await
-            .unwrap();
-        transaction
-            .add_file("/docs/file2.txt".to_string(), vec![])
-            .await
-            .unwrap();
-        transaction
-            .add_file("/archive/file1.txt".to_string(), vec![])
+            .add_file("/archive/file1.txt", &[])
             .await
             .unwrap();
 
         // 1. Same directory collision
         let err1 = transaction
-            .move_file(
-                &"/docs/file1.txt".to_string(),
-                &"/docs/file2.txt".to_string(),
-            )
-            .await
+            .move_file("/docs/file1.txt", "/docs/file2.txt")
             .unwrap_err();
         assert!(err1.contains("already exists"));
 
         // 2. Cross directory collision
         let err2 = transaction
-            .move_file(
-                &"/docs/file1.txt".to_string(),
-                &"/archive/file1.txt".to_string(),
-            )
-            .await
+            .move_file("/docs/file1.txt", "/archive/file1.txt")
             .unwrap_err();
         assert!(err2.contains("already exists"));
 
         // 3. Source does not exist
         let err3 = transaction
-            .move_file(
-                &"/docs/ghost.txt".to_string(),
-                &"/archive/ghost.txt".to_string(),
-            )
-            .await
+            .move_file("/docs/ghost.txt", "/archive/ghost.txt")
             .unwrap_err();
         assert!(err3.contains("does not exist"));
     }
@@ -944,17 +908,13 @@ mod tests {
         let server = app_state().await;
         let mut transaction = server.file_server.begin_transaction().await.unwrap();
         transaction
-            .add_file("/parent/child/deep/file.txt".to_string(), vec![])
+            .add_file("/parent/child/deep/file.txt", &[])
             .await
             .unwrap();
-        transaction.add_dir(&"/archive/".to_string()).await.unwrap();
+        transaction.add_dir("/archive/").unwrap();
 
         let moved_dir = transaction
-            .move_dir(
-                &"/parent/child/".to_string(),
-                &"/archive/renamed_child/".to_string(),
-            )
-            .await
+            .move_dir("/parent/child/", "/archive/renamed_child/")
             .unwrap();
 
         assert_eq!(moved_dir.path, "/archive/renamed_child");
@@ -989,34 +949,22 @@ mod tests {
     async fn test_move_dir_inception_protection() {
         let server = app_state().await;
         let mut transaction = server.file_server.begin_transaction().await.unwrap();
-        transaction
-            .add_dir(&"/docs/archive/".to_string())
-            .await
-            .unwrap();
+        transaction.add_dir("/docs/archive/").unwrap();
 
         // 1. Block moving into itself
-        let err1 = transaction
-            .move_dir(&"/docs/".to_string(), &"/docs/".to_string())
-            .await
-            .unwrap_err();
+        let err1 = transaction.move_dir("/docs/", "/docs/").unwrap_err();
         assert!(err1.contains("Cannot move a directory into itself"));
 
         // 2. Block moving into its own child (Orphan Tree Bug)
         let err2 = transaction
-            .move_dir(&"/docs/".to_string(), &"/docs/archive/nested/".to_string())
-            .await
+            .move_dir("/docs/", "/docs/archive/nested/")
             .unwrap_err();
         assert!(err2.contains("Cannot move a directory into itself"));
 
         // 3. DO NOT block moving into a different folder with a similar prefix name!
         // This ensures new_dir_path.starts_with(&format!("{}/", old_dir_path)) is working perfectly.
-        transaction
-            .add_dir(&"/docs_new/".to_string())
-            .await
-            .unwrap();
-        let success = transaction
-            .move_dir(&"/docs/".to_string(), &"/docs_new/docs/".to_string())
-            .await;
+        transaction.add_dir("/docs_new/").unwrap();
+        let success = transaction.move_dir("/docs/", "/docs_new/docs/");
 
         assert!(
             success.is_ok(),
@@ -1127,13 +1075,10 @@ mod tests {
     async fn independent_file_server_instances_share_metadata_and_bytes() {
         let server = app_state().await;
         let second = peer_app_state(&server).await;
-        let path = "/shared/file.txt".to_string();
+        let path = "/shared/file.txt";
 
         let mut upload = server.file_server.begin_transaction().await.unwrap();
-        let file = upload
-            .add_file(path.clone(), b"shared bytes".to_vec())
-            .await
-            .unwrap();
+        let file = upload.add_file(path, b"shared bytes").await.unwrap();
         upload.write().await.unwrap();
 
         let second_file_name = second.file_server.get_file(&path).await.unwrap().unwrap();
@@ -1146,7 +1091,7 @@ mod tests {
         );
 
         let mut delete = second.file_server.begin_transaction().await.unwrap();
-        delete.delete_file(path.clone()).await.unwrap();
+        delete.delete_file(&path).unwrap();
         delete.write().await.unwrap();
 
         assert!(server.file_server.get_file(&path).await.unwrap().is_none());
@@ -1157,19 +1102,13 @@ mod tests {
     async fn simultaneous_disjoint_writes_conflict_then_retry_without_lost_updates() {
         let server = app_state().await;
         let second = peer_app_state(&server).await;
-        let left_path = "/parallel/left.txt".to_string();
-        let right_path = "/parallel/right.txt".to_string();
+        let left_path = "/parallel/left.txt";
+        let right_path = "/parallel/right.txt";
 
         let mut left = server.file_server.begin_transaction().await.unwrap();
         let mut right = second.file_server.begin_transaction().await.unwrap();
-        let left_file = left
-            .add_file(left_path.clone(), b"left".to_vec())
-            .await
-            .unwrap();
-        let right_file = right
-            .add_file(right_path.clone(), b"right".to_vec())
-            .await
-            .unwrap();
+        let left_file = left.add_file(left_path, b"left").await.unwrap();
+        let right_file = right.add_file(right_path, b"right").await.unwrap();
 
         let (left_result, right_result) = tokio::join!(left.write(), right.write());
         match (&left_result, &right_result) {
@@ -1179,11 +1118,11 @@ mod tests {
         }
 
         let retry_path;
-        let retry_content;
+        let retry_content: &[u8];
         let rejected_file;
         if left_result.is_ok() {
-            retry_path = right_path.clone();
-            retry_content = b"right".to_vec();
+            retry_path = right_path;
+            retry_content = b"right";
             rejected_file = right_file;
             assert!(
                 server
@@ -1193,8 +1132,8 @@ mod tests {
                     .exists()
             );
         } else {
-            retry_path = left_path.clone();
-            retry_content = b"left".to_vec();
+            retry_path = left_path;
+            retry_content = b"left";
             rejected_file = left_file;
             assert!(
                 server
@@ -1213,10 +1152,7 @@ mod tests {
         );
 
         let mut retry = second.file_server.begin_transaction().await.unwrap();
-        retry
-            .add_file(retry_path.clone(), retry_content.clone())
-            .await
-            .unwrap();
+        retry.add_file(retry_path, retry_content).await.unwrap();
         retry.write().await.unwrap();
 
         assert!(
@@ -1266,9 +1202,7 @@ mod tests {
                 let barrier = Arc::clone(&barrier);
                 let attempt = attempts.fetch_add(1, Ordering::SeqCst);
                 Box::pin(async move {
-                    transaction
-                        .add_file("/retry-left.txt".to_string(), b"left".to_vec())
-                        .await?;
+                    transaction.add_file("/retry-left.txt", b"left").await?;
                     if attempt == 0 {
                         barrier.wait().await;
                     }
@@ -1283,9 +1217,7 @@ mod tests {
                 let barrier = Arc::clone(&barrier);
                 let attempt = attempts.fetch_add(1, Ordering::SeqCst);
                 Box::pin(async move {
-                    transaction
-                        .add_file("/retry-right.txt".to_string(), b"right".to_vec())
-                        .await?;
+                    transaction.add_file("/retry-right.txt", b"right").await?;
                     if attempt == 0 {
                         barrier.wait().await;
                     }
@@ -1304,7 +1236,7 @@ mod tests {
         assert!(
             server
                 .file_server
-                .get_file(&"/retry-left.txt".to_string())
+                .get_file("/retry-left.txt")
                 .await
                 .unwrap()
                 .is_some()
@@ -1312,7 +1244,7 @@ mod tests {
         assert!(
             server
                 .file_server
-                .get_file(&"/retry-right.txt".to_string())
+                .get_file("/retry-right.txt")
                 .await
                 .unwrap()
                 .is_some()
@@ -1328,18 +1260,16 @@ mod tests {
         let barrier = Arc::new(tokio::sync::Barrier::new(2));
         let left_attempts = Arc::new(AtomicUsize::new(0));
         let right_attempts = Arc::new(AtomicUsize::new(0));
-        let path = "/retry-same.txt".to_string();
+        let path = "/retry-same.txt";
 
         let left_result = retry_file_transaction(&server.file_server, {
             let barrier = Arc::clone(&barrier);
             let attempts = Arc::clone(&left_attempts);
-            let path = path.clone();
             move |transaction| {
                 let barrier = Arc::clone(&barrier);
-                let path = path.clone();
                 let attempt = attempts.fetch_add(1, Ordering::SeqCst);
                 Box::pin(async move {
-                    let file = transaction.add_file(path, b"left".to_vec()).await?;
+                    let file = transaction.add_file(path, b"left").await?;
                     if attempt == 0 {
                         barrier.wait().await;
                     }
@@ -1350,13 +1280,13 @@ mod tests {
         let right_result = retry_file_transaction(&second.file_server, {
             let barrier = Arc::clone(&barrier);
             let attempts = Arc::clone(&right_attempts);
-            let path = path.clone();
+            let path = path;
             move |transaction| {
                 let barrier = Arc::clone(&barrier);
-                let path = path.clone();
+                let path = path;
                 let attempt = attempts.fetch_add(1, Ordering::SeqCst);
                 Box::pin(async move {
-                    let file = transaction.add_file(path, b"right".to_vec()).await?;
+                    let file = transaction.add_file(path, b"right").await?;
                     if attempt == 0 {
                         barrier.wait().await;
                     }
@@ -1383,18 +1313,12 @@ mod tests {
     async fn simultaneous_uploads_to_same_path_commit_only_one_file() {
         let server = app_state().await;
         let second = peer_app_state(&server).await;
-        let path = "/same-name.txt".to_string();
+        let path = "/same-name.txt";
 
         let mut first = server.file_server.begin_transaction().await.unwrap();
         let mut second_tx = second.file_server.begin_transaction().await.unwrap();
-        let first_file = first
-            .add_file(path.clone(), b"first".to_vec())
-            .await
-            .unwrap();
-        let second_file = second_tx
-            .add_file(path.clone(), b"second".to_vec())
-            .await
-            .unwrap();
+        let first_file = first.add_file(path, b"first").await.unwrap();
+        let second_file = second_tx.add_file(path, b"second").await.unwrap();
 
         let (first_result, second_result) = tokio::join!(first.write(), second_tx.write());
         match (&first_result, &second_result) {
@@ -1420,10 +1344,7 @@ mod tests {
     async fn write_twice_on_a_transaction_returns_transaction_closed() {
         let server = app_state().await;
         let mut transaction = server.file_server.begin_transaction().await.unwrap();
-        transaction
-            .add_file("/once.txt".to_string(), b"once".to_vec())
-            .await
-            .unwrap();
+        transaction.add_file("/once.txt", b"once").await.unwrap();
 
         transaction.write().await.unwrap();
         assert!(matches!(
@@ -1435,21 +1356,15 @@ mod tests {
     #[tokio::test]
     async fn committed_transaction_cannot_replay_stale_metadata() {
         let server = app_state().await;
-        let original_path = "/before.txt".to_string();
-        let renamed_path = "/after.txt".to_string();
+        let original_path = "/before.txt";
+        let renamed_path = "/after.txt";
 
         let mut original = server.file_server.begin_transaction().await.unwrap();
-        original
-            .add_file(original_path.clone(), b"contents".to_vec())
-            .await
-            .unwrap();
+        original.add_file(original_path, b"contents").await.unwrap();
         original.write().await.unwrap();
 
         let mut rename = server.file_server.begin_transaction().await.unwrap();
-        rename
-            .move_file(&original_path, &renamed_path)
-            .await
-            .unwrap();
+        rename.move_file(&original_path, &renamed_path).unwrap();
         rename.write().await.unwrap();
 
         assert!(matches!(
@@ -1474,19 +1389,13 @@ mod tests {
     async fn conflicted_transaction_cannot_be_replayed_without_watch() {
         let server = app_state().await;
         let second = peer_app_state(&server).await;
-        let stale_path = "/stale.txt".to_string();
+        let stale_path = "/stale.txt";
 
         let mut stale = server.file_server.begin_transaction().await.unwrap();
-        let stale_file = stale
-            .add_file(stale_path.clone(), b"stale".to_vec())
-            .await
-            .unwrap();
+        let stale_file = stale.add_file(stale_path, b"stale").await.unwrap();
 
         let mut winner = second.file_server.begin_transaction().await.unwrap();
-        winner
-            .add_file("/winner.txt".to_string(), b"winner".to_vec())
-            .await
-            .unwrap();
+        winner.add_file("/winner.txt", b"winner").await.unwrap();
         winner.write().await.unwrap();
 
         assert!(matches!(
@@ -1520,16 +1429,11 @@ mod tests {
         let server = app_state().await;
         let second = peer_app_state(&server).await;
         let mut aborted = server.file_server.begin_transaction().await.unwrap();
-        aborted
-            .add_file("/aborted.txt".to_string(), b"discard".to_vec())
-            .await
-            .unwrap();
+        aborted.add_file("/aborted.txt", b"discard").await.unwrap();
         aborted.abort_transaction().await;
 
-        let raced_path = "/after-abort.txt".to_string();
-        let post_abort = aborted
-            .add_file(raced_path.clone(), b"post-abort".to_vec())
-            .await;
+        let raced_path = "/after-abort.txt";
+        let post_abort = aborted.add_file(raced_path, b"post-abort").await;
         if let Err(message) = post_abort {
             assert!(
                 message.to_lowercase().contains("closed")
@@ -1540,10 +1444,7 @@ mod tests {
         }
 
         let mut winner = second.file_server.begin_transaction().await.unwrap();
-        let winner_file = winner
-            .add_file(raced_path.clone(), b"winner".to_vec())
-            .await
-            .unwrap();
+        let winner_file = winner.add_file(raced_path, b"winner").await.unwrap();
         winner.write().await.unwrap();
 
         assert!(matches!(
@@ -1564,12 +1465,9 @@ mod tests {
     #[tokio::test]
     async fn dropping_uncommitted_upload_does_not_leave_an_orphan_file() {
         let server = app_state().await;
-        let path = "/abandoned.txt".to_string();
+        let path = "/abandoned.txt";
         let mut transaction = server.file_server.begin_transaction().await.unwrap();
-        let file = transaction
-            .add_file(path.clone(), b"abandoned".to_vec())
-            .await
-            .unwrap();
+        let file = transaction.add_file(path, b"abandoned").await.unwrap();
         let disk_path = server.file_server.path.join(file.file_server);
         drop(transaction);
 
@@ -1581,18 +1479,15 @@ mod tests {
     async fn delete_between_metadata_lookup_and_file_open_can_return_not_found() {
         let server = app_state().await;
         let second = peer_app_state(&server).await;
-        let path = "/read-delete-race.txt".to_string();
+        let path = "/read-delete-race.txt";
         let mut upload = server.file_server.begin_transaction().await.unwrap();
-        let file = upload
-            .add_file(path.clone(), b"read me".to_vec())
-            .await
-            .unwrap();
+        let file = upload.add_file(path, b"read me").await.unwrap();
         upload.write().await.unwrap();
 
         // This is the metadata lookup performed by the download handler.
         let resolved = server.file_server.get_file(&path).await.unwrap().unwrap();
         let mut delete = second.file_server.begin_transaction().await.unwrap();
-        delete.delete_file(path).await.unwrap();
+        delete.delete_file(path).unwrap();
         delete.write().await.unwrap();
 
         // The handler opens the resolved path only after the metadata lookup.
@@ -1636,7 +1531,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn exec_command_errors_are_reported_as_failed_writes() {
+    async fn invalid_metadata_is_rejected_when_opening_a_transaction() {
         let server = app_state().await;
         let redis_url = std::env::var("REDIS_URL").expect("REDIS_URL must be set for tests");
         let client = redis::Client::open(redis_url).unwrap();
@@ -1650,14 +1545,9 @@ mod tests {
             .unwrap();
         drop(con);
 
-        let mut transaction = server.file_server.begin_transaction().await.unwrap();
-        let file = transaction
-            .add_file("/invalid-parent.txt".to_string(), b"contents".to_vec())
-            .await
-            .unwrap();
-        let disk_path = server.file_server.path.join(file.file_server);
-
-        assert!(transaction.write().await.is_err());
-        assert!(!disk_path.exists());
+        assert!(matches!(
+            server.file_server.begin_transaction().await,
+            Err(FileServerError::InvalidData(_))
+        ));
     }
 }
