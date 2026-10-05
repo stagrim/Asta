@@ -13,7 +13,7 @@ use hyper::{Request, StatusCode, Uri};
 use serde::{Deserialize, Serialize};
 use tower::ServiceExt;
 use tower_http::services::ServeFile;
-use tracing::{info_span, warn_span};
+use tracing::{info, warn};
 use utoipa::{
     ToSchema,
     openapi::{ArrayBuilder, Ref, RefOr, Schema},
@@ -27,12 +27,29 @@ use crate::{
 
 /// Struct representing the multipart/form-data schema for file uploads
 #[derive(ToSchema)]
+#[schema(example = json!({
+    "directory": "/documents/2026/",
+    "files": [
+        {
+            "name": "budget_q1.csv",
+            "content": "Q2F0ZWdvcnksQW1vdW50ClNpdGUgSG9zdGluZywkMjUw"
+        },
+        {
+            "name": "budget_statement_q1.txt",
+            "content": "SXQncyBhIHNlY3JldCB0byBldmVyeWJvZHk="
+        }
+    ]
+}))]
 pub struct FileUpload {
     /// Target directory to upload files to
+    #[schema(example = "/documents")]
     directory: String,
     /// One or more files to upload
     #[schema(value_type = Vec<String>, format = Binary)]
     files: Vec<FileItem>,
+    #[serde(skip)]
+    /// List of failed files (id, error_message)
+    failed: Vec<(String, String)>,
 }
 
 struct FileItem {
@@ -45,15 +62,19 @@ impl FileUpload {
     pub async fn from_multipart(mut multipart: Multipart) -> Result<Self, String> {
         let mut directory = None;
         let mut files = Vec::new();
+        let mut failed = Vec::new();
 
         while let Some(field) = multipart.next_field().await.unwrap() {
             if let Some(filename) = field.file_name() {
                 let filename = filename.to_string();
                 let bytes = match field.bytes().await {
                     Ok(b) => b.into_iter().collect::<Vec<_>>(),
-                    Err(e) => return Err(e.body_text()),
+                    Err(e) => {
+                        failed.push((filename, e.body_text()));
+                        continue;
+                    }
                 };
-                info_span!("Add file ", filename);
+                info!("Add file {filename}");
                 files.push(FileItem {
                     name: filename,
                     content: bytes,
@@ -67,25 +88,63 @@ impl FileUpload {
                     .unwrap_or(String::new())
                     .trim()
                     .to_string();
-                info_span!("Got directory name", dir);
+                info!("Got directory name {dir}");
                 directory = Some(dir);
             } else {
-                warn_span!("Unknown field", ?field);
+                warn!("Unknown field {field:?}");
             }
         }
 
         match directory {
-            Some(directory) => Ok(FileUpload { directory, files }),
+            Some(directory) => Ok(FileUpload {
+                directory,
+                files,
+                failed,
+            }),
             None => Err("Directory field cannot be empty".to_string()),
         }
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, ToSchema)]
+#[derive(Serialize, Deserialize, Debug, ToSchema)]
+#[schema(example = json!({
+    "id": "/documents/",
+    "name": "documents",
+    "files": [
+        {
+            "id": "/documents/report.pdf",
+            "name": "report.pdf",
+            "size": 1048576,
+            "date": "2026-10-05T12:00:00+00:00"
+        }
+    ],
+    "directories": [
+        {
+            "id": "/documents/2026",
+            "name": "2026",
+            "files": [
+                {
+                    "id": "/documents/2026/note.txt",
+                    "name": "note.txt",
+                    "size": 1067,
+                    "date": "2026-10-05T12:00:00+00:00"
+                }
+            ],
+            "directories": []
+        }
+    ]
+}))]
 pub struct TreeDirectory {
+    /// Full virtual path of the directory
     id: String,
+
+    /// The local name of the directory
     name: String,
+
+    /// List of files directly contained within this directory
     files: Vec<TreeFile>,
+
+    /// Nested child directories
     // Manually specify the schema to break infinite recursion
     #[schema(schema_with = recursive_directory_schema)]
     directories: Vec<TreeDirectory>,
@@ -101,11 +160,19 @@ fn recursive_directory_schema() -> RefOr<Schema> {
     .into()
 }
 
-#[derive(Deserialize, Serialize, Debug, ToSchema)]
+#[derive(Serialize, Deserialize, Debug, ToSchema)]
 pub struct TreeFile {
+    /// Full virtual path to the file
+    #[schema(example = "/documents/report.pdf")]
     id: String,
+    /// Filename with extension
+    #[schema(example = "report.pdf")]
     name: String,
+    /// File size in bytes
+    #[schema(example = 1048576)]
     size: usize,
+    /// Last modified date (RFC3339 format)
+    #[schema(example = "2026-10-05T12:00:00+00:00")]
     date: String,
 }
 
@@ -147,7 +214,21 @@ impl From<&Directory> for TreeDirectory {
     }
 }
 
-#[derive(Serialize, Debug, ToSchema)]
+#[derive(Serialize, Deserialize, Debug, ToSchema)]
+#[schema(example = json!([
+    {
+        "id": "/documents/",
+        "size": 0,
+        "date": "2026-10-05T12:00:00+00:00",
+        "type": "folder"
+    },
+    {
+        "id": "/documents/report.pdf",
+        "size": 1048576,
+        "date": "2026-10-05T12:05:00+00:00",
+        "type": "file"
+    }
+]))]
 pub struct ListView(Vec<ListViewItem>);
 
 impl From<&Directory> for ListView {
@@ -178,14 +259,22 @@ impl From<&Directory> for ListView {
 
 #[derive(Serialize, Deserialize, Debug, ToSchema)]
 pub struct ListViewItem {
+    /// Full virtual path of the item
+    #[schema(example = "/documents/report.pdf")]
     id: String,
+    /// File size in bytes (usually 0 for folders)
+    #[schema(example = 1048576)]
     size: usize,
+    /// Last modified date (RFC3339 format)
+    #[schema(example = "2026-10-05T12:05:00+00:00")]
     date: String,
+    /// The type of item (file or folder)
     r#type: ListViewItemType,
 }
 
 #[derive(Serialize, Deserialize, Debug, ToSchema)]
 enum ListViewItemType {
+    // TODO: Be consistent with naming and always use `directory`
     #[serde(rename = "folder")]
     Directory,
     #[serde(rename = "file")]
@@ -217,19 +306,83 @@ impl From<&Directory> for ListViewItem {
 
 #[derive(Serialize, Deserialize, Debug, ToSchema)]
 pub struct RenameRequest {
+    #[schema(example = json!(["/old_name.txt", "/old_folder/"]))]
     ids_from: Vec<String>,
+    #[schema(example = json!(["/new_name.txt", "/new_folder/"]))]
     ids_to: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, ToSchema)]
 pub struct DeleteFilesRequest {
-    /// path of files /dirs to be deleted.
-    ///
-    /// May not handle case where a folder and a file inside the folder is to be deleted in the same request
+    #[schema(example = json!(["/folder_a/file.txt", "/folder_b/"]))]
     ids: Vec<String>,
 }
 
+#[derive(Serialize, Deserialize, Debug, ToSchema)]
+#[schema(example = json!({
+    "successful": 1,
+    "failed": 1,
+    "statuses": [
+        { "status": "success", "id": "/api_folder/file.txt" },
+        { "status": "failure", "id": "/api_folder/duplicate_file.txt", "error": "File already exists" }
+    ]
+}))]
+pub struct BatchOperationResponse {
+    pub successful: usize,
+    pub failed: usize,
+    pub statuses: Vec<ItemStatus>,
+}
+
+#[derive(Serialize, Deserialize, Debug, ToSchema)]
+#[serde(tag = "status", rename_all = "camelCase")]
+pub enum ItemStatus {
+    Success { id: String },
+    Failure { id: String, error: String },
+}
+
+#[derive(Serialize, Deserialize, Debug, ToSchema)]
+#[schema(example = json!({
+    "successful": 1,
+    "failed": 1,
+    "statuses": [
+        { "status": "success", "from": "/old_file.txt", "to": "/new_file.txt" },
+        { "status": "failure", "from": "/missing.txt", "to": "/new.txt", "error": "File not found" }
+    ]
+}))]
+pub struct RenameBatchOperationResponse {
+    pub successful: usize,
+    pub failed: usize,
+    pub statuses: Vec<RenameItemStatus>,
+}
+
+#[derive(Serialize, Deserialize, Debug, ToSchema)]
+#[serde(tag = "status", rename_all = "camelCase")]
+pub enum RenameItemStatus {
+    Success {
+        from: String,
+        to: String,
+    },
+    Failure {
+        from: String,
+        to: String,
+        error: String,
+    },
+}
+
+impl ItemStatus {
+    pub fn is_success(&self) -> bool {
+        matches!(self, ItemStatus::Success { .. })
+    }
+}
+
+impl RenameItemStatus {
+    pub fn is_success(&self) -> bool {
+        matches!(self, RenameItemStatus::Success { .. })
+    }
+}
+
 pub type Response<T> = Result<Json<T>, (StatusCode, String)>;
+pub type BatchResponse<T> = Result<(StatusCode, Json<T>), (StatusCode, String)>;
 
 fn file_server_error(error: FileServerError) -> (StatusCode, String) {
     match error {
@@ -277,14 +430,20 @@ where
     post,
     path = "/",
     tag = "files",
+    summary = "Upload files or create a directory",
+    description = "Uploads multiple files via a multipart stream to a target directory. If the directory does not exist, it will be created. If no files are provided, the directory will be created empty.",
     request_body(content = FileUpload, content_type = "multipart/form-data"),
     responses(
-        (status = 200, description = "Files uploaded successfully", body = ListView),
-        (status = 400, description = "Bad Request (e.g. missing directory field)", body = String)
+        (status = 200, description = "All files were uploaded successfully", body = BatchOperationResponse),
+        (status = 207, description = "Partial success. Some files were uploaded, but others failed.", body = BatchOperationResponse),
+        (status = 400, description = "Structural Bad Request (e.g., missing directory field)", body = String)
     )
 )]
 #[debug_handler]
-pub async fn add_files(State(state): State<AppState>, multipart: Multipart) -> Response<ListView> {
+pub async fn add_files(
+    State(state): State<AppState>,
+    multipart: Multipart,
+) -> BatchResponse<BatchOperationResponse> {
     let upload = match FileUpload::from_multipart(multipart).await {
         Ok(u) => u,
         Err(message) => {
@@ -293,41 +452,58 @@ pub async fn add_files(State(state): State<AppState>, multipart: Multipart) -> R
     };
     let directory = upload.directory;
     let files = Arc::new(upload.files);
-    let errors = retry_file_transaction(&state.file_server, |transaction| {
+    let mut statuses = retry_file_transaction(&state.file_server, |transaction| {
         let directory = directory.clone();
         let files = Arc::clone(&files);
         Box::pin(async move {
             if files.is_empty() {
-                info_span!("No files in request; creating dirs");
-                transaction
-                    .add_dir(&directory)
-                    .map_err(|message| format!("{message} ({directory})"))?;
-                return Ok(Vec::new());
-            }
-
-            let mut errors = Vec::new();
-            for file_item in files.iter() {
-                if let Err(message) = transaction
-                    .add_file(
-                        &format!("{directory}/{}", file_item.name),
-                        &file_item.content,
-                    )
-                    .await
-                {
-                    errors.push(message);
+                info!("No files in request; creating dirs");
+                match transaction.add_dir(&directory) {
+                    Ok(_) => return Ok(vec![ItemStatus::Success { id: directory }]),
+                    Err(message) => {
+                        return Ok(vec![ItemStatus::Failure {
+                            id: directory.clone(),
+                            error: format!("{message} ({directory})"),
+                        }]);
+                    }
                 }
             }
-            Ok(errors)
+
+            let mut statuses = Vec::new();
+            for file_item in files.iter() {
+                let id = format!("{}/{}", directory, file_item.name);
+                match transaction.add_file(&id, &file_item.content).await {
+                    Ok(_) => statuses.push(ItemStatus::Success { id }),
+                    Err(message) => statuses.push(ItemStatus::Failure { id, error: message }),
+                }
+            }
+            Ok(statuses)
         })
     })
     .await
     .map_err(file_server_error)?
     .map_err(|message| (StatusCode::BAD_REQUEST, message))?;
 
-    if errors.is_empty() {
-        Ok(Json(ListView(vec![])))
+    for (filename, error_msg) in upload.failed {
+        statuses.push(ItemStatus::Failure {
+            id: format!("{}/{}", directory, filename),
+            error: format!("Stream upload failed: {}", error_msg),
+        });
+    }
+
+    let successful = statuses.iter().filter(|s| s.is_success()).count();
+    let failed = statuses.iter().filter(|s| !s.is_success()).count();
+
+    let response = BatchOperationResponse {
+        successful,
+        failed,
+        statuses,
+    };
+
+    if failed > 0 {
+        Ok((StatusCode::MULTI_STATUS, Json(response)))
     } else {
-        Err((StatusCode::BAD_REQUEST, errors.join(", ")))
+        Ok((StatusCode::OK, Json(response)))
     }
 }
 
@@ -335,8 +511,10 @@ pub async fn add_files(State(state): State<AppState>, multipart: Multipart) -> R
     get,
     path = "/list",
     tag = "files",
+    summary = "Get a flat list of all files",
+    description = "Returns a flat, non-hierarchical list of all files and directories stored on the server.",
     responses(
-        (status = 200, description = "List all files flat", body = ListView)
+        (status = 200, description = "A flat list of all files and directories", body = ListView)
     )
 )]
 pub async fn get_all_paths_list(State(state): State<AppState>) -> Response<ListView> {
@@ -353,8 +531,10 @@ pub async fn get_all_paths_list(State(state): State<AppState>) -> Response<ListV
     get,
     path = "/tree",
     tag = "files",
+    summary = "Get a hierarchical tree of all files",
+    description = "Returns a nested tree structure representing all directories and files on the server.",
     responses(
-        (status = 200, description = "Get file tree", body = TreeDirectory)
+        (status = 200, description = "A tree representation of the file system", body = TreeDirectory)
     )
 )]
 pub async fn get_all_paths_tree(State(state): State<AppState>) -> Response<TreeDirectory> {
@@ -389,28 +569,25 @@ pub async fn get_file(State(state): State<AppState>, uri: Uri) -> impl IntoRespo
     }
 }
 
-/// Move/Rename files and folders
-///
-/// Multiple files and folders can be renamed at once. The from and to paths should be on the corresponding index of the `ids_from`
-/// and the `ids_to` respectively.
-///
-/// ids ending with a `'/'` will be treated as a dir, and recursively move all contained items if present.
 #[utoipa::path(
     put,
     path = "/",
     tag = "files",
+    summary = "Rename or move files and directories",
+    description = "Rename multiple files and folders at once. The `ids_from` and `ids_to` arrays must have matching lengths, where the index in `ids_from` corresponds to the new path in `ids_to`. Paths ending with `/` are treated as directories and will be moved recursively.",
     request_body = RenameRequest,
     responses(
-        (status = 200, description = "Files and folders renamed successfully", body = ListView),
-        (status = 400, description = "Bad Request", body = String)
+        (status = 200, description = "All items were renamed or moved successfully", body = RenameBatchOperationResponse),
+        (status = 207, description = "Partial success. Some items were renamed, but others failed.", body = RenameBatchOperationResponse),
+        (status = 400, description = "Bad Request (e.g., array lengths mismatch or mixed types)", body = String)
     )
 )]
 #[debug_handler]
 pub async fn rename_files(
     State(state): State<AppState>,
     Json(files): Json<RenameRequest>,
-) -> Response<ListView> {
-    info_span!("Renaming files", ?files);
+) -> BatchResponse<RenameBatchOperationResponse> {
+    info!("Renaming files {files:?}");
     if files.ids_from.len() != files.ids_to.len() {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -422,50 +599,57 @@ pub async fn rename_files(
         .into_iter()
         .zip(files.ids_to)
         .collect::<Vec<_>>();
-    let errors = retry_file_transaction(&state.file_server, |transaction| {
+    let statuses = retry_file_transaction(&state.file_server, |transaction| {
         let renames = renames.clone();
         Box::pin(async move {
-            let mut errors = Vec::new();
+            let mut statuses = Vec::new();
             for (from, to) in renames {
-                if from.ends_with('/') && to.ends_with('/') {
-                    if let Err(message) = transaction.move_dir(&from, &to) {
-                        errors.push(message);
-                    }
+                let result = if from.ends_with('/') && to.ends_with('/') {
+                    transaction.move_dir(&from, &to).map(|_| ())
                 } else if !from.ends_with('/') && !to.ends_with('/') {
-                    if let Err(message) = transaction.move_file(&from, &to) {
-                        errors.push(message);
-                    }
+                    transaction.move_file(&from, &to).map(|_| ())
                 } else {
-                    errors.push(
-                        "Cannot mix file and directories on the corresponding indexes of the arrays fields"
-                            .to_string(),
-                    )
+                    Err("Cannot mix file and directories on the corresponding indexes of the arrays fields".to_string())
+                };
+
+                match result {
+                    Ok(_) => statuses.push(RenameItemStatus::Success { from, to }),
+                    Err(message) => statuses.push(RenameItemStatus::Failure { from, to, error: message }),
                 }
             }
-            Ok(errors)
+            Ok(statuses)
         })
     })
     .await
     .map_err(file_server_error)?
     .map_err(|message| (StatusCode::BAD_REQUEST, message))?;
 
-    if errors.is_empty() {
-        Ok(Json(ListView(vec![])))
+    let successful = statuses.iter().filter(|s| s.is_success()).count();
+    let failed = statuses.iter().filter(|s| !s.is_success()).count();
+
+    let response = RenameBatchOperationResponse {
+        successful,
+        failed,
+        statuses,
+    };
+
+    if failed > 0 {
+        Ok((StatusCode::MULTI_STATUS, Json(response)))
     } else {
-        Err((StatusCode::BAD_REQUEST, errors.join(", ")))
+        Ok((StatusCode::OK, Json(response)))
     }
 }
 
-/// Delete files and directories
-///
-/// ids ending with a `'/'` will be treated as a dir, and recursively remove all contained items if present.
 #[utoipa::path(
     delete,
     path = "/",
     tag = "files",
+    summary = "Delete files and directories",
+    description = "Deletes multiple files and directories at once. Paths ending with `/` are treated as directories and all their contents will be deleted recursively.",
     request_body = DeleteFilesRequest,
     responses(
-        (status = 200, description = "Files deleted successfully", body = ListView),
+        (status = 200, description = "All items were deleted successfully", body = BatchOperationResponse),
+        (status = 207, description = "Partial success. Some items were deleted, but others failed.", body = BatchOperationResponse),
         (status = 400, description = "Bad Request", body = String)
     )
 )]
@@ -473,33 +657,48 @@ pub async fn rename_files(
 pub async fn delete_files(
     State(state): State<AppState>,
     Json(files): Json<DeleteFilesRequest>,
-) -> Response<ListView> {
-    info_span!("Deleting files", ?files);
+) -> BatchResponse<BatchOperationResponse> {
+    info!("Deleting files {files:?}");
     let ids = files.ids;
-    let errors = retry_file_transaction(&state.file_server, |transaction| {
+    let statuses = retry_file_transaction(&state.file_server, |transaction| {
         let ids = ids.clone();
         Box::pin(async move {
-            let mut errors = Vec::new();
+            let mut statuses = Vec::new();
             for id in ids {
-                if id.ends_with('/') {
-                    if let Err(message) = transaction.delete_dir(&id) {
-                        errors.push(message);
-                    }
-                } else if let Err(message) = transaction.delete_file(&id) {
-                    errors.push(message);
+                let result = if id.ends_with('/') {
+                    transaction.delete_dir(&id).map(|_| ())
+                } else {
+                    transaction.delete_file(&id).map(|_| ())
+                };
+
+                match result {
+                    Ok(_) => statuses.push(ItemStatus::Success { id: id.clone() }),
+                    Err(message) => statuses.push(ItemStatus::Failure {
+                        id: id.clone(),
+                        error: message,
+                    }),
                 }
             }
-            Ok(errors)
+            Ok(statuses)
         })
     })
     .await
     .map_err(file_server_error)?
     .map_err(|message| (StatusCode::BAD_REQUEST, message))?;
 
-    if errors.is_empty() {
-        Ok(Json(ListView(vec![])))
+    let successful = statuses.iter().filter(|s| s.is_success()).count();
+    let failed = statuses.iter().filter(|s| !s.is_success()).count();
+
+    let response = BatchOperationResponse {
+        successful,
+        failed,
+        statuses,
+    };
+
+    if failed > 0 {
+        Ok((StatusCode::MULTI_STATUS, Json(response)))
     } else {
-        Err((StatusCode::BAD_REQUEST, errors.join(", ")))
+        Ok((StatusCode::OK, Json(response)))
     }
 }
 

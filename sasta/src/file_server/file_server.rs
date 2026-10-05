@@ -329,8 +329,8 @@ impl FileTransaction {
     /// Add a file and create any missing parent directories. Metadata stays staged until `write`.
     pub async fn add_file(&mut self, file_path: &str, content: &[u8]) -> Result<File, String> {
         self.ensure_open()?;
-        info!("Adding file {}", file_path);
         let path = VirtualPath::parse_file(file_path)?;
+        info!("Adding file {}", path.to_string_path());
         self.create_up_to_dir(path.parent())?;
 
         let normalized_path = path.to_string_path();
@@ -549,7 +549,7 @@ impl FileTransaction {
                 };
                 let parent = &current[..current.len() - 1];
                 self.find_directory_mut(parent)
-                    .expect("parent directory exists")
+                    .expect("parent directory does not exist")
                     .children
                     .insert((*component).to_string(), directory);
             }
