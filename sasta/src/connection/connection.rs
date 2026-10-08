@@ -151,7 +151,6 @@ pub async fn client_connection(
                                 return;
                             }
                         };
-                        trace!("loop 2");
                     }
                     continue;
                 }

@@ -48,7 +48,18 @@ cargo run
 # cargo watch -x run
 ```
 
-### 4. Run Gasta (Deno & SvelteKit)
+### 4. API Bindings Generation (Optional)
+
+Gasta communicates with Sasta via typed API client bindings. The OpenAPI spec is served directly by the Sasta server, so to regenerate the bindings when the API changes, **Sasta must be running**:
+
+1. Ensure Sasta is running (from step 3).
+2. Generate the frontend TypeScript bindings for Gasta by fetching the live spec:
+   ```bash
+   cd gasta
+   deno task gen:api
+   ```
+
+### 5. Run Gasta (Deno & SvelteKit)
 
 Gasta has been migrated to Deno. Navigate to the `gasta/` directory and use the `dev` task to start the development server with hot-reloading:
 
