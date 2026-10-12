@@ -10,6 +10,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone)]
 enum ScheduledItem {
     Schedule {
+        id: Uuid,
         start: CronSchedule,
         end: CronSchedule,
         playlist: Uuid,
@@ -53,6 +54,7 @@ impl Schedule {
 
         for s in schedules_input {
             schedules.push(ScheduledItem::Schedule {
+                id: s.id,
                 start: Self::str_to_cron(&s.start)?,
                 end: Self::str_to_cron(&s.end)?,
                 playlist: s.playlist,
@@ -99,6 +101,7 @@ impl Schedule {
                         start,
                         end,
                         playlist,
+                        ..
                     } => {
                         let (last_start, last_end) = (
                             Self::previous_time(time, start),
@@ -152,6 +155,7 @@ impl Schedule {
                         start,
                         end,
                         playlist,
+                        ..
                     } => {
                         let (mut next_start_iter, mut next_end_iter) =
                             (start.after(from).peekable(), end.after(from).peekable());
@@ -289,6 +293,7 @@ pub struct ScheduleInput {
 
 #[derive(Deserialize, Serialize, Debug, Clone, ToSchema)]
 pub struct ScheduledPlaylistInput {
+    pub id: Uuid,
     pub playlist: Uuid,
     pub start: String,
     pub end: String,
@@ -335,10 +340,12 @@ impl From<Schedule> for ScheduleInput {
                 .iter()
                 .filter_map(|s| match s {
                     ScheduledItem::Schedule {
+                        id,
                         start,
                         end,
                         playlist,
                     } => Some(ScheduledPlaylistInput {
+                        id: *id,
                         playlist: *playlist,
                         start: start.to_string(),
                         end: end.to_string(),

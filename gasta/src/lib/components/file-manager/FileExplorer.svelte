@@ -1,19 +1,19 @@
 <script lang="ts">
 	import FileIcon from './FileIcon.svelte';
-	import { Button } from '$lib/components/ui/button';
-	import { Separator } from '$lib/components/ui/separator';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { Separator } from '#lib/components/ui/separator/index.js';
 	import LayoutGridIcon from '@lucide/svelte/icons/layout-grid';
 	import ListIcon from '@lucide/svelte/icons/list';
 	import PanelRightIcon from '@lucide/svelte/icons/panel-right';
 	import FolderIcon from '@lucide/svelte/icons/folder';
 	import { Folder, FolderTree, History, House, Search, SearchIcon } from '@lucide/svelte';
 	import { filesize } from 'filesize';
-	import { cn } from '$lib/utils';
-	import * as Breadcrumb from '$lib/components/ui/breadcrumb';
+	import { cn } from '#lib/utils.js';
+	import * as Breadcrumb from '#lib/components/ui/breadcrumb/index.js';
 	import * as ContextMenu from '../ui/context-menu';
 	import { useFileManager } from './file-manager.svelte';
 	import { PressedKeys, watch } from 'runed';
-	import type { TreeDirectory, TreeFile } from '$lib/server/sasta_client';
+	import type { TreeDirectory, TreeFile } from '#lib/server/sasta_client/index.ts';
 	import { CurrentPathType } from './types';
 
 	const fm = useFileManager();

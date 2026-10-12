@@ -21,7 +21,7 @@
 	import { PressedKeys, watch } from 'runed';
 	import * as Sheet from '../ui/sheet';
 	import { useFileManager } from './file-manager.svelte';
-	import type { TreeDirectory, TreeFile } from '$lib/server/sasta_client';
+	import type { TreeDirectory, TreeFile } from '#lib/server/sasta_client/index.ts';
 	import { toast } from 'svelte-sonner';
 	import * as AlertDialog from '../ui/alert-dialog';
 	import { Input } from '../ui/input';

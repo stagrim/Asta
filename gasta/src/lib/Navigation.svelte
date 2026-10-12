@@ -1,7 +1,7 @@
 <script lang="ts">
-	import * as Sidebar from '$lib/components/ui/sidebar';
-	import * as Collapsible from '$lib/components/ui/collapsible';
-	import { useSidebar } from '$lib/components/ui/sidebar';
+	import * as Sidebar from '#lib/components/ui/sidebar/index.js';
+	import * as Collapsible from '#lib/components/ui/collapsible/index.js';
+	import { useSidebar } from '#lib/components/ui/sidebar/index.js';
 
 	import { page } from '$app/state';
 	import type { LayoutData } from '../routes/$types';
@@ -18,7 +18,7 @@
 	import { capitalize } from './utils';
 	import { Badge } from './components/ui/badge';
 	import { Separator } from './components/ui/separator';
-	import type { Display, Playlist, Schedule } from './server/sasta_client';
+	import type { ReadDisplay, ReadPlaylist, ReadSchedule } from './server/sasta_client';
 
 	let { data }: { data: LayoutData } = $props();
 
@@ -57,7 +57,7 @@
 	);
 
 	function filter_titles(
-		kind: ((Display | Schedule | Playlist) & { title_name: string })[],
+		kind: ((ReadDisplay | ReadSchedule | ReadPlaylist) & { title_name: string })[],
 		filter: string
 	) {
 		if (filter) {

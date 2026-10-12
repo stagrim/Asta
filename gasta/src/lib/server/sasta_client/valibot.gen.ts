@@ -2,6 +2,15 @@
 
 import * as v from 'valibot';
 
+export const vCreatePlaylist = v.object({
+    name: v.string()
+});
+
+export const vCreateSchedule = v.object({
+    name: v.string(),
+    playlist: v.pipe(v.string(), v.uuid())
+});
+
 export const vDeleteFilesRequest = v.object({
     ids: v.array(v.string())
 });
@@ -14,10 +23,10 @@ export const vDisplayMaterial = v.union([v.object({
         uuid: v.pipe(v.string(), v.uuid())
     })]);
 
-export const vDisplay = v.object({
+export const vCreateDisplay = v.object({
     display_material: vDisplayMaterial,
     name: v.string(),
-    uuid: v.pipe(v.string(), v.uuid())
+    uuid: v.nullish(v.pipe(v.string(), v.uuid()))
 });
 
 /**
@@ -37,6 +46,21 @@ export const vImageData = v.object({
     src: v.string()
 });
 
+export const vItemStatus = v.union([v.object({
+        id: v.string(),
+        status: v.picklist(['success'])
+    }), v.object({
+        error: v.string(),
+        id: v.string(),
+        status: v.picklist(['failure'])
+    })]);
+
+export const vBatchOperationResponse = v.object({
+    failed: v.pipe(v.number(), v.integer(), v.minValue(0)),
+    statuses: v.array(vItemStatus),
+    successful: v.pipe(v.number(), v.integer(), v.minValue(0))
+});
+
 export const vListViewItemType = v.picklist(['folder', 'file']);
 
 export const vListViewItem = v.object({
@@ -49,12 +73,40 @@ export const vListViewItem = v.object({
 export const vListView = v.array(vListViewItem);
 
 export const vNextMoment = v.object({
-    in_ms: v.pipe(v.union([
+    moment: v.string(),
+    playlist: v.pipe(v.string(), v.uuid())
+});
+
+export const vPdfData = v.object({
+    duration: v.pipe(v.union([
         v.number(),
         v.string(),
         v.bigint()
     ]), v.transform(x => BigInt(x)), v.minValue(BigInt(0)), v.maxValue(BigInt('9223372036854775807'), 'Invalid value: Expected int64 to be <= 9223372036854775807')),
-    playlist: v.pipe(v.string(), v.uuid())
+    path: v.string()
+});
+
+export const vReadDisplay = v.object({
+    display_material: vDisplayMaterial,
+    name: v.string(),
+    uuid: v.pipe(v.string(), v.uuid())
+});
+
+export const vRenameItemStatus = v.union([v.object({
+        from: v.string(),
+        status: v.picklist(['success']),
+        to: v.string()
+    }), v.object({
+        error: v.string(),
+        from: v.string(),
+        status: v.picklist(['failure']),
+        to: v.string()
+    })]);
+
+export const vRenameBatchOperationResponse = v.object({
+    failed: v.pipe(v.number(), v.integer(), v.minValue(0)),
+    statuses: v.array(vRenameItemStatus),
+    successful: v.pipe(v.number(), v.integer(), v.minValue(0))
 });
 
 export const vRenameRequest = v.object({
@@ -64,19 +116,20 @@ export const vRenameRequest = v.object({
 
 export const vScheduleInfo = v.object({
     current: v.pipe(v.string(), v.uuid()),
-    next: v.optional(v.union([v.null(), vNextMoment]))
+    next: v.nullish(vNextMoment)
 });
 
 export const vScheduledPlaylistInput = v.object({
     end: v.string(),
+    id: v.pipe(v.string(), v.uuid()),
     playlist: v.pipe(v.string(), v.uuid()),
     start: v.string()
 });
 
-export const vSchedule = v.object({
+export const vReadSchedule = v.object({
     name: v.string(),
     playlist: v.pipe(v.string(), v.uuid()),
-    scheduled: v.optional(v.union([v.array(vScheduledPlaylistInput), v.null()])),
+    scheduled: v.nullish(v.array(vScheduledPlaylistInput)),
     uuid: v.pipe(v.string(), v.uuid())
 });
 
@@ -101,6 +154,20 @@ export const vTreeDirectory: v.GenericSchema = v.object({
     files: v.array(vTreeFile),
     id: v.string(),
     name: v.string()
+});
+
+/**
+ * UpdateDisplay
+ */
+export const vUpdateDisplay = v.object({
+    display_material: vDisplayMaterial,
+    name: v.string()
+});
+
+export const vUpdateSchedule = v.object({
+    name: v.string(),
+    playlist: v.pipe(v.string(), v.uuid()),
+    scheduled: v.nullish(v.array(vScheduledPlaylistInput))
 });
 
 export const vWebsiteData = v.object({
@@ -132,41 +199,23 @@ export const vPlaylistItem = v.union([
         id: v.string(),
         settings: vImageData,
         type: v.picklist(['BACKGROUND_AUDIO'])
+    }),
+    v.object({
+        id: v.string(),
+        settings: vPdfData,
+        type: v.picklist(['PDF'])
     })
 ]);
 
-export const vPlaylist = v.object({
+export const vReadPlaylist = v.object({
     items: v.array(vPlaylistItem),
     name: v.string(),
     uuid: v.pipe(v.string(), v.uuid())
 });
 
-export const vPayload = v.union([
-    v.object({
-        content: v.array(vDisplay),
-        type: v.picklist(['Display'])
-    }),
-    v.object({
-        content: v.array(vPlaylist),
-        type: v.picklist(['Playlist'])
-    }),
-    v.object({
-        content: v.array(vSchedule),
-        type: v.picklist(['Schedule'])
-    }),
-    v.object({
-        content: v.object({
-            code: v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(2147483647, 'Invalid value: Expected int32 to be <= 2147483647')),
-            message: v.string()
-        }),
-        type: v.picklist(['Error'])
-    })
-]);
-
-export const vReadDisplaysData = v.object({
-    body: v.optional(v.never()),
-    path: v.optional(v.never()),
-    query: v.optional(v.never())
+export const vUpdatePlaylist = v.object({
+    items: v.array(vPlaylistItem),
+    name: v.string()
 });
 
 /**
@@ -178,123 +227,63 @@ export const vReadDisplaysResponse = v.array(v.object({
     uuid: v.pipe(v.string(), v.uuid())
 }));
 
-export const vCreateDisplayData = v.object({
-    body: vDisplay,
-    path: v.optional(v.never()),
-    query: v.optional(v.never())
-});
+export const vCreateDisplayBody = vCreateDisplay;
 
 /**
  * Display created
  */
-export const vCreateDisplayResponse = vPayload;
+export const vCreateDisplayResponse = vReadDisplay;
 
-export const vDeleteDisplayData = v.object({
-    body: v.optional(v.never()),
-    path: v.object({
-        uuid: v.pipe(v.string(), v.uuid())
-    }),
-    query: v.optional(v.never())
+export const vDeleteDisplayPath = v.object({
+    uuid: v.pipe(v.string(), v.uuid())
 });
 
 /**
  * Display deleted
  */
-export const vDeleteDisplayResponse = vPayload;
+export const vDeleteDisplayResponse = vReadDisplay;
 
-export const vUpdateDisplayData = v.object({
-    body: vDisplay,
-    path: v.object({
-        uuid: v.pipe(v.string(), v.uuid())
-    }),
-    query: v.optional(v.never())
+export const vUpdateDisplayBody = vUpdateDisplay;
+
+export const vUpdateDisplayPath = v.object({
+    uuid: v.pipe(v.string(), v.uuid())
 });
 
 /**
  * Display updated
  */
-export const vUpdateDisplayResponse = v.union([
-    v.object({
-        content: v.array(vDisplay),
-        type: v.picklist(['Display'])
-    }),
-    v.object({
-        content: v.array(vPlaylist),
-        type: v.picklist(['Playlist'])
-    }),
-    v.object({
-        content: v.array(vSchedule),
-        type: v.picklist(['Schedule'])
-    }),
-    v.object({
-        content: v.object({
-            code: v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(2147483647, 'Invalid value: Expected int32 to be <= 2147483647')),
-            message: v.string()
-        }),
-        type: v.picklist(['Error'])
-    })
-]);
+export const vUpdateDisplayResponse = vReadDisplay;
 
-export const vDeleteFilesData = v.object({
-    body: vDeleteFilesRequest,
-    path: v.optional(v.never()),
-    query: v.optional(v.never())
-});
+export const vDeleteFilesBody = vDeleteFilesRequest;
 
 /**
- * Files deleted successfully
+ * All items were deleted successfully
  */
-export const vDeleteFilesResponse = vPayload;
+export const vDeleteFilesResponse = vBatchOperationResponse;
 
-export const vAddFilesData = v.object({
-    body: vFileUpload,
-    path: v.optional(v.never()),
-    query: v.optional(v.never())
-});
+export const vAddFilesBody = vFileUpload;
 
 /**
- * Files uploaded successfully
+ * All files were uploaded successfully
  */
-export const vAddFilesResponse = vPayload;
+export const vAddFilesResponse = vBatchOperationResponse;
 
-export const vRenameFilesData = v.object({
-    body: vRenameRequest,
-    path: v.optional(v.never()),
-    query: v.optional(v.never())
-});
+export const vRenameFilesBody = vRenameRequest;
 
 /**
- * Files and folders renamed successfully
+ * All items were renamed or moved successfully
  */
-export const vRenameFilesResponse = vPayload;
-
-export const vGetAllPathsListData = v.object({
-    body: v.optional(v.never()),
-    path: v.optional(v.never()),
-    query: v.optional(v.never())
-});
+export const vRenameFilesResponse = vRenameBatchOperationResponse;
 
 /**
- * List all files flat
+ * A flat list of all files and directories
  */
-export const vGetAllPathsListResponse = vPayload;
-
-export const vGetAllPathsTreeData = v.object({
-    body: v.optional(v.never()),
-    path: v.optional(v.never()),
-    query: v.optional(v.never())
-});
+export const vGetAllPathsListResponse = vListView;
 
 /**
- * Get file tree
+ * A tree representation of the file system
  */
 export const vGetAllPathsTreeResponse = vTreeDirectory;
-
-export const vReadPlaylistData = v.object({
-    body: v.optional(v.never()),
-    path: v.optional(v.never()),
-    query: v.optional(v.never())
-});
 
 /**
  * Get all Playlists
@@ -305,89 +294,61 @@ export const vReadPlaylistResponse = v.array(v.object({
     uuid: v.pipe(v.string(), v.uuid())
 }));
 
-export const vCreatePlaylistData = v.object({
-    body: vPlaylist,
-    path: v.optional(v.never()),
-    query: v.optional(v.never())
-});
+export const vCreatePlaylistBody = vCreatePlaylist;
 
 /**
  * Playlist created
  */
-export const vCreatePlaylistResponse = vPayload;
+export const vCreatePlaylistResponse = vReadPlaylist;
 
-export const vDeletePlaylistData = v.object({
-    body: v.optional(v.never()),
-    path: v.object({
-        uuid: v.pipe(v.string(), v.uuid())
-    }),
-    query: v.optional(v.never())
+export const vDeletePlaylistPath = v.object({
+    uuid: v.pipe(v.string(), v.uuid())
 });
 
 /**
  * Playlist deleted
  */
-export const vDeletePlaylistResponse = vPayload;
+export const vDeletePlaylistResponse = vReadPlaylist;
 
-export const vUpdatePlaylistData = v.object({
-    body: vPlaylist,
-    path: v.object({
-        uuid: v.pipe(v.string(), v.uuid())
-    }),
-    query: v.optional(v.never())
+export const vUpdatePlaylistBody = vUpdatePlaylist;
+
+export const vUpdatePlaylistPath = v.object({
+    uuid: v.pipe(v.string(), v.uuid())
 });
 
 /**
  * Playlist updated
  */
-export const vUpdatePlaylistResponse = vPayload;
-
-export const vReadScheduleData = v.object({
-    body: v.optional(v.never()),
-    path: v.optional(v.never()),
-    query: v.optional(v.never())
-});
+export const vUpdatePlaylistResponse = vReadPlaylist;
 
 /**
  * Get all Schedules
  */
-export const vReadScheduleResponse = v.array(v.object({
+export const vReadSchedulesResponse = v.array(v.object({
     name: v.string(),
     playlist: v.pipe(v.string(), v.uuid()),
-    scheduled: v.optional(v.union([v.array(vScheduledPlaylistInput), v.null()])),
+    scheduled: v.nullish(v.array(vScheduledPlaylistInput)),
     uuid: v.pipe(v.string(), v.uuid())
 }));
 
-export const vCreateScheduleData = v.object({
-    body: vSchedule,
-    path: v.optional(v.never()),
-    query: v.optional(v.never())
-});
+export const vCreateScheduleBody = vCreateSchedule;
 
 /**
  * Schedule created
  */
-export const vCreateScheduleResponse = vPayload;
+export const vCreateScheduleResponse = vReadSchedule;
 
-export const vDeleteScheduleData = v.object({
-    body: v.optional(v.never()),
-    path: v.object({
-        uuid: v.pipe(v.string(), v.uuid())
-    }),
-    query: v.optional(v.never())
+export const vDeleteSchedulePath = v.object({
+    uuid: v.pipe(v.string(), v.uuid())
 });
 
 /**
  * Schedule deleted
  */
-export const vDeleteScheduleResponse = vPayload;
+export const vDeleteScheduleResponse = vReadSchedule;
 
-export const vScheduleInfoData = v.object({
-    body: v.optional(v.never()),
-    path: v.object({
-        uuid: v.pipe(v.string(), v.uuid())
-    }),
-    query: v.optional(v.never())
+export const vScheduleInfoPath = v.object({
+    uuid: v.pipe(v.string(), v.uuid())
 });
 
 /**
@@ -395,15 +356,13 @@ export const vScheduleInfoData = v.object({
  */
 export const vScheduleInfoResponse = vScheduleInfo;
 
-export const vUpdateScheduleData = v.object({
-    body: vSchedule,
-    path: v.object({
-        uuid: v.pipe(v.string(), v.uuid())
-    }),
-    query: v.optional(v.never())
+export const vUpdateScheduleBody = vUpdateSchedule;
+
+export const vUpdateSchedulePath = v.object({
+    uuid: v.pipe(v.string(), v.uuid())
 });
 
 /**
  * Schedule updated
  */
-export const vUpdateScheduleResponse = vPayload;
+export const vUpdateScheduleResponse = vReadSchedule;

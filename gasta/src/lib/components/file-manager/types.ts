@@ -1,4 +1,4 @@
-import type { TreeDirectory } from '$lib/api_bindings/files/TreeDirectory';
+import type { TreeDirectory } from '#lib/server/sasta_client/index.ts';
 import type { RemoteQuery } from '@sveltejs/kit';
 import type { File } from 'buffer';
 import * as v from 'valibot';

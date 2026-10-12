@@ -72,7 +72,7 @@ async fn create_playlist(
     };
     state
         .store
-        .create_playlist(uuid, playlist.clone())
+        .create_playlist(uuid, &playlist)
         .await
         .map_err(internal)?;
     Ok(Json((uuid, playlist).into()))
@@ -152,7 +152,7 @@ async fn update_playlist(
     };
     state
         .store
-        .update_playlist(uuid, playlist.clone())
+        .update_playlist(uuid, &playlist)
         .await
         .map_err(internal)?;
     Ok(Json((uuid, playlist).into()))

@@ -1,7 +1,7 @@
 import { setContext, getContext } from 'svelte';
-import { IsMobile } from '$lib/hooks/is-mobile.svelte';
+import { IsMobile } from '#lib/hooks/is-mobile.svelte.js';
 import { SvelteSet } from 'svelte/reactivity';
-import type { TreeDirectory, TreeFile } from '$lib/server/sasta_client';
+import type { TreeDirectory, TreeFile } from '#lib/server/sasta_client/index.ts';
 import { CurrentPathType, FileManagerSearchParams, type FileManagerAPI } from './types';
 import { useSearchParams } from 'runed/kit';
 import { pushState } from '$app/navigation';

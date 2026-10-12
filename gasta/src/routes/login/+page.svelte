@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { Button } from '$lib/components/ui/button/index.js';
-	import * as Card from '$lib/components/ui/card/index.js';
-	import { FieldGroup, Field, FieldDescription } from '$lib/components/ui/field/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import * as Card from '#lib/components/ui/card/index.js';
+	import { FieldGroup, Field, FieldDescription } from '#lib/components/ui/field/index.js';
 	import { FileSliders } from '@lucide/svelte';
 	import { signIn } from '@auth/sveltekit/client';
 

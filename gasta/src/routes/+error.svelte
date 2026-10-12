@@ -1,8 +1,9 @@
 <script>
 	import { page } from '$app/state';
-	import { Button } from '$lib/components/ui/button';
-	import * as Card from '$lib/components/ui/card';
-	import { signOut } from '@auth/sveltekit/client';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import * as Card from '#lib/components/ui/card/index.js';
+
+	let { error } = $props();
 
 	const pathname = page.url.pathname;
 	let errorTitle = $state('Page not Found');
@@ -18,7 +19,7 @@
 
 <Card.Root class="max-w-lg self-center">
 	<Card.Header>
-		<Card.Title>{errorTitle}</Card.Title>
+		<Card.Title>{error.status}: {error.message}</Card.Title>
 		<Card.Description>{errorDesc}</Card.Description>
 	</Card.Header>
 	<Card.Content>

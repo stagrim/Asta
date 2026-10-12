@@ -200,42 +200,42 @@ impl Store {
         pipe.query_async::<()>(&mut con).await
     }
 
-    pub async fn create_display(&self, uuid: Uuid, display: Display) -> Result<(), RedisError> {
+    pub async fn create_display(&self, uuid: Uuid, display: &Display) -> Result<(), RedisError> {
         self.mutate(
             format!(".displays.{uuid}"),
-            Some(&display),
+            Some(display),
             Change::Display(uuid),
         )
         .await
     }
 
-    pub async fn create_playlist(&self, uuid: Uuid, playlist: Playlist) -> Result<(), RedisError> {
+    pub async fn create_playlist(&self, uuid: Uuid, playlist: &Playlist) -> Result<(), RedisError> {
         self.mutate(
             format!(".playlists.{uuid}"),
-            Some(&playlist),
+            Some(playlist),
             Change::Playlist(uuid),
         )
         .await
     }
 
-    pub async fn create_schedule(&self, uuid: Uuid, schedule: Schedule) -> Result<(), RedisError> {
+    pub async fn create_schedule(&self, uuid: Uuid, schedule: &Schedule) -> Result<(), RedisError> {
         self.mutate(
             format!(".schedules.{uuid}"),
-            Some(&schedule),
+            Some(schedule),
             Change::Schedule(uuid),
         )
         .await
     }
 
-    pub async fn update_display(&self, uuid: Uuid, display: Display) -> Result<(), RedisError> {
+    pub async fn update_display(&self, uuid: Uuid, display: &Display) -> Result<(), RedisError> {
         self.create_display(uuid, display).await
     }
 
-    pub async fn update_playlist(&self, uuid: Uuid, playlist: Playlist) -> Result<(), RedisError> {
+    pub async fn update_playlist(&self, uuid: Uuid, playlist: &Playlist) -> Result<(), RedisError> {
         self.create_playlist(uuid, playlist).await
     }
 
-    pub async fn update_schedule(&self, uuid: Uuid, schedule: Schedule) -> Result<(), RedisError> {
+    pub async fn update_schedule(&self, uuid: Uuid, schedule: &Schedule) -> Result<(), RedisError> {
         self.create_schedule(uuid, schedule).await
     }
 

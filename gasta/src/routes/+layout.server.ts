@@ -3,11 +3,11 @@ import type { LayoutServerLoad } from './$types';
 import {
 	readDisplays,
 	readPlaylist,
-	readSchedule,
-	type Display,
-	type Playlist,
-	type Schedule
-} from '$lib/server/sasta_client';
+	readSchedules,
+	type ReadDisplay,
+	type ReadPlaylist,
+	type ReadSchedule
+} from '#lib/server/sasta_client/index.ts';
 import { error } from '@sveltejs/kit';
 
 export const load = (async ({
@@ -25,15 +25,15 @@ export const load = (async ({
 		return {
 			display: {
 				type: 'Display',
-				content: new Map<string, Display>()
+				content: new Map<string, ReadDisplay>()
 			},
 			schedule: {
 				type: 'Schedule',
-				content: new Map<string, Schedule>()
+				content: new Map<string, ReadSchedule>()
 			},
 			playlist: {
 				type: 'Playlist',
-				content: new Map<string, Playlist>()
+				content: new Map<string, ReadPlaylist>()
 			},
 			empty: true
 		};
@@ -49,12 +49,9 @@ export const load = (async ({
 
 	const [display, schedule, playlist] = await Promise.all([
 		readDisplays().then(arrayToMap),
-		readSchedule().then(arrayToMap),
+		readSchedules().then(arrayToMap),
 		readPlaylist().then(arrayToMap)
 	]);
-
-	//TODO: Stupid fix; make data have ids in the db instead
-	schedule.forEach((v) => v.scheduled?.forEach((s) => (s.id = crypto.randomUUID())));
 
 	return {
 		display: { content: display, type: 'Display' },

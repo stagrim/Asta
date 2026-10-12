@@ -85,7 +85,7 @@ async fn create_display(
     };
     state
         .store
-        .create_display(uuid, display.clone())
+        .create_display(uuid, &display)
         .await
         .map_err(internal)?;
     Ok(Json((uuid, display).into()))
@@ -170,7 +170,7 @@ async fn update_display(
     };
     state
         .store
-        .update_display(uuid, display.clone())
+        .update_display(uuid, &display)
         .await
         .map_err(internal)?;
     Ok(Json((uuid, display).into()))

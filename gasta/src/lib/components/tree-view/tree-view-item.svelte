@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { getTreeContext } from './ctx.svelte';
-	import { cn } from '$lib/utils';
+	import { cn } from '#lib/utils.js';
 	import type { HTMLAttributes } from 'svelte/elements';
 	import FileIcon from '../file-manager/FileIcon.svelte';
-	import type { TreeFile } from '$lib/server/sasta_client';
+	import type { TreeFile } from '#lib/server/sasta_client/index.ts';
 
 	type Props = HTMLAttributes<HTMLButtonElement> & {
 		value: string; // Unique ID for selection

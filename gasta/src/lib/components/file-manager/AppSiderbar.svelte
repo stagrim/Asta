@@ -21,25 +21,25 @@
 </script>
 
 <script lang="ts">
-	import { Label } from '$lib/components/ui/label';
+	import { Label } from '#lib/components/ui/label/index.js';
 	import { Folder, FolderPlus, HardDrive, History, House, Search, Upload } from '@lucide/svelte';
-	import * as TreeView from '$lib/components/tree-view';
-	import * as Resizable from '$lib/components/ui/resizable';
-	import { ScrollArea } from '$lib/components/ui/scroll-area';
-	import { Button, buttonVariants } from '$lib/components/ui/button';
-	import * as Sheet from '$lib/components/ui/sheet';
-	import * as InputGroup from '$lib/components/ui/input-group';
-	import * as ButtonGroup from '$lib/components/ui/button-group';
+	import * as TreeView from '#lib/components/tree-view/index.js';
+	import * as Resizable from '#lib/components/ui/resizable/index.js';
+	import { ScrollArea } from '#lib/components/ui/scroll-area/index.js';
+	import { Button, buttonVariants } from '#lib/components/ui/button/index.js';
+	import * as Sheet from '#lib/components/ui/sheet/index.js';
+	import * as InputGroup from '#lib/components/ui/input-group/index.js';
+	import * as ButtonGroup from '#lib/components/ui/button-group/index.js';
 	import { useFileManager } from './file-manager.svelte';
 	import { watch } from 'runed';
-	import type { TreeDirectory } from '$lib/server/sasta_client';
-	import * as AlertDialog from '$lib/components/ui/alert-dialog';
-	import * as FileDropZone from '$lib/components/ui-extra/file-drop-zone';
-	import { Button as ButtonExtra } from '$lib/components/ui-extra/button';
+	import type { TreeDirectory } from '#lib/server/sasta_client/index.ts';
+	import * as AlertDialog from '#lib/components/ui/alert-dialog/index.js';
+	import * as FileDropZone from '#lib/components/ui-extra/file-drop-zone/index.js';
+	import { Button as ButtonExtra } from '#lib/components/ui-extra/button/index.js';
 	import { XIcon } from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
-	import { Separator } from '$lib/components/ui/separator';
-	import { Input } from '$lib/components/ui/input';
+	import { Separator } from '#lib/components/ui/separator/index.js';
+	import { Input } from '#lib/components/ui/input/index.js';
 	import { CurrentPathType } from './types';
 
 	let { uploadFormSnippet }: { uploadFormSnippet?: Snippet<[FormContext]> } = $props();

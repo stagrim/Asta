@@ -1,4 +1,4 @@
-import type { PlaylistItem } from '$lib/api_bindings/update/PlaylistItem.ts';
+import type { PlaylistItem } from '#lib/server/sasta_client/index.ts';
 
 export function getData(item: PlaylistItem) {
 	switch (item.type) {

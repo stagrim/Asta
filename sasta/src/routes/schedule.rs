@@ -49,9 +49,10 @@ pub struct ScheduleInfo {
     pub current: Uuid,
     pub next: Option<NextMoment>,
 }
-#[derive(Serialize, ToSchema)]
+#[derive(Serialize, ToSchema, Debug)]
 pub struct NextMoment {
-    pub in_ms: u64,
+    /// rfc3339 formatted date string of when switch will occur
+    pub moment: String,
     pub playlist: Uuid,
 }
 #[derive(Deserialize, ToSchema)]
@@ -68,9 +69,9 @@ type Response = Result<Json<ReadSchedule>, (StatusCode, String)>;
     tag = "schedule",
     request_body(content = CreateSchedule),
     responses(
-        (status = 200, description = "Schedule created", body = CreateSchedule),
-        (status = 400, description = "Bad Request", body = CreateSchedule),
-        (status = 500, description = "Server Error", body = CreateSchedule)
+        (status = 200, description = "Schedule created", body = ReadSchedule),
+        (status = 400, description = "Bad Request", body = String),
+        (status = 500, description = "Server Error", body = String)
     )
 )]
 async fn create_schedule(
@@ -91,7 +92,7 @@ async fn create_schedule(
     let schedule = Schedule::new(input.name, vec![], input.playlist).map_err(bad_request)?;
     state
         .store
-        .create_schedule(uuid, schedule.clone())
+        .create_schedule(uuid, &schedule)
         .await
         .map_err(internal)?;
     Ok(Json((uuid, schedule).into()))
@@ -107,6 +108,7 @@ async fn create_schedule(
                 vec![
                     ReadSchedule { uuid: Uuid::new_v4(), name: "name1".into(), playlist: Uuid::new_v4(), scheduled: Some(vec![
                         schedule::ScheduledPlaylistInput {
+                            id: Uuid::new_v4(),
                             playlist: Uuid::new_v4(),
                             start: "0 0 10 * * Mon-Fri *".into(),
                             end: "0 0 14 * * Mon-Fri *".into()
@@ -147,7 +149,7 @@ async fn schedule_info(State(state): State<AppState>, Path(uuid): Path<Uuid>) ->
     let next = schedule
         .next_schedule(&now)
         .map(|Moment { time, playlist }| NextMoment {
-            in_ms: (time - now).num_milliseconds().max(0) as u64,
+            moment: time.to_rfc3339(),
             playlist,
         });
     Ok(Json(ScheduleInfo {
@@ -211,7 +213,7 @@ async fn update_schedule(
     .map_err(bad_request)?;
     state
         .store
-        .update_schedule(uuid, schedule.clone())
+        .update_schedule(uuid, &schedule)
         .await
         .map_err(internal)?;
     Ok(Json((uuid, schedule).into()))
