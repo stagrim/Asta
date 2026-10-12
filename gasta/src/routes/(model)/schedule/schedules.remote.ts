@@ -1,4 +1,5 @@
 import { command, form } from '$app/server';
+import { logRequest } from '#lib/server/logger.ts';
 import {
 	createSchedule as apiCreateSchedule,
 	deleteSchedule as apiDeleteSchedule,
@@ -26,6 +27,7 @@ export const scheduleInfo = command(vScheduleInfoPath, async (path) => {
 });
 
 export const createSchedule = form(vCreateScheduleBody, async (body) => {
+	await logRequest('createSchedule', body);
 	const res = await apiCreateSchedule({ body });
 	if (res.error) {
 		console.error('Failed to create schedule:', res.error);
@@ -41,6 +43,7 @@ export const createSchedule = form(vCreateScheduleBody, async (body) => {
 export const updateSchedule = command(
 	v.intersect([vUpdateScheduleBody, v.object({ uuid: v.string() })]),
 	async ({ uuid, ...body }) => {
+		await logRequest('updateSchedule', { uuid, ...body });
 		const res = await apiUpdateSchedule({
 			path: { uuid },
 			body
@@ -58,6 +61,7 @@ export const updateSchedule = command(
 );
 
 export const deleteSchedule = command(v.object({ uuid: v.string() }), async ({ uuid }) => {
+	await logRequest('deleteSchedule', { uuid });
 	const res = await apiDeleteSchedule({ path: { uuid } });
 	if (res.error) {
 		console.error('Failed to delete schedule:', res.error);

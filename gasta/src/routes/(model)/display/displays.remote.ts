@@ -1,4 +1,5 @@
 import { form, command } from '$app/server';
+import { logRequest } from '#lib/server/logger.ts';
 import {
 	createDisplay as apiCreateDisplay,
 	updateDisplay as apiUpdateDisplay,
@@ -19,6 +20,7 @@ const vPatchedCreateDisplayBody = v.object({
 	)
 });
 export const createDisplay = form(vPatchedCreateDisplayBody, async (body) => {
+	await logRequest('createDisplay', body);
 	const res = await apiCreateDisplay({
 		body
 	});
@@ -36,6 +38,7 @@ export const createDisplay = form(vPatchedCreateDisplayBody, async (body) => {
 export const updateDisplay = command(
 	v.intersect([vUpdateDisplayBody, v.object({ uuid: v.string() })]),
 	async ({ uuid, ...body }) => {
+		await logRequest('updateDisplay', { uuid, ...body });
 		const res = await apiUpdateDisplay({
 			path: { uuid },
 			body
@@ -52,6 +55,7 @@ export const updateDisplay = command(
 );
 
 export const deleteDisplay = command(v.object({ uuid: v.string() }), async ({ uuid }) => {
+	await logRequest('deleteDisplay', { uuid });
 	const res = await apiDeleteDisplay({ path: { uuid } });
 	if (res.error) {
 		console.error('Failed to delete display:', res.error);

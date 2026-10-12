@@ -8,7 +8,8 @@ use axum::{
 };
 use tokio::{signal, sync::broadcast};
 use tower_http::services::ServeDir;
-use tracing::info;
+use tracing::{debug, info, instrument, warn};
+use tracing_subscriber::{EnvFilter, fmt::format::FmtSpan};
 use utoipa::OpenApi;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_rapidoc::RapiDoc;
@@ -44,11 +45,15 @@ pub struct AppState {
 
 #[derive(OpenApi)]
 #[openapi(
+    info(
+        title = "Sasta API",
+        description = "REST API for **Sasta**, the backend server of the Asta display management system.\n\n### Core Concepts\n- **Displays (`/api/display`)**: Physical screens connected to Sasta. Each display is configured to show either a single **Playlist** continuously or a time-slotted **Schedule**.\n- **Schedules (`/api/schedule`)**: Time-based rules (using 7-field cron expressions) that switch between different playlists over time, with a default fallback playlist when no scheduled window is active.\n- **Playlists (`/api/playlist`)**: Ordered sequences of media items (`WEBSITE`, `TEXT`, `IMAGE`, `BACKGROUND_AUDIO`, `PDF`), each with a display duration in seconds.\n- **Files (`/api/files`)**: Virtual filesystem for uploading, organizing, renaming, and deleting static assets (such as images and PDFs) stored on the server. Uploaded files are served directly at `GET /files/{path}` and can be referenced in playlist items using the `ASTA://{path}` prefix."
+    ),
     tags(
-        (name = "display", description = "Display management"),
-        (name = "schedule", description = "Schedule management"),
-        (name = "playlist", description = "Playlist management"),
-        (name = "files", description = "File server management API")
+        (name = "display", description = "Manage displays and assign them a Schedule or Playlist."),
+        (name = "schedule", description = "Manage time-slotted schedules that switch between playlists using 7-field cron expressions."),
+        (name = "playlist", description = "Manage playlists and their ordered media items."),
+        (name = "files", description = "Manage uploaded files and directories in the virtual filesystem. Uploaded files can be fetched directly at `GET /files/{path}`.")
     ),
     components(
         schemas(ReadDisplay, ReadSchedule, ReadPlaylist, ListView)
@@ -62,10 +67,39 @@ async fn main() {
     let redis_url = env::var("REDIS_URL").expect("REDIS_URL variable must be set");
     let sasta_address = env::var("ADDRESS").unwrap_or("127.0.0.1:8080".into());
     let sasta_file_path = env::var("FILE_PATH").unwrap_or("./files".into());
-    tracing_subscriber::fmt::init();
-    info!("REDIS_URL={redis_url}");
-    info!("ADDRESS={sasta_address}");
-    info!("FILE_PATH={sasta_file_path}");
+
+    let (env_filter, filter_warning) = match env::var("RUST_LOG") {
+        Ok(val) => match EnvFilter::try_new(&val) {
+            Ok(filter) => {
+                let filter = if val.contains("tower_http") {
+                    filter
+                } else {
+                    filter.add_directive("tower_http=off".parse().unwrap())
+                };
+                (filter, None)
+            }
+            Err(err) => (
+                EnvFilter::new("info,tower_http=off"),
+                Some(format!(
+                    "Couldn't parse RUST_LOG='{val}' ({err}), using default 'info'"
+                )),
+            ),
+        },
+        Err(_) => (EnvFilter::new("info,tower_http=off"), None),
+    };
+
+    tracing_subscriber::fmt()
+        .with_env_filter(env_filter)
+        .with_span_events(FmtSpan::CLOSE)
+        .init();
+
+    if let Some(warning) = filter_warning {
+        warn!("{warning}");
+    }
+
+    debug!("REDIS_URL={redis_url}");
+    debug!("ADDRESS={sasta_address}");
+    debug!("FILE_PATH={sasta_file_path}");
 
     minify();
     let htmx_hash = Arc::<str>::from(compute_hash());
@@ -95,10 +129,10 @@ async fn main() {
 
     let app = Router::new()
         .merge(api_router)
+        .nest("/files", Router::new().fallback(get_file))
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", openapi.clone()))
         .merge(Redoc::with_url("/redoc", openapi.clone()))
         .merge(RapiDoc::with_openapi("/api-docs/openapi2.json", openapi).path("/rapidoc"))
-        .nest("/files", Router::new().fallback(get_file))
         .route("/", get(ws_handler))
         .route("/ws", get(ws_handler))
         .route("/display/{uuid}", get(casta_index))
@@ -145,6 +179,7 @@ async fn shutdown_signal() {
     tracing::info!("Signal received, Sasta shutting down");
 }
 
+#[instrument(level = "debug", skip(ws, state))]
 async fn ws_handler(
     ws: WebSocketUpgrade,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,

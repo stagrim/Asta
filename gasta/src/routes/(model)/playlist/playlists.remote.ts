@@ -1,4 +1,5 @@
 import { form, command } from '$app/server';
+import { logRequest } from '#lib/server/logger.ts';
 import {
 	createPlaylist as apiCreatePlaylist,
 	updatePlaylist as apiUpdatePlaylist,
@@ -9,6 +10,7 @@ import { error, redirect } from '@sveltejs/kit';
 import * as v from 'valibot';
 
 export const createPlaylist = form(vCreatePlaylistBody, async (body) => {
+	await logRequest('createPlaylist', body);
 	const res = await apiCreatePlaylist({ body });
 	if (res.error) {
 		console.error('Failed to create playlist:', res.error);
@@ -24,6 +26,7 @@ export const createPlaylist = form(vCreatePlaylistBody, async (body) => {
 export const updatePlaylist = command(
 	v.intersect([vUpdatePlaylistBody, v.object({ uuid: v.string() })]),
 	async ({ uuid, ...body }) => {
+		await logRequest('updatePlaylist', { uuid, ...body });
 		const res = await apiUpdatePlaylist({
 			path: { uuid },
 			body: {
@@ -50,6 +53,7 @@ export const updatePlaylist = command(
 );
 
 export const deletePlaylist = command(v.object({ uuid: v.string() }), async ({ uuid }) => {
+	await logRequest('deletePlaylist', { uuid });
 	const res = await apiDeletePlaylist({ path: { uuid } });
 	if (res.error) {
 		console.error('Failed to delete playlist:', res.error);

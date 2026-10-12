@@ -19,9 +19,12 @@ export enum CurrentPathType {
 }
 
 export const FileManagerSearchParams = v.object({
-	type: v.optional(v.enum(CurrentPathType), CurrentPathType.Path),
-	path: v.optional(v.string(), '/'),
-	search: v.optional(v.string(), '')
+	type: v.fallback(
+		v.optional(v.enum(CurrentPathType), CurrentPathType.Path),
+		CurrentPathType.Path
+	),
+	path: v.fallback(v.optional(v.string(), '/'), '/'),
+	search: v.fallback(v.optional(v.string(), ''), '')
 });
 
 export enum FileTypes {

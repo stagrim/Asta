@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use redis::RedisError;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use tokio::sync::broadcast;
-use tracing::warn;
+use tracing::error;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -17,11 +17,20 @@ pub struct Display {
     pub display_material: DisplayMaterial,
 }
 
+/// Content source assigned to a display.
+///
+/// Serialized as a tagged union with `"type": "schedule" | "playlist"` and `"uuid"`.
 #[derive(Deserialize, Serialize, Debug, ToSchema, Clone)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "type", content = "uuid")]
+#[schema(example = json!({
+    "type": "schedule",
+    "uuid": "550e8400-e29b-41d4-a716-446655440000"
+}))]
 pub enum DisplayMaterial {
+    /// Display follows a time-based Schedule (identified by its UUID).
     Schedule(Uuid),
+    /// Display plays a single Playlist directly (identified by its UUID).
     Playlist(Uuid),
 }
 
@@ -31,62 +40,118 @@ pub struct Playlist {
     pub items: Vec<PlaylistItem>,
 }
 
+/// A single media item within a playlist.
+///
+/// Items are played sequentially in the order they appear in the playlist's `items` array.
+/// Each item is tagged by `"type"` and includes a client-defined `id` (also accepts `"name"` when deserializing)
+/// and type-specific `settings`.
 #[derive(Deserialize, Serialize, Debug, Clone, ToSchema)]
 #[serde(tag = "type")]
+#[schema(example = json!({
+    "type": "IMAGE",
+    "id": "welcome-poster",
+    "settings": {
+        "src": "ASTA://posters/welcome.png",
+        "duration": 30
+    }
+}))]
 pub enum PlaylistItem {
+    /// Embeds an external webpage or local file in an iframe.
     #[serde(rename = "WEBSITE")]
     Website {
+        /// Identifier/label for this playlist item.
         #[serde(alias = "name")]
+        #[schema(example = "guild-website")]
         id: String,
+        /// URL and display duration settings.
         settings: WebsiteData,
     },
+    /// Renders plain text on the display.
     #[serde(rename = "TEXT")]
     Text {
+        /// Identifier/label for this playlist item.
         #[serde(alias = "name")]
+        #[schema(example = "welcome-message")]
         id: String,
+        /// Text content and display duration settings.
         settings: TextData,
     },
+    /// Renders an image on the display.
     #[serde(rename = "IMAGE")]
     Image {
+        /// Identifier/label for this playlist item.
         #[serde(alias = "name")]
+        #[schema(example = "event-poster")]
         id: String,
+        /// Image source and display duration settings.
         settings: ImageData,
     },
+    /// Background audio item (note: playback is not yet implemented on the display runner).
     #[serde(rename = "BACKGROUND_AUDIO")]
     BackgroundAudio {
+        /// Identifier/label for this playlist item.
         #[serde(alias = "name")]
+        #[schema(example = "ambient-music")]
         id: String,
+        /// Audio source and duration settings.
         settings: ImageData,
     },
+    /// Renders the first page of a PDF document on the display.
     #[serde(rename = "PDF")]
     PortableDocumentFormat {
+        /// Identifier/label for this playlist item.
         #[serde(alias = "name")]
+        #[schema(example = "weekly-menu")]
         id: String,
+        /// PDF path and display duration settings.
         settings: PDFData,
     },
 }
 
+/// Settings for a `WEBSITE` playlist item.
 #[derive(Deserialize, Serialize, Debug, Clone, ToSchema)]
 pub struct WebsiteData {
+    /// Full URL to display, or an `ASTA://<path>` URI referencing a file in the Sasta file server
+    /// (which is rewritten to `/files/<path>` when sent to displays).
+    #[schema(example = "https://dsek.se")]
     pub url: String,
+    /// How long to show this item in **seconds**. Set to `0` to display indefinitely.
+    #[schema(example = 60)]
     pub duration: u64,
 }
 
+/// Settings for a `TEXT` playlist item.
 #[derive(Deserialize, Serialize, Debug, Clone, ToSchema)]
 pub struct TextData {
+    /// Text content to render on the screen.
+    #[schema(example = "Welcome to D-guild!")]
     pub text: String,
+    /// How long to show this item in **seconds**. Set to `0` to display indefinitely.
+    #[schema(example = 30)]
     pub duration: u64,
 }
 
+/// Settings for an `IMAGE` (or `BACKGROUND_AUDIO`) playlist item.
 #[derive(Deserialize, Serialize, Debug, Clone, ToSchema)]
 pub struct ImageData {
+    /// Image URL, or an `ASTA://<path>` URI referencing an uploaded file in the Sasta file server
+    /// (e.g. `ASTA://posters/event.png`, which resolves to `/files/posters/event.png`).
+    #[schema(example = "ASTA://posters/event.png")]
     pub src: String,
+    /// How long to show this item in **seconds**. Set to `0` to display indefinitely.
+    #[schema(example = 30)]
     pub duration: u64,
 }
 
+/// Settings for a `PDF` playlist item.
 #[derive(Deserialize, Serialize, Debug, Clone, ToSchema)]
 pub struct PDFData {
+    /// PDF URL, or an `ASTA://<path>` URI referencing an uploaded PDF in the Sasta file server
+    /// (e.g. `ASTA://documents/menu.pdf`, which resolves to `/files/documents/menu.pdf`).
+    #[schema(example = "ASTA://documents/menu.pdf")]
     pub path: String,
+    /// How long to show this item in **seconds**. Set to `0` to display indefinitely.
+    #[schema(example = 45)]
     pub duration: u64,
 }
 
@@ -305,7 +370,7 @@ pub async fn redis_event_listener(client: redis::Client, sender: broadcast::Send
         let mut con = match client.get_multiplexed_async_connection().await {
             Ok(con) => con,
             Err(error) => {
-                warn!("Could not connect Redis event listener: {error}; retrying");
+                error!("Could not connect Redis event listener: {error}; retrying");
                 tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                 continue;
             }
@@ -347,7 +412,7 @@ pub async fn redis_event_listener(client: redis::Client, sender: broadcast::Send
                 }
 
                 Err(error) => {
-                    warn!("Redis event listener connection lost: {error}");
+                    error!("Redis event listener connection lost: {error}");
                     break;
                 }
             }

@@ -1,4 +1,5 @@
 import { query, command, form } from '$app/server';
+import { logRequest } from '#lib/server/logger.ts';
 import * as v from 'valibot';
 import {
 	addFiles,
@@ -27,6 +28,7 @@ export const getFiles = query(async () => {
 });
 
 export const uploadFile = form(vFileUpload, async (body) => {
+	await logRequest('uploadFile', body);
 	// Perform some rituals to keep deno happy and make file upload work
 	// Who knew file uploads could be so irritating??
 	// Hours wasted: 3
@@ -70,6 +72,7 @@ export const uploadFile = form(vFileUpload, async (body) => {
 });
 
 export const createFolder = command(vFileUpload, async (body) => {
+	await logRequest('createFolder', body);
 	const root = await getFiles();
 	const dir = traverseTree(body.directory, root);
 	if (dir) {
@@ -86,6 +89,7 @@ export const createFolder = command(vFileUpload, async (body) => {
 });
 
 export const removeFile = command(vDeleteFilesBody, async (body: any) => {
+	await logRequest('removeFile', body);
 	const res = await deleteFiles({ body });
 	if (res.error) {
 		console.error(res.error);
@@ -96,6 +100,7 @@ export const removeFile = command(vDeleteFilesBody, async (body: any) => {
 });
 
 export const renameItem = command(vRenameFilesBody, async (body: any) => {
+	await logRequest('renameItem', body);
 	if (body.ids_from.length != 1 || body.ids_to.length != 1) {
 		error(403, 'Only one item may be renamed at a time');
 	}
@@ -122,6 +127,7 @@ export const moveItem = command(
 		id_to: v.string()
 	}),
 	async ({ ids_from, id_to }) => {
+		await logRequest('moveItem', { ids_from, id_to });
 		if (ids_from.length === 0) {
 			error(403, 'Must give at least one path to move');
 		}

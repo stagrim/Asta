@@ -4,7 +4,7 @@ use axum::{
 };
 use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
-use tracing::{error, info_span};
+use tracing::{error, instrument};
 use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
 use uuid::Uuid;
@@ -14,16 +14,44 @@ use crate::{
     store::store::{Display, DisplayMaterial},
 };
 
+/// Request payload for creating a new display.
 #[derive(Debug, Deserialize, ToSchema)]
+#[schema(example = json!({
+    "uuid": null,
+    "name": "Lobby Screen",
+    "display_material": {
+        "type": "schedule",
+        "uuid": "550e8400-e29b-41d4-a716-446655440000"
+    }
+}))]
 pub struct CreateDisplay {
+    /// Optional UUID for the display. If omitted or `null`, a new UUID v4 is generated automatically.
+    /// Useful when registering a physical display client that already has a pre-configured UUID.
     pub uuid: Option<Uuid>,
+    /// Unique human-readable name for the display. Must not match any existing display's name.
+    #[schema(example = "Lobby Screen")]
     pub name: String,
+    /// The Schedule or Playlist this display should render.
     pub display_material: DisplayMaterial,
 }
+
+/// Representation of a display returned by the API.
 #[derive(Serialize, ToSchema)]
+#[schema(example = json!({
+    "uuid": "d290f1ee-6c54-4b01-90e6-d701748f0851",
+    "name": "Lobby Screen",
+    "display_material": {
+        "type": "schedule",
+        "uuid": "550e8400-e29b-41d4-a716-446655440000"
+    }
+}))]
 pub struct ReadDisplay {
+    /// Unique identifier of the display.
     pub uuid: Uuid,
+    /// Unique human-readable name of the display.
+    #[schema(example = "Lobby Screen")]
     pub name: String,
+    /// The Schedule or Playlist currently assigned to this display.
     pub display_material: DisplayMaterial,
 }
 impl From<(Uuid, Display)> for ReadDisplay {
@@ -35,10 +63,21 @@ impl From<(Uuid, Display)> for ReadDisplay {
         }
     }
 }
-#[derive(Deserialize, ToSchema)]
-#[schema(title = "UpdateDisplay")]
+
+/// Request payload for updating an existing display.
+#[derive(Debug, Deserialize, ToSchema)]
+#[schema(title = "UpdateDisplay", example = json!({
+    "name": "Lobby Screen",
+    "display_material": {
+        "type": "playlist",
+        "uuid": "660e8400-e29b-41d4-a716-446655440000"
+    }
+}))]
 pub struct UpdateDisplay {
+    /// Updated name for the display. Must not conflict with any other display's name.
+    #[schema(example = "Lobby Screen")]
     pub name: String,
+    /// Updated Schedule or Playlist assigned to this display.
     pub display_material: DisplayMaterial,
 }
 type Response = Result<Json<ReadDisplay>, (StatusCode, String)>;
@@ -47,18 +86,29 @@ type Response = Result<Json<ReadDisplay>, (StatusCode, String)>;
     post,
     path = "/",
     tag = "display",
+    summary = "Create a new display",
+    description = "Creates a new display configuration and assigns it either a Schedule or a Playlist. If `uuid` is omitted (`null`), a new UUID v4 is generated. Both `name` and `uuid` must be unique across all displays.",
     request_body = CreateDisplay,
     responses(
-        (status = 200, description = "Display created", body = ReadDisplay),
-        (status = 400, description = "Bad Request (e.g., name taken)", body = String),
-        (status = 500, description = "Server Error", body = String)
+        (status = 200, description = "Display created successfully", body = ReadDisplay),
+        (status = 400, description = "Bad Request (duplicate display name or UUID)", body = String, examples(
+            ("name_taken" = (
+                summary = "Name is already used by another Display",
+                value = json!("Avoid using the name Lobby Screen as it is already used by another display")
+            )),
+            ("uuid_taken" = (
+                summary = "UUID is already used by another Display",
+                value = json!("Avoid using the Uuid Lobby Screen as it is already used by another display")
+            ))
+        )),
+        (status = 500, description = "Internal server / Redis error", body = String)
     )
 )]
+#[instrument(level = "debug", skip(state))]
 async fn create_display(
     State(state): State<AppState>,
     Json(disp): Json<CreateDisplay>,
 ) -> Response {
-    info_span!("[Api] Creating Display", display = ?disp);
     let displays = state.store.displays().await.map_err(internal)?;
     if displays.values().any(|d| d.name == disp.name) {
         return Err((
@@ -95,6 +145,8 @@ async fn create_display(
     get,
     path = "/",
     tag = "display",
+    summary = "List all displays",
+    description = "Returns a list of all configured displays and their assigned Schedule or Playlist.",
     responses(
         (status = 200, description = "Get all Displays", body = inline(Vec<ReadDisplay>),
             example = json!(
@@ -105,8 +157,10 @@ async fn create_display(
                 ]
             )
         ),
+        (status = 500, description = "Internal server / Redis error", body = String)
     )
 )]
+#[instrument(level = "debug", skip(state))]
 async fn read_displays(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<ReadDisplay>>, (StatusCode, String)> {
@@ -118,6 +172,8 @@ async fn read_displays(
     put,
     path = "/{uuid}",
     tag = "display",
+    summary = "Update an existing display",
+    description = "Updates the name and assigned `display_material` (Schedule or Playlist) of an existing display. Any connected display client with this UUID is notified immediately to reload its content.",
     request_body(content = UpdateDisplay),
     responses(
         (status = 200, description = "Display updated", body = ReadDisplay,
@@ -125,7 +181,7 @@ async fn read_displays(
                 ReadDisplay { uuid: Uuid::new_v4(), name: "name".into(), display_material: DisplayMaterial::Schedule(Uuid::new_v4()) }
             )
         ),
-        (status = BAD_REQUEST, body = String, examples(
+        (status = BAD_REQUEST, description = "Display UUID not found or name already taken", body = String, examples(
             ("error_1" = (
                 summary = "No Display found with given Uuid",
                 value = json!(format!("No Display with the Uuid <uuid> was found"))
@@ -135,15 +191,17 @@ async fn read_displays(
                 value = json!(format!("Avoid using the name <name> as it is already used by another display"))
             ))
         )),
+        (status = 500, description = "Internal server / Redis error", body = String)
     ),
     params(
-        ("uuid" = Uuid, Path, description = "Uuid of Display to delete")
+        ("uuid" = Uuid, Path, description = "Uuid of Display to update")
     )
 )]
+#[instrument(level = "debug", skip(state))]
 async fn update_display(
     State(state): State<AppState>,
     Path(uuid): Path<Uuid>,
-    Json(display): Json<UpdateDisplay>,
+    Json(disp): Json<UpdateDisplay>,
 ) -> Response {
     let displays = state.store.displays().await.map_err(internal)?;
     if !displays.contains_key(&uuid) {
@@ -154,19 +212,19 @@ async fn update_display(
     }
     if displays
         .iter()
-        .any(|(id, d)| *id != uuid && d.name == display.name)
+        .any(|(id, d)| *id != uuid && d.name == disp.name)
     {
         return Err((
             StatusCode::BAD_REQUEST,
             format!(
                 "Avoid using the name {} as it is already used by another display",
-                display.name
+                disp.name
             ),
         ));
     }
     let display = Display {
-        name: display.name,
-        display_material: display.display_material,
+        name: disp.name,
+        display_material: disp.display_material,
     };
     state
         .store
@@ -180,6 +238,8 @@ async fn update_display(
     delete,
     path = "/{uuid}",
     tag = "display",
+    summary = "Delete a display",
+    description = "Deletes the display with the specified UUID and returns the deleted display configuration.",
     responses(
         (status = 200, description = "Display deleted", body = ReadDisplay,
             example = json!(
@@ -191,12 +251,14 @@ async fn update_display(
             example = json!(
                 format!("No Display with the Uuid <uuid> was found")
             )
-        )
+        ),
+        (status = 500, description = "Internal server / Redis error", body = String)
     ),
     params(
         ("uuid" = Uuid, Path, description = "Uuid of Display to delete")
     )
 )]
+#[instrument(level = "debug", skip(state))]
 async fn delete_display(State(state): State<AppState>, Path(uuid): Path<Uuid>) -> Response {
     let display = state
         .store

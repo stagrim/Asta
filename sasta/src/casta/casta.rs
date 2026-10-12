@@ -14,9 +14,10 @@ use maud::{DOCTYPE, Markup, PreEscaped, html};
 use minify_js::{Session, TopLevelMode};
 #[cfg(not(debug_assertions))]
 use sha2::Sha256;
-use tracing::debug;
+use tracing::{debug, instrument};
 use uuid::Uuid;
 
+#[instrument(level = "debug")]
 pub async fn casta_index(Path(uuid): Path<Uuid>) -> Markup {
     html! {
         (DOCTYPE)

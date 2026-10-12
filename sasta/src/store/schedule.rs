@@ -291,11 +291,30 @@ pub struct ScheduleInput {
     pub playlist: Uuid,
 }
 
+/// A scheduled time window that activates a specific playlist based on cron expressions.
+///
+/// The cron expressions (`start` and `end`) must use the **7-field** format:
+/// `sec min hour day_of_month month day_of_week year` (for example, `"0 0 10 * * Mon-Fri *"`).
+///
+/// A scheduled playlist is considered active at a given time if its most recent `start` trigger
+/// occurred more recently than its most recent `end` trigger.
 #[derive(Deserialize, Serialize, Debug, Clone, ToSchema)]
+#[schema(example = json!({
+    "id": "11111111-2222-3333-4444-555555555555",
+    "playlist": "99999999-8888-7777-6666-555555555555",
+    "start": "0 0 10 * * Mon-Fri *",
+    "end": "0 0 14 * * Mon-Fri *"
+}))]
 pub struct ScheduledPlaylistInput {
+    /// Unique identifier (UUID) for this scheduled rule entry.
     pub id: Uuid,
+    /// UUID of the playlist to display while this scheduled window is active.
     pub playlist: Uuid,
+    /// 7-field cron expression (`sec min hour day_of_month month day_of_week year`) defining when the playlist starts.
+    #[schema(example = "0 0 10 * * Mon-Fri *")]
     pub start: String,
+    /// 7-field cron expression (`sec min hour day_of_month month day_of_week year`) defining when the playlist ends.
+    #[schema(example = "0 0 14 * * Mon-Fri *")]
     pub end: String,
 }
 

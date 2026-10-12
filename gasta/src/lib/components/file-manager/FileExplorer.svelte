@@ -182,27 +182,25 @@
 				<Separator orientation="vertical" class="h-4 mx-2" />
 				<Breadcrumb.Root>
 					<Breadcrumb.List>
-						<Breadcrumb.Item>
-							{#if fm.currentPath.type === CurrentPathType.Path}
-								{#if recursivePath?.length}
-									<Breadcrumb.Link
-										class="cursor-pointer inline-flex items-center gap-1"
-										onclick={() => fm.navigate('/')}
-									>
-										<House size={18} />
-									</Breadcrumb.Link>
-									<Breadcrumb.Separator />
-								{:else}
-									<Breadcrumb.Page class="inline-flex items-center gap-1">
-										<House size={18} />
-									</Breadcrumb.Page>
-								{/if}
-							{:else if fm.currentPath.type === CurrentPathType.Search}
-								<Breadcrumb.Page><Search size={18} /></Breadcrumb.Page>
+						{#if fm.currentPath.type === CurrentPathType.Path}
+							{#if recursivePath?.length}
+								<Breadcrumb.Link
+									class="cursor-pointer inline-flex items-center gap-1"
+									onclick={() => fm.navigate('/')}
+								>
+									<House size={18} />
+								</Breadcrumb.Link>
+								<Breadcrumb.Separator />
 							{:else}
-								<Breadcrumb.Page><History size={18} /></Breadcrumb.Page>
+								<Breadcrumb.Page class="inline-flex items-center gap-1">
+									<House size={18} />
+								</Breadcrumb.Page>
 							{/if}
-						</Breadcrumb.Item>
+						{:else if fm.currentPath.type === CurrentPathType.Search}
+							<Breadcrumb.Page><Search size={18} /></Breadcrumb.Page>
+						{:else}
+							<Breadcrumb.Page><History size={18} /></Breadcrumb.Page>
+						{/if}
 						{#if recursivePath}
 							{#each recursivePath as dir, i}
 								<Breadcrumb.Item>

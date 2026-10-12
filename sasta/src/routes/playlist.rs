@@ -4,7 +4,7 @@ use axum::{
 };
 use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
-use tracing::error;
+use tracing::{error, instrument};
 use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
 use uuid::Uuid;
@@ -14,14 +14,48 @@ use crate::{
     store::store::{self, Playlist},
 };
 
-#[derive(Deserialize, ToSchema)]
+/// Request payload for creating a new (initially empty) playlist.
+#[derive(Debug, Deserialize, ToSchema)]
+#[schema(example = json!({
+    "name": "Default Daytime Playlist"
+}))]
 pub struct CreatePlaylist {
+    /// Unique human-readable name for the playlist. Must not match any existing playlist's name.
+    #[schema(example = "Default Daytime Playlist")]
     pub name: String,
 }
+
+/// Representation of a playlist returned by the API.
 #[derive(Serialize, ToSchema)]
+#[schema(example = json!({
+    "uuid": "660e8400-e29b-41d4-a716-446655440000",
+    "name": "Default Daytime Playlist",
+    "items": [
+        {
+            "type": "WEBSITE",
+            "id": "guild-website",
+            "settings": {
+                "url": "https://dsek.se",
+                "duration": 60
+            }
+        },
+        {
+            "type": "IMAGE",
+            "id": "welcome-poster",
+            "settings": {
+                "src": "ASTA://posters/welcome.png",
+                "duration": 30
+            }
+        }
+    ]
+}))]
 pub struct ReadPlaylist {
+    /// Unique identifier of the playlist.
     pub uuid: Uuid,
+    /// Unique human-readable name of the playlist.
+    #[schema(example = "Default Daytime Playlist")]
     pub name: String,
+    /// Ordered list of media items cycled through when this playlist is active.
     pub items: Vec<store::PlaylistItem>,
 }
 impl From<(Uuid, Playlist)> for ReadPlaylist {
@@ -33,9 +67,27 @@ impl From<(Uuid, Playlist)> for ReadPlaylist {
         }
     }
 }
-#[derive(Deserialize, ToSchema)]
+
+/// Request payload for updating a playlist's name and replacing its ordered list of media items.
+#[derive(Debug, Deserialize, ToSchema)]
+#[schema(example = json!({
+    "name": "Default Daytime Playlist",
+    "items": [
+        {
+            "type": "TEXT",
+            "id": "announcement",
+            "settings": {
+                "text": "Lunch lecture today at 12:15!",
+                "duration": 30
+            }
+        }
+    ]
+}))]
 pub struct UpdatePlaylist {
+    /// Updated name for the playlist. Must not conflict with any other playlist's name.
+    #[schema(example = "Default Daytime Playlist")]
     pub name: String,
+    /// Complete ordered list of media items for the playlist.
     pub items: Vec<store::PlaylistItem>,
 }
 type Response = Result<Json<ReadPlaylist>, (StatusCode, String)>;
@@ -44,13 +96,18 @@ type Response = Result<Json<ReadPlaylist>, (StatusCode, String)>;
     post,
     path = "/",
     tag = "playlist",
+    summary = "Create a new playlist",
+    description = "Creates a new playlist with the given `name` and an empty `items` array. To add or reorder media items in the playlist, call `PUT /api/playlist/{uuid}`.",
     request_body(content = CreatePlaylist),
     responses(
         (status = 200, description = "Playlist created", body = ReadPlaylist),
-        (status = 400, description = "Bad Request", body = String),
+        (status = 400, description = "Bad Request (playlist name is already taken)", body = String,
+            example = json!("Avoid using the name Default Daytime Playlist as it is already used by another Playlist")
+        ),
         (status = 500, description = "Server Error", body = String)
     )
 )]
+#[instrument(level = "debug", skip(state))]
 async fn create_playlist(
     State(state): State<AppState>,
     Json(input): Json<CreatePlaylist>,
@@ -82,6 +139,8 @@ async fn create_playlist(
     get,
     path = "/",
     tag = "playlist",
+    summary = "List all playlists",
+    description = "Returns all playlists and their ordered media items.",
     responses(
         (status = 200, description = "Get all Playlists", body = inline(Vec<ReadPlaylist>),
             example = json!(
@@ -99,8 +158,10 @@ async fn create_playlist(
                 ]
             )
         ),
+        (status = 500, description = "Server Error", body = String)
     )
 )]
+#[instrument(level = "debug", skip(state))]
 async fn read_playlist(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<ReadPlaylist>>, (StatusCode, String)> {
@@ -112,16 +173,28 @@ async fn read_playlist(
     put,
     path = "/{uuid}",
     tag = "playlist",
+    summary = "Update a playlist",
+    description = "Updates the name and replaces the `items` list of an existing playlist. Any displays currently showing this playlist (either directly or via an active schedule) are notified immediately.",
     request_body(content = UpdatePlaylist),
     responses(
         (status = 200, description = "Playlist updated", body = ReadPlaylist),
-        (status = 400, description = "Bad Request", body = String),
+        (status = 400, description = "Bad Request (UUID not found or name already used)", body = String, examples(
+            ("not_found" = (
+                summary = "No Playlist found with given Uuid",
+                value = json!("No Playlist with the Uuid <uuid> was found")
+            )),
+            ("name_taken" = (
+                summary = "Name is already used by another Playlist",
+                value = json!("Avoid using the name <name> as it is already used by another Playlist")
+            ))
+        )),
         (status = 500, description = "Server Error", body = String)
     ),
     params(
         ("uuid" = Uuid, Path, description = "Uuid of Playlist to update")
     )
 )]
+#[instrument(level = "debug", skip(state))]
 async fn update_playlist(
     State(state): State<AppState>,
     Path(uuid): Path<Uuid>,
@@ -162,31 +235,37 @@ async fn update_playlist(
     delete,
     path = "/{uuid}",
     tag = "playlist",
+    summary = "Delete a playlist",
+    description = "Deletes the playlist with the specified UUID. Deletion is rejected with `400 Bad Request` if any Schedule (either as fallback or scheduled item) or any Display currently references this playlist.",
     responses(
         (status = 200, description = "Playlist deleted", body = ReadPlaylist,
             example = json!(
                 ReadPlaylist { uuid: Uuid::new_v4(), name: "name".into(), items: vec![] }
             )
         ),
-        (status = BAD_REQUEST, body = String, examples(
+        (status = BAD_REQUEST, description = "Playlist not found or still referenced by a Schedule or Display", body = String, examples(
             ("error_1" = (
-                summary = "Playlist(s) depend on Playlist",
-                value = json!(
-                    format!("Unable to delete playlist since the Schedules (<schedules>) depend on it")
-                )
+                summary = "A Schedule depends on this Playlist",
+                value = json!("Unable to delete playlist since a Schedule depends on it")
             )),
             ("error_2" = (
+                summary = "A Display depends on this Playlist",
+                value = json!("Unable to delete playlist since a Display depends on it")
+            )),
+            ("error_3" = (
                 summary = "No playlist exists with given Uuid",
                 value = json!(
                     format!("No Playlist with the Uuid <uuid> was found")
                 )
             ))
-        ))
+        )),
+        (status = 500, description = "Server Error", body = String)
     ),
     params(
         ("uuid" = Uuid, Path, description = "Uuid of Playlist to delete")
     )
 )]
+#[instrument(level = "debug", skip(state))]
 async fn delete_playlist(State(state): State<AppState>, Path(uuid): Path<Uuid>) -> Response {
     let playlist = state
         .store

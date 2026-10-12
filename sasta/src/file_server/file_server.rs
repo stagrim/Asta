@@ -9,7 +9,7 @@ use redis::{Client, Value, aio::MultiplexedConnection};
 use regex::Regex;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use tokio::{fs, io::AsyncWriteExt};
-use tracing::{error, info, warn};
+use tracing::{debug, warn};
 use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -330,7 +330,7 @@ impl FileTransaction {
     pub async fn add_file(&mut self, file_path: &str, content: &[u8]) -> Result<File, String> {
         self.ensure_open()?;
         let path = VirtualPath::parse_file(file_path)?;
-        info!("Adding file {}", path.to_string_path());
+        debug!("Adding file {}", path.to_string_path());
         self.create_up_to_dir(path.parent())?;
 
         let normalized_path = path.to_string_path();
@@ -376,7 +376,7 @@ impl FileTransaction {
 
     pub fn move_file(&mut self, old_path: &str, new_path: &str) -> Result<File, String> {
         self.ensure_open()?;
-        info!("Moving file {} to {}", old_path, new_path);
+        debug!("Moving file {} to {}", old_path, new_path);
         let old = VirtualPath::parse_file(old_path)?;
         let new = VirtualPath::parse_file(new_path)?;
         if self.find_directory(old.parent()).is_none()
@@ -426,14 +426,14 @@ impl FileTransaction {
 
     pub fn add_dir(&mut self, dir_path: &str) -> Result<(), String> {
         self.ensure_open()?;
-        info!("Adding directory {}", dir_path);
+        debug!("Adding directory {}", dir_path);
         let path = VirtualPath::parse_dir(dir_path)?;
         self.create_up_to_dir(path.path())
     }
 
     pub fn move_dir(&mut self, old_path: &str, new_path: &str) -> Result<Directory, String> {
         self.ensure_open()?;
-        info!("Moving directory {} to {}", old_path, new_path);
+        debug!("Moving directory {} to {}", old_path, new_path);
         let old = VirtualPath::parse_dir(old_path)?;
         let new = VirtualPath::parse_dir(new_path)?;
 
@@ -445,7 +445,7 @@ impl FileTransaction {
         if old_normalized == new_normalized
             || new_normalized.starts_with(&format!("{old_normalized}/"))
         {
-            error!("Cannot move directory into itself");
+            warn!("Cannot move directory into itself");
             return Err("Cannot move a directory into itself or its subdirectories.".into());
         }
         if self.find_directory(old.parent()).is_none()
@@ -492,7 +492,7 @@ impl FileTransaction {
 
     pub fn delete_dir(&mut self, dir_path: &str) -> Result<Directory, String> {
         self.ensure_open()?;
-        info!("Deleting directory {}", dir_path);
+        debug!("Deleting directory {}", dir_path);
         let path = VirtualPath::parse_dir(dir_path)?;
         if path.path().is_empty() {
             return Err("Will not delete root folder".into());

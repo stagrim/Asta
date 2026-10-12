@@ -13,7 +13,7 @@ use hyper::{Request, StatusCode, Uri};
 use serde::{Deserialize, Serialize};
 use tower::ServiceExt;
 use tower_http::services::ServeFile;
-use tracing::{info, warn};
+use tracing::{debug, error, instrument, warn};
 use utoipa::{
     ToSchema,
     openapi::{ArrayBuilder, Ref, RefOr, Schema},
@@ -25,7 +25,12 @@ use crate::{
     file_server::file_server::{Directory, File, FileServer, FileServerError, FileTransaction},
 };
 
-/// Struct representing the multipart/form-data schema for file uploads
+/// Multipart form-data payload for uploading files or creating a directory.
+///
+/// ### Path Rules
+/// - **Directories (`directory`)**: Must start and end with `/` (e.g. `"/"` or `"/documents/2026/"`), and may only contain alphanumeric characters, `_`, `-`, spaces, and `/`.
+/// - **Filenames (`files`)**: Each uploaded file's name must end with a single extension (`<name>.<ext>`, e.g. `"poster.png"`) and contain only alphanumeric characters, `_`, `-`, and spaces.
+/// - Maximum request body size is **100 MB** (`100_000_000` bytes).
 #[derive(ToSchema)]
 #[schema(example = json!({
     "directory": "/documents/2026/",
@@ -41,10 +46,12 @@ use crate::{
     ]
 }))]
 pub struct FileUpload {
-    /// Target directory to upload files to
-    #[schema(example = "/documents")]
+    /// Target virtual directory path to upload files into (or create if `files` is empty).
+    /// Must start and end with `/` (e.g. `"/documents/"`). Intermediate parent directories are created automatically.
+    #[schema(example = "/documents/")]
     directory: String,
-    /// One or more files to upload
+    /// One or more binary file parts (`multipart/form-data` field name `"files"`).
+    /// If omitted or empty, Sasta creates the target `directory` as an empty folder.
     #[schema(value_type = Vec<String>, format = Binary)]
     files: Vec<FileItem>,
     #[serde(skip)]
@@ -74,7 +81,7 @@ impl FileUpload {
                         continue;
                     }
                 };
-                info!("Add file {filename}");
+                debug!("Add file {filename}");
                 files.push(FileItem {
                     name: filename,
                     content: bytes,
@@ -88,7 +95,7 @@ impl FileUpload {
                     .unwrap_or(String::new())
                     .trim()
                     .to_string();
-                info!("Got directory name {dir}");
+                debug!("Got directory name {dir}");
                 directory = Some(dir);
             } else {
                 warn!("Unknown field {field:?}");
@@ -106,6 +113,7 @@ impl FileUpload {
     }
 }
 
+/// Recursive tree node representing a directory and its contents in the virtual filesystem.
 #[derive(Serialize, Deserialize, Debug, ToSchema)]
 #[schema(example = json!({
     "id": "/documents/",
@@ -120,7 +128,7 @@ impl FileUpload {
     ],
     "directories": [
         {
-            "id": "/documents/2026",
+            "id": "/documents/2026/",
             "name": "2026",
             "files": [
                 {
@@ -135,16 +143,16 @@ impl FileUpload {
     ]
 }))]
 pub struct TreeDirectory {
-    /// Full virtual path of the directory
+    /// Full virtual path of the directory, always starting and ending with `/` (e.g. `"/"` or `"/documents/"`).
     id: String,
 
-    /// The local name of the directory
+    /// The local name of the directory (`""` for the root directory `"/"`).
     name: String,
 
-    /// List of files directly contained within this directory
+    /// Alphabetically sorted list of files directly contained within this directory.
     files: Vec<TreeFile>,
 
-    /// Nested child directories
+    /// Alphabetically sorted list of nested child directories.
     // Manually specify the schema to break infinite recursion
     #[schema(schema_with = recursive_directory_schema)]
     directories: Vec<TreeDirectory>,
@@ -160,18 +168,21 @@ fn recursive_directory_schema() -> RefOr<Schema> {
     .into()
 }
 
+/// Metadata for a single file in the hierarchical tree view.
+///
+/// The file's raw contents can be downloaded or streamed at `GET /files{id}` (e.g. `GET /files/documents/report.pdf`).
 #[derive(Serialize, Deserialize, Debug, ToSchema)]
 pub struct TreeFile {
-    /// Full virtual path to the file
+    /// Full virtual path to the file starting with `/` (e.g. `"/documents/report.pdf"`).
     #[schema(example = "/documents/report.pdf")]
     id: String,
-    /// Filename with extension
+    /// Filename with extension.
     #[schema(example = "report.pdf")]
     name: String,
-    /// File size in bytes
+    /// File size in bytes.
     #[schema(example = 1048576)]
     size: usize,
-    /// Last modified date (RFC3339 format)
+    /// Upload / last modified timestamp in RFC3339 format.
     #[schema(example = "2026-10-05T12:00:00+00:00")]
     date: String,
 }
@@ -214,12 +225,13 @@ impl From<&Directory> for TreeDirectory {
     }
 }
 
+/// Flat list of all directories and files in breadth-first order.
 #[derive(Serialize, Deserialize, Debug, ToSchema)]
 #[schema(example = json!([
     {
-        "id": "/documents/",
+        "id": "/documents",
         "size": 0,
-        "date": "2026-10-05T12:00:00+00:00",
+        "date": "1996-12-19T16:39:57-08:00",
         "type": "folder"
     },
     {
@@ -257,21 +269,23 @@ impl From<&Directory> for ListView {
     }
 }
 
+/// A single file or folder entry in the flat `ListView`.
 #[derive(Serialize, Deserialize, Debug, ToSchema)]
 pub struct ListViewItem {
-    /// Full virtual path of the item
+    /// Full virtual path of the item.
     #[schema(example = "/documents/report.pdf")]
     id: String,
-    /// File size in bytes (usually 0 for folders)
+    /// File size in bytes (`0` for folders).
     #[schema(example = 1048576)]
     size: usize,
-    /// Last modified date (RFC3339 format)
+    /// Last modified date in RFC3339 format (folders currently return a static placeholder timestamp).
     #[schema(example = "2026-10-05T12:05:00+00:00")]
     date: String,
-    /// The type of item (file or folder)
+    /// Whether this entry is a `"folder"` or `"file"`.
     r#type: ListViewItemType,
 }
 
+/// Discriminator for entries in `ListView`.
 #[derive(Serialize, Deserialize, Debug, ToSchema)]
 enum ListViewItemType {
     // TODO: Be consistent with naming and always use `directory`
@@ -304,20 +318,31 @@ impl From<&Directory> for ListViewItem {
     }
 }
 
+/// Request payload for renaming or moving one or more files and directories.
+///
+/// `ids_from` and `ids_to` must have the exact same length. Each pair `(ids_from[i], ids_to[i])`
+/// must either both be file paths (no trailing `/`) or both be directory paths (ending with `/`).
 #[derive(Serialize, Deserialize, Debug, ToSchema)]
 pub struct RenameRequest {
+    /// Source virtual paths to rename or move. Directories must end with `/`; files must not.
     #[schema(example = json!(["/old_name.txt", "/old_folder/"]))]
     ids_from: Vec<String>,
+    /// Destination virtual paths corresponding 1-to-1 with `ids_from`.
+    /// Destination parent directories must already exist.
     #[schema(example = json!(["/new_name.txt", "/new_folder/"]))]
     ids_to: Vec<String>,
 }
 
+/// Request payload for deleting one or more files or directories.
 #[derive(Serialize, Deserialize, Debug, ToSchema)]
 pub struct DeleteFilesRequest {
+    /// Virtual paths to delete. Paths ending with `/` are treated as directories and deleted recursively
+    /// along with all their contents (except the root directory `"/"`, which cannot be deleted).
     #[schema(example = json!(["/folder_a/file.txt", "/folder_b/"]))]
     ids: Vec<String>,
 }
 
+/// Result summary for batch file upload (`POST /api/files`) and delete (`DELETE /api/files`) operations.
 #[derive(Serialize, Deserialize, Debug, ToSchema)]
 #[schema(example = json!({
     "successful": 1,
@@ -328,18 +353,33 @@ pub struct DeleteFilesRequest {
     ]
 }))]
 pub struct BatchOperationResponse {
+    /// Number of items that succeeded.
     pub successful: usize,
+    /// Number of items that failed. If `failed > 0`, the HTTP response status is `207 Multi-Status`.
     pub failed: usize,
+    /// Per-item status entries in the order processed.
     pub statuses: Vec<ItemStatus>,
 }
 
+/// Per-item outcome for an upload or delete operation.
 #[derive(Serialize, Deserialize, Debug, ToSchema)]
 #[serde(tag = "status", rename_all = "camelCase")]
 pub enum ItemStatus {
-    Success { id: String },
-    Failure { id: String, error: String },
+    /// The file or directory operation succeeded.
+    Success {
+        /// Virtual path of the affected file or directory.
+        id: String,
+    },
+    /// The file or directory operation failed.
+    Failure {
+        /// Virtual path of the file or directory that failed.
+        id: String,
+        /// Human-readable reason for the failure.
+        error: String,
+    },
 }
 
+/// Result summary for batch rename/move (`PUT /api/files`) operations.
 #[derive(Serialize, Deserialize, Debug, ToSchema)]
 #[schema(example = json!({
     "successful": 1,
@@ -350,21 +390,32 @@ pub enum ItemStatus {
     ]
 }))]
 pub struct RenameBatchOperationResponse {
+    /// Number of items that were renamed/moved successfully.
     pub successful: usize,
+    /// Number of items that failed. If `failed > 0`, the HTTP response status is `207 Multi-Status`.
     pub failed: usize,
+    /// Per-item status entries for each `(from, to)` pair.
     pub statuses: Vec<RenameItemStatus>,
 }
 
+/// Per-item outcome for a rename/move operation.
 #[derive(Serialize, Deserialize, Debug, ToSchema)]
 #[serde(tag = "status", rename_all = "camelCase")]
 pub enum RenameItemStatus {
+    /// The item was renamed/moved successfully.
     Success {
+        /// Original virtual path.
         from: String,
+        /// New virtual path.
         to: String,
     },
+    /// The item could not be renamed/moved.
     Failure {
+        /// Original virtual path.
         from: String,
+        /// Requested destination virtual path.
         to: String,
+        /// Human-readable reason for the failure.
         error: String,
     },
 }
@@ -386,10 +437,16 @@ pub type BatchResponse<T> = Result<(StatusCode, Json<T>), (StatusCode, String)>;
 
 fn file_server_error(error: FileServerError) -> (StatusCode, String) {
     match error {
-        FileServerError::Conflict => (StatusCode::CONFLICT, error.to_string()),
+        FileServerError::Conflict => {
+            warn!("File server conflict: {error}");
+            (StatusCode::CONFLICT, error.to_string())
+        }
         FileServerError::TransactionClosed
         | FileServerError::Redis(_)
-        | FileServerError::InvalidData(_) => (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
+        | FileServerError::InvalidData(_) => {
+            error!("File server error: {error}");
+            (StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
+        }
     }
 }
 
@@ -431,15 +488,18 @@ where
     path = "/",
     tag = "files",
     summary = "Upload files or create a directory",
-    description = "Uploads multiple files via a multipart stream to a target directory. If the directory does not exist, it will be created. If no files are provided, the directory will be created empty.",
+    description = "Uploads one or more files via a `multipart/form-data` stream into a target `directory` (max body size **100 MB**).\n\n- If `directory` does not exist, it and any missing parent directories are created automatically.\n- If no `files` parts are provided, `directory` is created as an empty folder (in this mode `directory` **must** start and end with `/`, e.g. `\"/new_folder/\"`, and must not already exist).\n- Allowed path characters: `A-Z`, `a-z`, `0-9`, `_`, `-`, spaces, and `/`. File names must have a single extension (`<name>.<ext>`).\n- Per-file validation or collision errors are returned in the response body with HTTP status `207 Multi-Status` rather than failing the entire batch.",
     request_body(content = FileUpload, content_type = "multipart/form-data"),
     responses(
-        (status = 200, description = "All files were uploaded successfully", body = BatchOperationResponse),
-        (status = 207, description = "Partial success. Some files were uploaded, but others failed.", body = BatchOperationResponse),
-        (status = 400, description = "Structural Bad Request (e.g., missing directory field)", body = String)
+        (status = 200, description = "All files (or the directory) were created successfully", body = BatchOperationResponse),
+        (status = 207, description = "Partial or per-item failure (e.g., file already exists, illegal filename, or directory already exists).", body = BatchOperationResponse),
+        (status = 400, description = "Structural Bad Request (e.g., missing `directory` field in multipart form)", body = String),
+        (status = 409, description = "Concurrent modification conflict after retries (`File metadata changed during this request; reload and retry`)", body = String),
+        (status = 500, description = "Internal server / Redis error", body = String)
     )
 )]
 #[debug_handler]
+#[instrument(level = "debug", skip(state, multipart))]
 pub async fn add_files(
     State(state): State<AppState>,
     multipart: Multipart,
@@ -457,7 +517,7 @@ pub async fn add_files(
         let files = Arc::clone(&files);
         Box::pin(async move {
             if files.is_empty() {
-                info!("No files in request; creating dirs");
+                debug!("No files in request; creating dirs");
                 match transaction.add_dir(&directory) {
                     Ok(_) => return Ok(vec![ItemStatus::Success { id: directory }]),
                     Err(message) => {
@@ -511,12 +571,14 @@ pub async fn add_files(
     get,
     path = "/list",
     tag = "files",
-    summary = "Get a flat list of all files",
-    description = "Returns a flat, non-hierarchical list of all files and directories stored on the server.",
+    summary = "Get a flat list of all files and folders",
+    description = "Returns a flat, breadth-first list of all folders and files stored on the server. To download an individual file's contents, send a `GET` request to `/files{id}` (e.g. `GET /files/documents/report.pdf`).",
     responses(
-        (status = 200, description = "A flat list of all files and directories", body = ListView)
+        (status = 200, description = "A flat list of all files and directories", body = ListView),
+        (status = 500, description = "Internal server / Redis error", body = String)
     )
 )]
+#[instrument(level = "debug", skip(state))]
 pub async fn get_all_paths_list(State(state): State<AppState>) -> Response<ListView> {
     let root = state
         .file_server
@@ -531,12 +593,14 @@ pub async fn get_all_paths_list(State(state): State<AppState>) -> Response<ListV
     get,
     path = "/tree",
     tag = "files",
-    summary = "Get a hierarchical tree of all files",
-    description = "Returns a nested tree structure representing all directories and files on the server.",
+    summary = "Get a hierarchical tree of all files and folders",
+    description = "Returns a nested tree structure starting at the root directory (`\"/\"`) representing all directories and files on the server. Child directories and files at each level are sorted alphabetically by `name`. To download an individual file's contents, send a `GET` request to `/files{id}` (e.g. `GET /files/documents/report.pdf`).",
     responses(
-        (status = 200, description = "A tree representation of the file system", body = TreeDirectory)
+        (status = 200, description = "A tree representation of the file system", body = TreeDirectory),
+        (status = 500, description = "Internal server / Redis error", body = String)
     )
 )]
+#[instrument(level = "debug", skip(state))]
 pub async fn get_all_paths_tree(State(state): State<AppState>) -> Response<TreeDirectory> {
     let root = state
         .file_server
@@ -547,6 +611,7 @@ pub async fn get_all_paths_tree(State(state): State<AppState>) -> Response<TreeD
     Ok(Json(files))
 }
 
+#[instrument(level = "debug", skip(state))]
 pub async fn get_file(State(state): State<AppState>, uri: Uri) -> impl IntoResponse {
     let url_decoded_path = urlencoding::decode(&uri.to_string()).unwrap().into_owned();
     let path = match state.file_server.get_file(&url_decoded_path).await {
@@ -574,20 +639,32 @@ pub async fn get_file(State(state): State<AppState>, uri: Uri) -> impl IntoRespo
     path = "/",
     tag = "files",
     summary = "Rename or move files and directories",
-    description = "Rename multiple files and folders at once. The `ids_from` and `ids_to` arrays must have matching lengths, where the index in `ids_from` corresponds to the new path in `ids_to`. Paths ending with `/` are treated as directories and will be moved recursively.",
+    description = "Renames or moves multiple files and directories in a single atomic transaction.\n\n**Rules:**\n- `ids_from` and `ids_to` must have equal length; otherwise `400 Bad Request` is returned.\n- At each index `i`, `ids_from[i]` and `ids_to[i]` must both be file paths (no trailing `/`) or both be directory paths (ending with `/`). Mixing a file and a directory at the same index returns `400 Bad Request`.\n- Destination parent directories must already exist. Per-item failures (such as a missing source path or existing destination path) are reported inside the `207 Multi-Status` response body.",
     request_body = RenameRequest,
     responses(
         (status = 200, description = "All items were renamed or moved successfully", body = RenameBatchOperationResponse),
-        (status = 207, description = "Partial success. Some items were renamed, but others failed.", body = RenameBatchOperationResponse),
-        (status = 400, description = "Bad Request (e.g., array lengths mismatch or mixed types)", body = String)
+        (status = 207, description = "Partial or per-item failure (e.g., source not found, destination already exists, or invalid path).", body = RenameBatchOperationResponse),
+        (status = 400, description = "Bad Request (e.g., `ids_from` and `ids_to` length mismatch, or mixing file and directory paths at the same index)", body = String, examples(
+            ("length_mismatch" = (
+                summary = "ids_from and ids_to have different lengths",
+                value = json!("ids_from and ids_to must be the same length")
+            )),
+            ("mixed_types" = (
+                summary = "File path paired with directory path",
+                value = json!("Cannot mix file and directories on the corresponding indexes of the arrays fields")
+            ))
+        )),
+        (status = 409, description = "Concurrent modification conflict after retries (`File metadata changed during this request; reload and retry`)", body = String),
+        (status = 500, description = "Internal server / Redis error", body = String)
     )
 )]
 #[debug_handler]
+#[instrument(level = "debug", skip(state))]
 pub async fn rename_files(
     State(state): State<AppState>,
     Json(files): Json<RenameRequest>,
 ) -> BatchResponse<RenameBatchOperationResponse> {
-    info!("Renaming files {files:?}");
+    debug!("Renaming files {files:?}");
     if files.ids_from.len() != files.ids_to.len() {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -645,20 +722,23 @@ pub async fn rename_files(
     path = "/",
     tag = "files",
     summary = "Delete files and directories",
-    description = "Deletes multiple files and directories at once. Paths ending with `/` are treated as directories and all their contents will be deleted recursively.",
+    description = "Deletes multiple files and directories in a single atomic transaction.\n\n- Paths ending with `/` are treated as directories and all their contents are deleted recursively.\n- The root directory `\"/\"` cannot be deleted.\n- Per-item failures (e.g., file/directory not found or illegal path) are returned inside the `207 Multi-Status` response body.",
     request_body = DeleteFilesRequest,
     responses(
         (status = 200, description = "All items were deleted successfully", body = BatchOperationResponse),
-        (status = 207, description = "Partial success. Some items were deleted, but others failed.", body = BatchOperationResponse),
-        (status = 400, description = "Bad Request", body = String)
+        (status = 207, description = "Partial or per-item failure (e.g., file or directory does not exist, or attempt to delete root `/`).", body = BatchOperationResponse),
+        (status = 400, description = "Bad Request", body = String),
+        (status = 409, description = "Concurrent modification conflict after retries (`File metadata changed during this request; reload and retry`)", body = String),
+        (status = 500, description = "Internal server / Redis error", body = String)
     )
 )]
 #[debug_handler]
+#[instrument(level = "debug", skip(state))]
 pub async fn delete_files(
     State(state): State<AppState>,
     Json(files): Json<DeleteFilesRequest>,
 ) -> BatchResponse<BatchOperationResponse> {
-    info!("Deleting files {files:?}");
+    debug!("Deleting files {files:?}");
     let ids = files.ids;
     let statuses = retry_file_transaction(&state.file_server, |transaction| {
         let ids = ids.clone();

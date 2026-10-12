@@ -8,7 +8,7 @@ use axum::{
 use chrono::Local;
 use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
-use tracing::error;
+use tracing::{error, instrument};
 use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
 use uuid::Uuid;
@@ -21,16 +21,45 @@ use crate::{
     },
 };
 
-#[derive(Deserialize, ToSchema)]
+/// Request payload for creating a new schedule.
+#[derive(Debug, Deserialize, ToSchema)]
+#[schema(example = json!({
+    "name": "Weekday Schedule",
+    "playlist": "660e8400-e29b-41d4-a716-446655440000"
+}))]
 pub struct CreateSchedule {
+    /// Unique human-readable name for the schedule. Must not match any existing schedule's name.
+    #[schema(example = "Weekday Schedule")]
     pub name: String,
+    /// UUID of the default fallback playlist shown when no scheduled time window is active.
     pub playlist: Uuid,
 }
+
+/// Representation of a schedule returned by the API.
 #[derive(Serialize, ToSchema)]
+#[schema(example = json!({
+    "uuid": "550e8400-e29b-41d4-a716-446655440000",
+    "name": "Weekday Schedule",
+    "playlist": "660e8400-e29b-41d4-a716-446655440000",
+    "scheduled": [
+        {
+            "id": "11111111-2222-3333-4444-555555555555",
+            "playlist": "99999999-8888-7777-6666-555555555555",
+            "start": "0 0 10 * * Mon-Fri *",
+            "end": "0 0 14 * * Mon-Fri *"
+        }
+    ]
+}))]
 pub struct ReadSchedule {
+    /// Unique identifier of the schedule.
     pub uuid: Uuid,
+    /// Unique human-readable name of the schedule.
+    #[schema(example = "Weekday Schedule")]
     pub name: String,
+    /// UUID of the default fallback playlist played when no entry in `scheduled` is currently active.
     pub playlist: Uuid,
+    /// Priority-ordered list of time-slotted playlists, or `null` if no time slots are configured.
+    /// Earlier entries take priority over later entries if their active windows overlap.
     pub scheduled: Option<Vec<schedule::ScheduledPlaylistInput>>,
 }
 impl From<(Uuid, schedule::Schedule)> for ReadSchedule {
@@ -44,21 +73,59 @@ impl From<(Uuid, schedule::Schedule)> for ReadSchedule {
         }
     }
 }
+
+/// Real-time evaluation of which playlist a schedule is currently showing and when it will next switch.
 #[derive(Serialize, ToSchema)]
+#[schema(example = json!({
+    "current": "99999999-8888-7777-6666-555555555555",
+    "next": {
+        "moment": "2026-10-12T14:00:00+02:00",
+        "playlist": "660e8400-e29b-41d4-a716-446655440000"
+    }
+}))]
 pub struct ScheduleInfo {
+    /// UUID of the playlist that is currently active at the server's local time.
     pub current: Uuid,
+    /// Details of the next upcoming playlist switch, or `null` if no future transition will occur.
     pub next: Option<NextMoment>,
 }
+
+/// Information about the next scheduled transition point.
 #[derive(Serialize, ToSchema, Debug)]
 pub struct NextMoment {
-    /// rfc3339 formatted date string of when switch will occur
+    /// RFC3339 formatted date-time string of when the playlist switch will occur.
+    #[schema(example = "2026-10-12T14:00:00+02:00")]
     pub moment: String,
+    /// UUID of the playlist that will become active at `moment`.
     pub playlist: Uuid,
 }
-#[derive(Deserialize, ToSchema)]
+
+/// Request payload for updating an existing schedule.
+#[derive(Debug, Deserialize, ToSchema)]
+#[schema(example = json!({
+    "name": "Weekday Schedule",
+    "playlist": "660e8400-e29b-41d4-a716-446655440000",
+    "scheduled": [
+        {
+            "id": "11111111-2222-3333-4444-555555555555",
+            "playlist": "99999999-8888-7777-6666-555555555555",
+            "start": "0 0 10 * * Mon-Fri *",
+            "end": "0 0 14 * * Mon-Fri *"
+        }
+    ]
+}))]
 pub struct UpdateSchedule {
+    /// Updated name for the schedule. Must not conflict with any other schedule's name.
+    #[schema(example = "Weekday Schedule")]
     pub name: String,
+    /// UUID of the default fallback playlist.
     pub playlist: Uuid,
+    /// Priority-ordered list of scheduled playlist windows.
+    ///
+    /// **Constraints:**
+    /// - Earlier entries have higher priority than later entries when time windows overlap.
+    /// - Every playlist UUID in the schedule (including the fallback `playlist` and all `scheduled` entries) must be unique within this schedule.
+    /// - `start` and `end` must be valid 7-field cron expressions (`sec min hour day_of_month month day_of_week year`).
     pub scheduled: Option<Vec<schedule::ScheduledPlaylistInput>>,
 }
 type Response = Result<Json<ReadSchedule>, (StatusCode, String)>;
@@ -67,13 +134,18 @@ type Response = Result<Json<ReadSchedule>, (StatusCode, String)>;
     post,
     path = "/",
     tag = "schedule",
+    summary = "Create a new schedule",
+    description = "Creates a new schedule with the given `name` and default fallback `playlist` (and an initially empty `scheduled` list). Use `PUT /api/schedule/{uuid}` to configure time-slotted playlists.",
     request_body(content = CreateSchedule),
     responses(
         (status = 200, description = "Schedule created", body = ReadSchedule),
-        (status = 400, description = "Bad Request", body = String),
+        (status = 400, description = "Bad Request (schedule name is already taken)", body = String,
+            example = json!("Avoid using the name Weekday Schedule as it is already used by another Schedule")
+        ),
         (status = 500, description = "Server Error", body = String)
     )
 )]
+#[instrument(level = "debug", skip(state))]
 async fn create_schedule(
     State(state): State<AppState>,
     Json(input): Json<CreateSchedule>,
@@ -102,6 +174,8 @@ async fn create_schedule(
     get,
     path = "/",
     tag = "schedule",
+    summary = "List all schedules",
+    description = "Returns all schedules along with their default fallback playlist and priority-ordered scheduled time slots.",
     responses(
         (status = 200, description = "Get all Schedules", body = inline(Vec<ReadSchedule>),
             example = json!(
@@ -118,8 +192,10 @@ async fn create_schedule(
                 ]
             )
         ),
+        (status = 500, description = "Server Error", body = String)
     )
 )]
+#[instrument(level = "debug", skip(state))]
 async fn read_schedules(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<ReadSchedule>>, (StatusCode, String)> {
@@ -131,6 +207,8 @@ async fn read_schedules(
     get,
     path = "/{uuid}",
     tag = "schedule",
+    summary = "Get active playlist and next transition for a schedule",
+    description = "Evaluates the schedule against the server's current local time and returns the UUID of the `current` active playlist as well as the `next` upcoming transition (`moment` and target `playlist`), if any.",
     params(
         ("uuid" = Uuid, Path, description = "Uuid of Schedule to fetch info for")
     ),
@@ -139,6 +217,7 @@ async fn read_schedules(
         (status = 404, description = "Schedule not found")
     )
 )]
+#[instrument(level = "debug", skip(state))]
 async fn schedule_info(State(state): State<AppState>, Path(uuid): Path<Uuid>) -> impl IntoResponse {
     let schedule = match state.store.schedule(uuid).await {
         Ok(Some(s)) => s,
@@ -162,16 +241,36 @@ async fn schedule_info(State(state): State<AppState>, Path(uuid): Path<Uuid>) ->
     put,
     path = "/{uuid}",
     tag = "schedule",
+    summary = "Update a schedule",
+    description = "Updates the schedule's name, fallback `playlist`, and priority-ordered `scheduled` time slots.\n\n**Validation rules:**\n- `name` must be unique among all schedules.\n- Every playlist UUID used in the schedule (both the fallback `playlist` and each entry in `scheduled`) must be distinct.\n- Every `start` and `end` expression must be a valid 7-field cron string (`sec min hour day_of_month month day_of_week year`).",
     request_body(content = UpdateSchedule),
     responses(
         (status = 200, description = "Schedule updated", body = ReadSchedule),
-        (status = 400, description = "Bad Request", body = String),
+        (status = 400, description = "Bad Request (validation failed)", body = String, examples(
+            ("not_found" = (
+                summary = "No Schedule found with given Uuid",
+                value = json!("No Schedule with the Uuid <uuid> was found")
+            )),
+            ("name_taken" = (
+                summary = "Name is already used by another Schedule",
+                value = json!("Avoid using the name <name> as it is already used by another Schedule")
+            )),
+            ("duplicate_playlist" = (
+                summary = "Same Playlist used more than once in Schedule",
+                value = json!("Must not use the same Playlist more than once in a Schedule")
+            )),
+            ("invalid_cron" = (
+                summary = "Invalid 7-field cron expression",
+                value = json!("invalid cron expression '0 0 10 * *'")
+            ))
+        )),
         (status = 500, description = "Server Error", body = String)
     ),
     params(
         ("uuid" = Uuid, Path, description = "Uuid of Schedule to update")
     )
 )]
+#[instrument(level = "debug", skip(state))]
 async fn update_schedule(
     State(state): State<AppState>,
     Path(uuid): Path<Uuid>,
@@ -223,6 +322,8 @@ async fn update_schedule(
     delete,
     path = "/{uuid}",
     tag = "schedule",
+    summary = "Delete a schedule",
+    description = "Deletes the schedule with the specified UUID. Deletion is rejected with `400 Bad Request` if any Display is currently configured to use this schedule.",
     responses(
         (status = 200, description = "Schedule deleted", body = ReadSchedule,
             example = json!(
@@ -230,12 +331,10 @@ async fn update_schedule(
 
             )
         ),
-        (status = BAD_REQUEST, body = String, examples(
+        (status = BAD_REQUEST, description = "Schedule not found or still used by a Display", body = String, examples(
             ("error_1" = (
                 summary = "Display(s) depend on Schedule",
-                value = json!(
-                    format!("Unable to delete Schedule since the Displays (<displays>) depend on it")
-                )
+                value = json!("Unable to delete Schedule since a Display depends on it")
             )),
             ("error_2" = (
                 summary = "No Schedule exists with given Uuid",
@@ -243,12 +342,14 @@ async fn update_schedule(
                     format!("No Schedule with the Uuid <uuid> was found")
                 )
             ))
-        ))
+        )),
+        (status = 500, description = "Server Error", body = String)
     ),
     params(
         ("uuid" = Uuid, Path, description = "Uuid of Schedule to delete")
     )
 )]
+#[instrument(level = "debug", skip(state))]
 async fn delete_schedule(State(state): State<AppState>, Path(uuid): Path<Uuid>) -> Response {
     let schedule = state
         .store
