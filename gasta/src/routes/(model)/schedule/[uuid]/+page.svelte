@@ -112,7 +112,7 @@
 			if (schedule_info && awaited_schedule_info) {
 				sleep = Math.max(
 					0,
-					new Date(awaited_schedule_info.next?.moment ?? MAX_TIMEOUT).valueOf() -
+					new Date(awaited_schedule_info.next?.moment ?? '2038-01-19T03:14:07Z').valueOf() -
 						new Date().valueOf()
 				);
 			}

@@ -307,6 +307,7 @@ pub struct ScheduleInput {
 }))]
 pub struct ScheduledPlaylistInput {
     /// Unique identifier (UUID) for this scheduled rule entry.
+    #[serde(default = "Uuid::new_v4")]
     pub id: Uuid,
     /// UUID of the playlist to display while this scheduled window is active.
     pub playlist: Uuid,
