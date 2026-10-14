@@ -1,12 +1,13 @@
 <script lang="ts">
 	import cronstrue from 'cronstrue';
-	import cron from 'cron-validate';
-	import * as InputGroup from '$lib/components/ui/input-group';
+	import cronValidate from 'cron-validate';
+	const cron = typeof cronValidate === 'function' ? cronValidate : (cronValidate as any).default;
+	import * as InputGroup from '#lib/components/ui/input-group/index.js';
 	import { Clock } from '@lucide/svelte';
-	import { Label } from '$lib/components/ui/label';
-	import * as Dialog from '$lib/components/ui/dialog';
-	import { Button, buttonVariants } from '$lib/components/ui/button';
-	import { Input } from '$lib/components/ui/input';
+	import { Label } from '#lib/components/ui/label/index.js';
+	import * as Dialog from '#lib/components/ui/dialog/index.js';
+	import { Button, buttonVariants } from '#lib/components/ui/button/index.js';
+	import { Input } from '#lib/components/ui/input/index.js';
 
 	let {
 		value = $bindable(''),

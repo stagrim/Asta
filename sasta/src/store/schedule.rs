@@ -4,13 +4,13 @@ use chrono::{DateTime, Local};
 use cron::Schedule as CronSchedule;
 use serde::{Deserialize, Serialize};
 use tracing::{error, warn};
-use ts_rs::TS;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 enum ScheduledItem {
     Schedule {
+        id: Uuid,
         start: CronSchedule,
         end: CronSchedule,
         playlist: Uuid,
@@ -54,6 +54,7 @@ impl Schedule {
 
         for s in schedules_input {
             schedules.push(ScheduledItem::Schedule {
+                id: s.id,
                 start: Self::str_to_cron(&s.start)?,
                 end: Self::str_to_cron(&s.end)?,
                 playlist: s.playlist,
@@ -100,6 +101,7 @@ impl Schedule {
                         start,
                         end,
                         playlist,
+                        ..
                     } => {
                         let (last_start, last_end) = (
                             Self::previous_time(time, start),
@@ -153,6 +155,7 @@ impl Schedule {
                         start,
                         end,
                         playlist,
+                        ..
                     } => {
                         let (mut next_start_iter, mut next_end_iter) =
                             (start.after(from).peekable(), end.after(from).peekable());
@@ -288,12 +291,31 @@ pub struct ScheduleInput {
     pub playlist: Uuid,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, TS, ToSchema)]
-#[ts(export, export_to = "api_bindings/update/")]
+/// A scheduled time window that activates a specific playlist based on cron expressions.
+///
+/// The cron expressions (`start` and `end`) must use the **7-field** format:
+/// `sec min hour day_of_month month day_of_week year` (for example, `"0 0 10 * * Mon-Fri *"`).
+///
+/// A scheduled playlist is considered active at a given time if its most recent `start` trigger
+/// occurred more recently than its most recent `end` trigger.
+#[derive(Deserialize, Serialize, Debug, Clone, ToSchema)]
+#[schema(example = json!({
+    "id": "11111111-2222-3333-4444-555555555555",
+    "playlist": "99999999-8888-7777-6666-555555555555",
+    "start": "0 0 10 * * Mon-Fri *",
+    "end": "0 0 14 * * Mon-Fri *"
+}))]
 pub struct ScheduledPlaylistInput {
-    #[ts(type = "string")]
+    /// Unique identifier (UUID) for this scheduled rule entry.
+    #[serde(default = "Uuid::new_v4")]
+    pub id: Uuid,
+    /// UUID of the playlist to display while this scheduled window is active.
     pub playlist: Uuid,
+    /// 7-field cron expression (`sec min hour day_of_month month day_of_week year`) defining when the playlist starts.
+    #[schema(example = "0 0 10 * * Mon-Fri *")]
     pub start: String,
+    /// 7-field cron expression (`sec min hour day_of_month month day_of_week year`) defining when the playlist ends.
+    #[schema(example = "0 0 14 * * Mon-Fri *")]
     pub end: String,
 }
 
@@ -338,10 +360,12 @@ impl From<Schedule> for ScheduleInput {
                 .iter()
                 .filter_map(|s| match s {
                     ScheduledItem::Schedule {
+                        id,
                         start,
                         end,
                         playlist,
                     } => Some(ScheduledPlaylistInput {
+                        id: *id,
                         playlist: *playlist,
                         start: start.to_string(),
                         end: end.to_string(),

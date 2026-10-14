@@ -10,7 +10,7 @@ RUN deno install --allow-scripts
 
 COPY --chown=deno:deno gasta .
 
-RUN deno run build
+RUN deno task build
 
 EXPOSE 3000
 

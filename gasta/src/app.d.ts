@@ -1,6 +1,6 @@
 // See https://kit.svelte.dev/docs/types#app
 
-import type { Display, Playlist, Schedule } from '$lib/server/sasta_client';
+import type { ReadDisplay, ReadPlaylist, ReadSchedule } from '#lib/server/sasta_client/index.ts';
 
 // for information about these interfaces
 declare global {
@@ -9,31 +9,29 @@ declare global {
 		// interface Locals {}
 		// interface PageData {}
 		// interface Platform {}
-		interface ImportMetaEnv {
-			SERVER_URL: string;
-			LDAP_URL: string;
-			LDAP_GROUPS: string;
-		}
-
 		interface Locals {
 			user: string;
 			name: string;
 		}
 	}
 }
-export type DisplayState = {
-	type: 'Display';
-	content: Map<string, Display>;
+export type StateMap = {
+	Display: ReadDisplay;
+	Playlist: ReadPlaylist;
+	Schedule: ReadSchedule;
 };
 
-export type PlaylistState = {
-	type: 'Playlist';
-	content: Map<string, Playlist>;
-};
+export type StateTypes = keyof StateMap;
 
-export type ScheduleState = {
-	type: 'Schedule';
-	content: Map<string, Schedule>;
-};
+export type StateOf<K extends StateTypes = StateTypes> = {
+	[P in K]: {
+		type: P;
+		content: Map<string, StateMap[P]>;
+	};
+}[K];
 
-type State = DisplayState | PlaylistState | ScheduleState;
+export type DisplayState = StateOf<'Display'>;
+export type PlaylistState = StateOf<'Playlist'>;
+export type ScheduleState = StateOf<'Schedule'>;
+
+export type State = StateOf;

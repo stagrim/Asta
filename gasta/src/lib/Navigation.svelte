@@ -1,11 +1,10 @@
 <script lang="ts">
-	import * as Sidebar from '$lib/components/ui/sidebar';
-	import * as Collapsible from '$lib/components/ui/collapsible';
-	import { useSidebar } from '$lib/components/ui/sidebar';
+	import * as Sidebar from '#lib/components/ui/sidebar/index.js';
+	import * as Collapsible from '#lib/components/ui/collapsible/index.js';
+	import { useSidebar } from '#lib/components/ui/sidebar/index.js';
 
 	import { page } from '$app/state';
 	import type { LayoutData } from '../routes/$types';
-	import sanitizeHtml from 'sanitize-html';
 	import {
 		CalendarClock,
 		ChevronRight,
@@ -19,7 +18,7 @@
 	import { capitalize } from './utils';
 	import { Badge } from './components/ui/badge';
 	import { Separator } from './components/ui/separator';
-	import type { Display, Playlist, Schedule } from './server/sasta_client';
+	import type { ReadDisplay, ReadPlaylist, ReadSchedule } from './server/sasta_client';
 
 	let { data }: { data: LayoutData } = $props();
 
@@ -57,14 +56,8 @@
 		}))
 	);
 
-	const sanitize_html = (dirty: string) =>
-		sanitizeHtml(dirty, {
-			allowedTags: [],
-			disallowedTagsMode: 'escape'
-		});
-
 	function filter_titles(
-		kind: ((Display | Schedule | Playlist) & { title_name: string })[],
+		kind: ((ReadDisplay | ReadSchedule | ReadPlaylist) & { title_name: string })[],
 		filter: string
 	) {
 		if (filter) {
@@ -102,9 +95,7 @@
 	<Sidebar.Content>
 		{#each kinds as kind, i (kind.type)}
 			{@const capitalized = capitalize(kind.type)}
-			{@const sanitized_values = kind.values.map((k) =>
-				Object.assign(k, { title_name: sanitize_html(k.name) })
-			)}
+			{@const title_values = kind.values.map((k) => Object.assign(k, { title_name: k.name }))}
 			<Collapsible.Root title={capitalized} class="group/collapsible" bind:open={drawer_open[i]}>
 				<Sidebar.Group>
 					<Sidebar.GroupLabel
@@ -130,7 +121,7 @@
 					<Collapsible.Content>
 						<Sidebar.GroupContent>
 							<Sidebar.MenuSub>
-								{#each filter_titles(sanitized_values, filter_value) as { uuid, title_name } (uuid)}
+								{#each filter_titles(title_values, filter_value) as { uuid, title_name } (uuid)}
 									{@const href = `/${kind.type}/${uuid}`}
 									<Sidebar.MenuSubItem>
 										<Sidebar.MenuSubButton>

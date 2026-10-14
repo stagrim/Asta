@@ -1,39 +1,34 @@
-# GUI for Asta, aka Gasta
+# Gasta (GUI for Asta)
 
-Gasta is a webapp build with SvelteKit to graphically use the Sasta API to Create, Update, Read or Delete Asta Displays, Schedules or Playlists.
+Gasta is the web-based graphical user interface for the Asta display management system.
 
-![Glittering Asta](img/glittering_asta.jpg 'glittering Asta')
+Built with **SvelteKit** and powered by **Deno**, Gasta allows you to visually interact with the Sasta API to Create, Update, Read, and Delete Displays, Schedules, and Playlists without needing to manually write JSON payloads.
 
-# Image
+![Glittering Asta](img/glittering_asta.jpg 'Glittering Asta')
 
-![Gasta Playlist](img/playlist_img.png 'Gasta Playlist')
+## 📸 Screenshots
 
-# Build
+![Gasta Display edit view](img/display.png 'Gasta Display edit view')
 
-```bash
-pnpm i && pnpm run build
-```
+## ⚙️ Environment Configuration
 
-Then run the produced node server with
+Gasta relies on several environment variables to locate the Sasta backend and configure its OAuth provider (Authentik via Auth.js).
 
-```bash
-node build
-```
+When developing locally, the `dev/` script automatically creates a `.env` file for you. For production or manual setup, create a `.env` file based on `.env.template`:
 
-The node server will not read .env file, see [SvelteKit Docs](https://kit.svelte.dev/docs/adapter-node#environment-variables)
+| Variable                | Required | Description                                                                                                                                                            |
+| ----------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SERVER_URL`            | **Yes**  | URL pointing to the Sasta backend API. Example: `http://127.0.0.1:8080`.                                                                                               |
+| `AUTH_SECRET`           | **Yes**  | A random secret string used by Auth.js to encrypt session tokens.                                                                                                      |
+| `AUTH_AUTHENTIK_ID`     | Optional | Authentik Client ID for OAuth login.                                                                                                                                   |
+| `AUTH_AUTHENTIK_SECRET` | Optional | Authentik Client Secret.                                                                                                                                               |
+| `AUTH_AUTHENTIK_ISSUER` | Optional | Authentik OIDC Endpoint URL.                                                                                                                                           |
+| `OAUTH_GROUPS`          | Optional | Space-separated list of OAuth groups permitted to log in. If omitted, anyone can log in.                                                                               |
+| `ORIGIN`                | Optional | The URL where the web UI will be publicly available (e.g., `https://gasta.example.com`). Required by SvelteKit when running the production node server behind a proxy. |
+| `AUTH_TRUST_HOST`       | Optional | Set to `true` when running behind a reverse proxy to trust the forwarded host headers.                                                                                 |
 
-# Docker
+## 🛠 Build & Run Instructions
 
-Example docker compose file:
+For full instructions on building and running Gasta (including Docker and Local Development setups), please refer to the **[Root README](../README.md)**.
 
-```docker compose
-gasta:
-    image: <gasta image>
-    ports:
-      - "0.0.0.0:3000:3000"
-    environment:
-    # ORIGIN must be set to
-    # https://kit.svelte.dev/docs/adapter-node#environment-variables-origin-protocol-header-and-host-header
-      - ORIGIN=<Where Gasta is hosted, example http://192.168.1.30:3000>
-      - SERVER_URL=<Sasta URL>
-```
+> **Note**: During local development, Gasta communicates with Sasta via typed API bindings. If the backend API changes, ensure Sasta is running and run `deno task gen:api` in this directory to regenerate the bindings.

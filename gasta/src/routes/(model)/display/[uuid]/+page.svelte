@@ -1,33 +1,53 @@
 <script lang="ts">
-	import TypePicker from '$lib/TypePicker.svelte';
-	import UpdateForm from '$lib/UpdateForm.svelte';
+	import TypePicker from '#lib/TypePicker.svelte';
+	import UpdateForm from '#lib/UpdateForm.svelte';
 	import type { PageData } from './$types';
-	import { Label } from '$lib/components/ui/label';
-	import { Input } from '$lib/components/ui/input';
-	import * as InputGroup from '$lib/components/ui/input-group';
+	import { Label } from '#lib/components/ui/label/index.js';
+	import { Input } from '#lib/components/ui/input/index.js';
+	import * as InputGroup from '#lib/components/ui/input-group/index.js';
 	import { CheckIcon, CopyIcon } from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
-	import * as Select from '$lib/components/ui/select';
-	import type { Display } from '$lib/server/sasta_client';
+	import * as Select from '#lib/components/ui/select/index.js';
+	import { updateDisplay, deleteDisplay } from '../displays.remote';
 
 	let { data }: { data: PageData } = $props();
 
-	let item: Display | undefined = $state(undefined);
 	let other_uuid = $state('');
 
 	let copied = $state(false);
 </script>
 
-<!-- svelte-ignore a11y_click_events_have_key_events -->
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<!-- svelte-ignore a11y_missing_attribute -->
-
-<UpdateForm bind:type={data.display} uuid={data.uuid} bind:item>
-	{#if item}
+<UpdateForm
+	type={data.display}
+	uuid={data.uuid}
+	onsubmit={async (item) => {
+		try {
+			await updateDisplay({
+				uuid: item.uuid,
+				name: item.name,
+				display_material: item.display_material
+			});
+			toast.success('Display Updated');
+		} catch (error: any) {
+			console.error(error);
+			toast.error(error.body?.message || 'Failed to update display');
+		}
+	}}
+	ondelete={async (item) => {
+		try {
+			await deleteDisplay({ uuid: item.uuid });
+			toast.success('Display Deleted');
+		} catch (e: any) {
+			console.error(e);
+			toast.error(e.body?.message || 'Failed to delete display');
+		}
+	}}
+>
+	{#snippet children(item)}
 		<div class="grid gap-2 mb-4">
 			<Label>Uuid</Label>
 			<InputGroup.Root>
-				<InputGroup.Input value={item.uuid} class="text-zinc-500" readonly />
+				<InputGroup.Input bind:value={item.uuid} class="text-zinc-500" readonly />
 				<InputGroup.Addon align="inline-end">
 					<InputGroup.Button
 						aria-label="Copy"
@@ -35,7 +55,7 @@
 						size="icon-xs"
 						onclick={async () => {
 							try {
-								await navigator.clipboard.writeText(item!.uuid);
+								await navigator.clipboard.writeText(item.uuid);
 								copied = true;
 								setTimeout(() => (copied = false), 2000);
 							} catch (err) {
@@ -55,14 +75,7 @@
 
 		<div class="grid gap-2 mb-4">
 			<Label>Name</Label>
-			<Input
-				required
-				name="name"
-				class="input"
-				type="text"
-				placeholder="Name must be unique"
-				bind:value={item.name}
-			/>
+			<Input bind:value={item.name} required class="input" placeholder="Name must be unique" />
 		</div>
 
 		<h3 class="mb-2">Display Material</h3>
@@ -71,9 +84,9 @@
 			<Select.Root
 				type="single"
 				bind:value={
-					() => item?.display_material.type,
+					() => item.display_material.type,
 					(v) => {
-						if (item && v) {
+						if (v) {
 							if (item.display_material.type !== v) {
 								const temp = item.display_material.uuid;
 								item.display_material.uuid = other_uuid;
@@ -84,10 +97,9 @@
 					}
 				}
 			>
+				{@const type = item.display_material.type}
 				<Select.Trigger class="w-32">
-					{item?.display_material.type
-						.charAt(0)
-						.toUpperCase()}{item?.display_material.type.substring(1)}
+					{type.charAt(0).toUpperCase()}{type.substring(1)}
 				</Select.Trigger>
 				<Select.Content>
 					<Select.Label>Types</Select.Label>
@@ -98,11 +110,10 @@
 			<div class="w-full">
 				<TypePicker
 					label={false}
-					name="display_material"
 					types={item.display_material.type === 'schedule' ? data.schedule : data.playlist}
 					bind:chosen_type={item.display_material.uuid}
 				/>
 			</div>
 		</div>
-	{/if}
+	{/snippet}
 </UpdateForm>

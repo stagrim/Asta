@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { TreeDirectory, TreeFile } from '$lib/server/sasta_client';
+	import type { TreeDirectory, TreeFile } from '#lib/server/sasta_client/index.ts';
 	import * as AlertDialog from '../ui/alert-dialog';
 	import * as TreeView from '../tree-view';
 	import { previews } from '../file-manager/PreviewPanel.svelte';
@@ -19,15 +19,28 @@
 		defaultFilterFileType = $bindable('all'),
 		children
 	}: {
-		root: TreeDirectory;
+		root: TreeDirectory | Promise<TreeDirectory | undefined> | undefined;
 		onSelected: (selected: TreeFile) => void;
 		defaultFilterFileType?: ValidFileTypeFilters;
 		children: Snippet;
 	} = $props();
 
 	let searchQuery = $state('');
+
+	let resolvedRoot: TreeDirectory | undefined = $state(undefined);
+	$effect(() => {
+		if (originalRoot instanceof Promise) {
+			originalRoot.then((r) => {
+				resolvedRoot = r;
+			});
+		} else {
+			resolvedRoot = originalRoot;
+		}
+	});
+
 	let root = $derived.by(() => {
-		let root = structuredClone(originalRoot);
+		if (!resolvedRoot) return { directories: [], files: [], id: '', name: '' } as TreeDirectory;
+		let root = $state.snapshot(resolvedRoot);
 		const search = searchQuery.trim().toLowerCase();
 		const filterFileType = selectedFileType?.type;
 
@@ -56,6 +69,8 @@
 
 	let open = $state(false);
 
+	let loading = $derived(originalRoot instanceof Promise && !resolvedRoot);
+
 	export type ValidFileTypeFilters = 'all' | 'image' | 'pdf';
 	const fileTypes: { value: ValidFileTypeFilters; label: string; type?: FileTypes }[] = [
 		{ value: 'all', label: 'All files' },
@@ -78,77 +93,85 @@
 	<AlertDialog.Trigger type="button">{@render children()}</AlertDialog.Trigger>
 
 	<AlertDialog.Content class="w-11/12 max-w-[90vw] h-[90vh] flex flex-col sm:max-w-full">
-		<AlertDialog.Header class="shrink-0 pb-4">
-			<AlertDialog.Title>Choose a file</AlertDialog.Title>
-		</AlertDialog.Header>
+		{#if loading}
+			<div class="flex items-center justify-center h-full w-full p-10">
+				<p class="text-muted-foreground animate-pulse">Loading files...</p>
+			</div>
+		{:else}
+			<AlertDialog.Header class="shrink-0 pb-4">
+				<AlertDialog.Title>Choose a file</AlertDialog.Title>
+			</AlertDialog.Header>
 
-		<div class="relative py-1 flex-row flex gap-2">
-			<Label for="search" class="sr-only">Search</Label>
-			<InputGroup.Root>
-				<InputGroup.Input type="search" placeholder="Filter..." bind:value={searchQuery} />
-				<InputGroup.Addon>
-					<Funnel />
-				</InputGroup.Addon>
-			</InputGroup.Root>
-			<Select.Root required={true} bind:value={selectedFileTypeValue} type="single">
-				<Select.Trigger class="w-45">
-					{selectedFileType?.label}
-				</Select.Trigger>
-				<Select.Content>
-					{#each fileTypes as type (type.value)}
-						<Select.Item value={type.value}>{type.label}</Select.Item>
-					{/each}
-				</Select.Content>
-			</Select.Root>
-		</div>
-
-		<div class="flex-1 min-h-0 overflow-hidden">
-			<div class="flex h-full gap-4 flex-col lg:flex-row">
-				<ScrollArea class="min-h-0 pr-2 flex-1">
-					{#if !root.directories.length && !root.files.length}
-						<p class="p-4 text-muted-foreground">No files found.</p>
-					{/if}
-					<TreeView.Root bind:selectedId bind:complementryData={selectedFile}>
-						{#each root.directories ?? [] as child}
-							{@render recursiveNode(child)}
+			<div class="relative py-1 flex-row flex gap-2">
+				<Label for="search" class="sr-only">Search</Label>
+				<InputGroup.Root>
+					<InputGroup.Input type="search" placeholder="Filter..." bind:value={searchQuery} />
+					<InputGroup.Addon>
+						<Funnel />
+					</InputGroup.Addon>
+				</InputGroup.Root>
+				<Select.Root required={true} bind:value={selectedFileTypeValue} type="single">
+					<Select.Trigger class="w-45">
+						{selectedFileType?.label}
+					</Select.Trigger>
+					<Select.Content>
+						{#each fileTypes as type (type.value)}
+							<Select.Item value={type.value}>{type.label}</Select.Item>
 						{/each}
-						{#each root.files ?? [] as child}
-							<TreeView.Item label={child.name} value={child.id} complementryData={child} />
-						{/each}
-					</TreeView.Root>
-				</ScrollArea>
+					</Select.Content>
+				</Select.Root>
+			</div>
 
-				<div class="min-h-0 flex justify-center items-center max-h-full lg:w-1/4 max-lg:max-h-1/4">
-					{#if selectedFile}
-						{@const previewURL = previews(selectedFile)}
-						{#if previewURL}
-							<img class="rounded-lg object-contain h-full" src={previewURL} alt="" />
-						{:else}
-							<FileIcon extension={selectedFile.name.split('.').at(-1)} size="xl" />
+			<div class="flex-1 min-h-0 overflow-hidden">
+				<div class="flex h-full gap-4 flex-col lg:flex-row">
+					<ScrollArea class="min-h-0 pr-2 flex-1">
+						{#if !root.directories.length && !root.files.length}
+							<p class="p-4 text-muted-foreground">No files found.</p>
 						{/if}
-					{:else}
-						<p class="text-muted-foreground mt-10 wrap-break-word text-center">
-							Select a file to preview
-						</p>
-					{/if}
+						<TreeView.Root bind:selectedId bind:complementryData={selectedFile}>
+							{#each root.directories ?? [] as child}
+								{@render recursiveNode(child)}
+							{/each}
+							{#each root.files ?? [] as child}
+								<TreeView.Item label={child.name} value={child.id} complementryData={child} />
+							{/each}
+						</TreeView.Root>
+					</ScrollArea>
+
+					<div
+						class="min-h-0 flex justify-center items-center max-h-full lg:w-1/4 max-lg:max-h-1/4"
+					>
+						{#if selectedFile}
+							{@const previewURL = previews(selectedFile)}
+							{#if previewURL}
+								<img class="rounded-lg object-contain h-full" src={previewURL} alt="" />
+							{:else}
+								<FileIcon extension={selectedFile.name.split('.').at(-1)} size="xl" />
+							{/if}
+						{:else}
+							<p class="text-muted-foreground mt-10 wrap-break-word text-center">
+								Select a file to preview
+							</p>
+						{/if}
+					</div>
 				</div>
 			</div>
-		</div>
 
-		<AlertDialog.Footer class="shrink-0 pb-4">
-			<AlertDialog.Cancel>Close</AlertDialog.Cancel>
-			<AlertDialog.Action
-				disabled={!selectedFile}
-				onclick={() => {
-					if (selectedFile) {
-						open = false;
-						onSelected(selectedFile);
-					}
-				}}
-			>
-				Select
-			</AlertDialog.Action>
-		</AlertDialog.Footer>
+			<AlertDialog.Footer class="shrink-0 pb-4">
+				<AlertDialog.Cancel>Close</AlertDialog.Cancel>
+				<AlertDialog.Action
+					disabled={!selectedFile}
+					onclick={() => {
+						if (selectedFile) {
+							open = false;
+							onSelected(selectedFile);
+						}
+					}}
+				>
+					Select
+				</AlertDialog.Action>
+			</AlertDialog.Footer>
+		{/if}
 	</AlertDialog.Content>
 </AlertDialog.Root>
 

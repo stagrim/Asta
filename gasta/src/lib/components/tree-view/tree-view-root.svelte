@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { setTreeContext } from './ctx.svelte';
-	import { cn } from '$lib/utils';
+	import { cn } from '#lib/utils.js';
 	import type { HTMLAttributes } from 'svelte/elements';
-	import type { TreeFile } from '$lib/server/sasta_client';
+	import type { TreeFile } from '#lib/server/sasta_client/index.ts';
 
 	type Props = HTMLAttributes<HTMLDivElement> & {
 		/** Currently selected (highlighted) directory by id */

@@ -1,4 +1,5 @@
 import { query, command, form } from '$app/server';
+import { logRequest } from '#lib/server/logger.ts';
 import * as v from 'valibot';
 import {
 	addFiles,
@@ -6,12 +7,12 @@ import {
 	getAllPathsTree,
 	renameFiles,
 	type TreeDirectory
-} from '$lib/server/sasta_client';
+} from '#lib/server/sasta_client/index.ts';
 import {
-	vDeleteFilesData,
+	vDeleteFilesBody,
 	vFileUpload as generatedFileUpload,
-	vRenameFilesData
-} from '$lib/server/sasta_client/valibot.gen';
+	vRenameFilesBody
+} from '#lib/server/sasta_client/valibot.gen.ts';
 import { error } from '@sveltejs/kit';
 
 // Overwrite file
@@ -22,11 +23,12 @@ const vFileUpload = v.object({
 
 export const getFiles = query(async () => {
 	const res = await getAllPathsTree();
-	if (res.error || !res.data) throw new Error('Could not load files');
+	if (res.error || !res.data) throw new Error(`Could not load files '${res.error}'`);
 	return res.data;
 });
 
 export const uploadFile = form(vFileUpload, async (body) => {
+	await logRequest('uploadFile', body);
 	// Perform some rituals to keep deno happy and make file upload work
 	// Who knew file uploads could be so irritating??
 	// Hours wasted: 3
@@ -54,22 +56,23 @@ export const uploadFile = form(vFileUpload, async (body) => {
 		}
 	});
 
+	if (res.data?.failed) {
+		console.info(res.data);
+		//TODO Actually handle errors
+	}
+
 	await getFiles().refresh();
 
 	if (res.error) {
 		console.error('Upload failed:', res.error);
-		if (res.error.type === 'Error') {
-			console.error(res.error.content?.message);
-			error(res.response.status, `Failed to upload files: ${res.error.content?.message}`);
-		} else {
-			error(res.response.status, 'Could not upload file');
-		}
+		error(res.response?.status ?? 500, `Failed to upload files: ${res.error}`);
 	}
 
 	return true;
 });
 
 export const createFolder = command(vFileUpload, async (body) => {
+	await logRequest('createFolder', body);
 	const root = await getFiles();
 	const dir = traverseTree(body.directory, root);
 	if (dir) {
@@ -85,7 +88,8 @@ export const createFolder = command(vFileUpload, async (body) => {
 	return true;
 });
 
-export const removeFile = command(vDeleteFilesData, async ({ body }) => {
+export const removeFile = command(vDeleteFilesBody, async (body: any) => {
+	await logRequest('removeFile', body);
 	const res = await deleteFiles({ body });
 	if (res.error) {
 		console.error(res.error);
@@ -95,15 +99,16 @@ export const removeFile = command(vDeleteFilesData, async ({ body }) => {
 	return true;
 });
 
-export const renameItem = command(vRenameFilesData, async ({ body }) => {
+export const renameItem = command(vRenameFilesBody, async (body: any) => {
+	await logRequest('renameItem', body);
 	if (body.ids_from.length != 1 || body.ids_to.length != 1) {
 		error(403, 'Only one item may be renamed at a time');
 	}
 	const res = await renameFiles({ body });
 	if (res.error) {
 		console.error(res.error);
-		if (res.error.type === 'Error') {
-			error(500, res.error.content?.message);
+		if (typeof res.error === 'string') {
+			error(500, res.error);
 		} else {
 			error(500, 'Could not rename file');
 		}
@@ -122,6 +127,7 @@ export const moveItem = command(
 		id_to: v.string()
 	}),
 	async ({ ids_from, id_to }) => {
+		await logRequest('moveItem', { ids_from, id_to });
 		if (ids_from.length === 0) {
 			error(403, 'Must give at least one path to move');
 		}
@@ -129,8 +135,8 @@ export const moveItem = command(
 		const res = await renameFiles({ body: { ids_from, ids_to } });
 		if (res.error) {
 			console.error(res.error);
-			if (res.error.type === 'Error') {
-				error(500, res.error.content?.message);
+			if (typeof res.error === 'string') {
+				error(500, res.error);
 			} else {
 				error(500, 'Could not rename file');
 			}

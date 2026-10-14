@@ -1,11 +1,11 @@
 <script lang="ts">
 	import '../app.css';
-	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
-	import * as Avatar from '$lib/components/ui/avatar/index.js';
-	import Navigation from '$lib/Navigation.svelte';
-	import Button from '$lib/components/ui/button/button.svelte';
+	import * as Sidebar from '#lib/components/ui/sidebar/index.js';
+	import * as Avatar from '#lib/components/ui/avatar/index.js';
+	import Navigation from '#lib/Navigation.svelte';
+	import Button from '#lib/components/ui/button/button.svelte';
 	import { MoonIcon } from '@lucide/svelte';
-	import { Toaster } from '$lib/components/ui/sonner';
+	import { Toaster } from '#lib/components/ui/sonner/index.js';
 	import { toast } from 'svelte-sonner';
 
 	let { children, data } = $props();

@@ -1,10 +1,11 @@
 import { setContext, getContext } from 'svelte';
-import { IsMobile } from '$lib/hooks/is-mobile.svelte';
+import { IsMobile } from '#lib/hooks/is-mobile.svelte.js';
 import { SvelteSet } from 'svelte/reactivity';
-import type { TreeDirectory, TreeFile } from '$lib/server/sasta_client';
+import type { TreeDirectory, TreeFile } from '#lib/server/sasta_client/index.ts';
 import { CurrentPathType, FileManagerSearchParams, type FileManagerAPI } from './types';
-import { useSearchParams } from 'runed/kit';
-import { pushState } from '$app/navigation';
+import { goto } from '$app/navigation';
+import { page } from '$app/state';
+import * as v from 'valibot';
 
 const FM_KEY = Symbol('FILE_MANAGER');
 
@@ -21,7 +22,7 @@ export class FileManager {
 
 			if (this.currentPath.type === CurrentPathType.Path) {
 				if (!this.#traverseTree(this.currentPath.path)) {
-					this.#params.path = '/';
+					this.#setParams({ path: '/' }, true);
 				}
 			}
 		} catch (e) {
@@ -29,7 +30,34 @@ export class FileManager {
 		}
 	}
 
-	#params = useSearchParams(FileManagerSearchParams, { pushHistory: false });
+	#params = $derived(
+		v.parse(FileManagerSearchParams, Object.fromEntries(page.url.searchParams))
+	);
+
+	#setParams(
+		updates: Partial<v.InferOutput<typeof FileManagerSearchParams>>,
+		replace = false
+	) {
+		const next = v.parse(FileManagerSearchParams, { ...this.#params, ...updates });
+		this.#params = next;
+
+		const defaults = v.getDefaults(FileManagerSearchParams);
+		const searchParams = new URLSearchParams(page.url.searchParams.toString());
+
+		for (const [key, value] of Object.entries(next) as [
+			keyof typeof defaults,
+			string
+		][]) {
+			if (!value || value === defaults[key]) {
+				searchParams.delete(key);
+			} else {
+				searchParams.set(key, value);
+			}
+		}
+
+		const query = searchParams.toString();
+		goto(query ? `?${query}` : '?', { replace, reset: false });
+	}
 
 	/** Computed property: Always reflects the current URL parameters */
 	get currentPath():
@@ -242,35 +270,34 @@ export class FileManager {
 		}
 
 		this.clearSelection();
-		this.#params.type = CurrentPathType.Path;
-		this.#params.path = targetPath;
-		this.#params.search = '';
-		this.pushCurrentHistoryState();
+		this.#setParams({
+			type: CurrentPathType.Path,
+			path: targetPath,
+			search: ''
+		});
 	}
 
 	navigateRecent() {
 		this.clearSelection();
-		this.#params.type = CurrentPathType.Recent;
-		this.#params.path = '/';
-		this.#params.search = '';
-		this.pushCurrentHistoryState();
+		this.#setParams({
+			type: CurrentPathType.Recent,
+			path: '/',
+			search: ''
+		});
 	}
 
 	navigateSearch(search: string) {
 		const isAlreadySearching = this.currentPath.type === CurrentPathType.Search;
 
 		this.clearSelection();
-		this.#params.type = CurrentPathType.Search;
-		this.#params.path = '/';
-		this.#params.search = search;
-
-		if (!isAlreadySearching) {
-			this.pushCurrentHistoryState();
-		}
-	}
-
-	private pushCurrentHistoryState() {
-		pushState('', {});
+		this.#setParams(
+			{
+				type: CurrentPathType.Search,
+				path: '/',
+				search
+			},
+			isAlreadySearching
+		);
 	}
 
 	/** Get current URLSearchParam search value. Returns `''` if the `currentPath` isn't of type `Search` */

@@ -68,7 +68,7 @@
 	import { flip } from 'svelte/animate';
 	import { dragHandle, dragHandleZone, type DndEvent } from 'svelte-dnd-action';
 	import { GripVerticalIcon } from '@lucide/svelte';
-	import { cn } from '$lib/utils';
+	import { cn } from '#lib/utils.js';
 	import type { Snippet } from 'svelte';
 
 	type Item = TData & { id: string };
@@ -103,7 +103,7 @@
 		<thead class="[&_tr]:border-b bg-muted">
 			<tr class="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
 				<th
-					class="text-foreground h-10 whitespace-nowrap bg-clip-padding px-2 text-left align-middle font-medium [&:has([role=checkbox])]:pr-0"
+					class="text-foreground h-10 whitespace-nowrap bg-clip-padding px-2 text-left align-middle font-medium has-[[role=checkbox]]:pr-0"
 				>
 					<span class="sr-only">Reorder</span>
 				</th>
@@ -111,7 +111,7 @@
 				{#each columns as col}
 					<th
 						class={cn(
-							'text-foreground h-10 whitespace-nowrap bg-clip-padding px-2 text-left align-middle font-medium [&:has([role=checkbox])]:pr-0',
+							'text-foreground h-10 whitespace-nowrap bg-clip-padding px-2 text-left align-middle font-medium has-[[role=checkbox]]:pr-0',
 							col.class
 						)}
 					>
@@ -136,7 +136,7 @@
 					>
 						<td
 							use:dragHandle
-							class="whitespace-nowrap bg-clip-padding pl-2 align-middle [&:has([role=checkbox])]:pr-0"
+							class="whitespace-nowrap bg-clip-padding pl-2 align-middle has-[[role=checkbox]]:pr-0"
 						>
 							<div
 								class="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground flex items-center justify-center w-8 h-8 rounded transition-colors hover:bg-muted"
@@ -148,7 +148,7 @@
 						{#each columns as col}
 							<td
 								class={cn(
-									'whitespace-nowrap bg-clip-padding p-2 align-middle [&:has([role=checkbox])]:pr-0',
+									'whitespace-nowrap bg-clip-padding p-2 align-middle has-[[role=checkbox]]:pr-0',
 									col.class
 								)}
 							>

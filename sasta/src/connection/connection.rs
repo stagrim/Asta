@@ -16,10 +16,10 @@ use futures_util::{
 };
 use maud::{PreEscaped, html};
 use tokio::{
-    sync::Mutex,
+    sync::{Mutex, broadcast},
     time::{Instant, sleep_until, timeout},
 };
-use tracing::{error, info, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use crate::store::store::{Change, ImageData, PDFData, PlaylistItem, Store, TextData, WebsiteData};
 
@@ -63,7 +63,8 @@ const ASTA_FLE_PREFIX: &'static str = "ASTA://";
 pub async fn client_connection(
     socket: WebSocket,
     who: SocketAddr,
-    store: Arc<Store>,
+    store: Store,
+    mut events: broadcast::Receiver<Change>,
     htmx_hash: String,
 ) {
     let (client_send, mut client_receive) = socket.split();
@@ -75,11 +76,11 @@ pub async fn client_connection(
             Some(Ok(Message::Text(msg))) => {
                 match serde_json::from_str::<RequestPayload>(&msg) {
                     Ok(RequestPayload::Hello { uuid, htmx }) => break (uuid, htmx),
-                    _ => error!("[{who}] {msg:?} was not a HelloRequest"),
+                    _ => warn!("[{who}] {msg:?} was not a HelloRequest"),
                 };
             }
             err => {
-                error!("[{who}] Received '{err:?}' instead of HelloRequest, exiting");
+                warn!("[{who}] Received '{err:?}' instead of HelloRequest, exiting");
                 return;
             }
         }
@@ -97,14 +98,14 @@ pub async fn client_connection(
     ));
 
     let mut client_handle = tokio::spawn(async move {
-        let mut rx = store.receiver();
         loop {
-            let display_option = store
-                .read()
-                .await
-                .displays
-                .get(&client_uuid)
-                .and_then(|d| Some(d.clone()));
+            let display_option = match store.display(client_uuid).await {
+                Ok(display) => display,
+                Err(e) => {
+                    error!("[{who}] Could not read display: {e}");
+                    return;
+                }
+            };
             match display_option {
                 Some(d) => {
                     let mut w = client_name.write().unwrap();
@@ -136,23 +137,20 @@ pub async fn client_connection(
                     };
 
                     if let Err(e) = client_send.lock().await.send(msg).await {
-                        error!("[{who}] Could not send Pending message because '{e:?}', exiting");
+                        warn!("[{who}] Could not send Pending message because '{e:?}', exiting");
                         return;
                     };
 
                     // Wait until display is updated change, then try again
                     loop {
-                        match rx.recv().await {
-                            Ok(msg) => match msg {
-                                Change::Display(m) if m.contains(&client_uuid) => break,
-                                _ => (),
-                            },
+                        match events.recv().await {
+                            Ok(Change::Display(id)) if id == client_uuid => break,
+                            Ok(_) => (),
                             Err(err) => {
                                 error!("[{who}] received error '{err:?}', exiting");
                                 return;
                             }
                         };
-                        trace!("loop 2");
                     }
                     continue;
                 }
@@ -175,7 +173,7 @@ pub async fn client_connection(
         );
 
         if let Err(e) = client_send.lock().await.send(msg).await {
-            error!(
+            warn!(
                 "[{who} ({client_name})] Could not send Welcome message because '{e:?}', exiting"
             );
             return;
@@ -185,8 +183,22 @@ pub async fn client_connection(
 
         // outer loop collects the PlaylistItems(s) before entering the repeating send loop
         'outer_send_loop: loop {
-            let (schedule_uuid, playlist_uuid) =
-                store.get_display_uuids(&client_uuid).await.unwrap();
+            let (schedule_uuid, playlist_uuid) = match store.get_display_uuids(&client_uuid).await {
+                Some(value) => value,
+                None => {
+                    error!("[{who} ({client_name})] Display state could not be resolved");
+                    return;
+                }
+            };
+            let next_schedule = match schedule_uuid {
+                Some(schedule_uuid) => store
+                    .schedule(schedule_uuid)
+                    .await
+                    .ok()
+                    .flatten()
+                    .and_then(|schedule| schedule.next_schedule(&chrono::Local::now())),
+                None => None,
+            };
             let mut playlist = match store.get_display_playlist_items(&client_uuid).await {
                 Some(p) => p,
                 None => {
@@ -216,7 +228,7 @@ pub async fn client_connection(
                         if url.starts_with(ASTA_FLE_PREFIX) {
                             url = url.replace(ASTA_FLE_PREFIX, "/files/");
                         }
-                        info!("[{who} ({client_name})] Sending Website '{name}'");
+                        debug!("[{who} ({client_name})] Sending Website '{name}'");
                         sleep_duration = duration;
                         DisplayPayload::Website(WebsitePayload { content: url })
                     }
@@ -224,7 +236,7 @@ pub async fn client_connection(
                         id: name,
                         settings: TextData { text, duration },
                     } => {
-                        info!("[{who} ({client_name})] Sending Text '{name}'");
+                        debug!("[{who} ({client_name})] Sending Text '{name}'");
                         sleep_duration = duration;
                         DisplayPayload::Text(WebsitePayload { content: text })
                     }
@@ -235,7 +247,7 @@ pub async fn client_connection(
                         if src.starts_with(ASTA_FLE_PREFIX) {
                             src = src.replace(ASTA_FLE_PREFIX, "/files/");
                         }
-                        info!("[{who} ({client_name})] Sending Image '{name}'");
+                        debug!("[{who} ({client_name})] Sending Image '{name}'");
                         sleep_duration = duration;
                         DisplayPayload::Image(WebsitePayload { content: src })
                     }
@@ -247,7 +259,7 @@ pub async fn client_connection(
                         if path.starts_with(ASTA_FLE_PREFIX) {
                             path = path.replace(ASTA_FLE_PREFIX, "/files/");
                         }
-                        info!("[{who} ({client_name})] Sending PDF '{name}'");
+                        debug!("[{who} ({client_name})] Sending PDF '{name}'");
                         sleep_duration = duration;
                         DisplayPayload::PortableDocumentFormat(WebsitePayload { content: path })
                     }
@@ -263,7 +275,7 @@ pub async fn client_connection(
                     )
                 };
                 if let Err(e) = client_send.lock().await.send(msg).await {
-                    error!(
+                    warn!(
                         "[{who} ({client_name})] Could not send playlist message because '{e:?}', exiting"
                     );
                     return;
@@ -284,26 +296,35 @@ pub async fn client_connection(
                     });
 
                 loop {
-                    info!(
+                    trace!(
                         "[{who} ({client_name})] Sleeping for {} seconds",
                         (sleep - now).as_secs()
                     );
                     tokio::select! {
                         _ = sleep_until(sleep) => break,
-                        notification = rx.recv() => {
+                        _ = async {
+                            match next_schedule.as_ref() {
+                                Some(moment) => {
+                                    let duration = (moment.time - chrono::Local::now()).to_std().unwrap_or_default();
+                                    tokio::time::sleep(duration).await;
+                                }
+                                None => std::future::pending::<()>().await,
+                            }
+                        } => continue 'outer_send_loop,
+                        notification = events.recv() => {
                             match notification {
                                 Ok(c) => {
                                     match c {
-                                        Change::Display(d) if d.contains(&client_uuid) => {
-                                            info!("[{who} ({client_name})] Display {} has changed, restarting send loop", client_uuid);
+                                        Change::Display(d) if d == client_uuid => {
+                                            debug!("[{who} ({client_name})] Display {} has changed, restarting send loop", client_uuid);
                                             continue 'outer_send_loop
                                         },
-                                        Change::Playlist(p) if p.contains(&playlist_uuid)  => {
-                                            info!("[{who} ({client_name})] Playlist {} has changed, restarting send loop", playlist_uuid);
+                                        Change::Playlist(p) if p == playlist_uuid  => {
+                                            debug!("[{who} ({client_name})] Playlist {} has changed, restarting send loop", playlist_uuid);
                                             continue 'outer_send_loop
                                         },
-                                        Change::Schedule(s) if schedule_uuid.is_some_and(|u| s.contains(&u)) => {
-                                            info!("[{who} ({client_name})] Schedule {} has changed, restarting send loop", schedule_uuid.unwrap_or_default());
+                                        Change::Schedule(s) if schedule_uuid.is_some_and(|u| s == u) => {
+                                            debug!("[{who} ({client_name})] Schedule {} has changed, restarting send loop", schedule_uuid.unwrap_or_default());
                                             continue 'outer_send_loop
                                         },
                                         _ => {
@@ -351,8 +372,8 @@ async fn heartbeat(
                 Err(_) => {
                     warn!("[{who}] Could not Ping");
                     match socket.close().await {
-                        Ok(_) => warn!("[{who}] Closed socket"),
-                        Err(_) => warn!("[{who}] Could not close socket, maybe already closed"),
+                        Ok(_) => debug!("[{who}] Closed socket"),
+                        Err(_) => debug!("[{who}] Could not close socket, maybe already closed"),
                     }
                     return Err(());
                 }
@@ -362,23 +383,23 @@ async fn heartbeat(
                     Some(msg) => match msg {
                         Ok(Message::Pong(_)) => break Ok(()),
                         Ok(Message::Close(_)) => {
-                            info!("{who} Received Close message");
+                            debug!("{who} Received Close message");
                             break Err(());
                         }
                         Err(e) => {
-                            error!("{who} Error receiving messages: {e:?}");
+                            warn!("{who} Error receiving messages: {e:?}");
                             break Err(());
                         }
                         Ok(m) => warn!("{who} Received irrelevant message: {m:?}"),
                     },
-                    None => error!("{who} Error: receiver is empty"),
+                    None => warn!("{who} Error: receiver is empty"),
                 };
             }
         });
         match ping.await {
             Ok(Ok(_)) => trace!("[{who}] Pong received"),
             Ok(Err(_)) => {
-                warn!("{who} Exiting heartbeat loop");
+                debug!("{who} Exiting heartbeat loop");
                 return;
             }
             Err(_) => {

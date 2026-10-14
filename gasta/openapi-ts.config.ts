@@ -10,7 +10,7 @@ export default defineConfig({
 	plugins: [
 		{
 			name: '@hey-api/client-fetch',
-			runtimeConfigPath: '../sasta-api'
+			runtimeConfigPath: './src/lib/server/sasta-api'
 		},
 		'valibot',
 		{

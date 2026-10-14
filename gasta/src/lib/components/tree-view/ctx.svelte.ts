@@ -1,4 +1,4 @@
-import type { TreeFile } from '$lib/server/sasta_client';
+import type { TreeFile } from '#lib/server/sasta_client/index.ts';
 import { setContext, getContext } from 'svelte';
 
 const TREE_KEY = Symbol('tree-view');
