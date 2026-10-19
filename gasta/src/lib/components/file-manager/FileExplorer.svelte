@@ -6,7 +6,7 @@
 	import ListIcon from '@lucide/svelte/icons/list';
 	import PanelRightIcon from '@lucide/svelte/icons/panel-right';
 	import FolderIcon from '@lucide/svelte/icons/folder';
-	import { Folder, FolderTree, History, House, Search, SearchIcon } from '@lucide/svelte';
+	import { Folder, FolderTree, RotateCwClock, House, Search, SearchIcon } from '@lucide/svelte';
 	import { filesize } from 'filesize';
 	import { cn } from '#lib/utils.js';
 	import * as Breadcrumb from '#lib/components/ui/breadcrumb/index.js';
@@ -204,7 +204,7 @@
 						{:else if fm.currentPath.type === CurrentPathType.Search}
 							<Breadcrumb.Page><Search size={18} /></Breadcrumb.Page>
 						{:else}
-							<Breadcrumb.Page><History size={18} /></Breadcrumb.Page>
+							<Breadcrumb.Page><RotateCwClock size={18} /></Breadcrumb.Page>
 						{/if}
 						{#if recursivePath}
 							{#each recursivePath as dir, i}

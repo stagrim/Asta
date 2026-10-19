@@ -19,10 +19,7 @@ export enum CurrentPathType {
 }
 
 export const FileManagerSearchParams = v.object({
-	type: v.fallback(
-		v.optional(v.enum(CurrentPathType), CurrentPathType.Path),
-		CurrentPathType.Path
-	),
+	type: v.fallback(v.optional(v.enum(CurrentPathType), CurrentPathType.Path), CurrentPathType.Path),
 	path: v.fallback(v.optional(v.string(), '/'), '/'),
 	search: v.fallback(v.optional(v.string(), ''), '')
 });
@@ -41,7 +38,8 @@ export enum FileTypes {
 
 export type ValidFileTypeFilters = 'all' | 'image' | 'pdf';
 
-export const fileTypeFilters: { value: ValidFileTypeFilters; label: string; type?: FileTypes }[] = [
+export type FileTypeFilterObject = { value: ValidFileTypeFilters; label: string; type?: FileTypes };
+export const fileTypeFilters: FileTypeFilterObject[] = [
 	{ value: 'all', label: 'All files' },
 	{ value: 'image', label: 'Images', type: FileTypes.Image },
 	{ value: 'pdf', label: 'PDFs', type: FileTypes.PDF }

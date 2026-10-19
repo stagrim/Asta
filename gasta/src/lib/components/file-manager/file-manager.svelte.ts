@@ -7,6 +7,7 @@ import {
 	FileManagerSearchParams,
 	fileTypeFilters,
 	type FileManagerAPI,
+	type FileTypeFilterObject,
 	type ValidFileTypeFilters
 } from './types';
 import { fileExtensionType } from './utils';
@@ -242,12 +243,22 @@ export class FileManager {
 		return '';
 	}
 
-	filterFileType = $state<ValidFileTypeFilters>('all');
+	#filterFileTypeObject = $state<FileTypeFilterObject>(fileTypeFilters[0]);
+	get filterFileTypeObject() {
+		return this.#filterFileTypeObject;
+	}
+	get filterFileType() {
+		return this.#filterFileTypeObject.value;
+	}
+	set filterFileType(filter: ValidFileTypeFilters) {
+		this.#filterFileTypeObject =
+			fileTypeFilters.find((f) => f.value === filter) ?? fileTypeFilters[0];
+	}
 
+	/** Check if a file matches the current file type filter */
 	matchesFilter(file: TreeFile): boolean {
-		const filterDef = fileTypeFilters.find((f) => f.value === this.filterFileType);
-		if (!filterDef?.type) return true;
-		return fileExtensionType(file.name.split('.').at(-1)) === filterDef.type;
+		if (!this.#filterFileTypeObject.type) return true;
+		return fileExtensionType(file.name.split('.').at(-1)) === this.#filterFileTypeObject.type;
 	}
 
 	constructor(
@@ -260,9 +271,14 @@ export class FileManager {
 		this.filterFileType = initialFilterFileType;
 	}
 
-	/** Get the files in the currently active Directory */
+	/** Get the files matching the current file type filter in the currently active Directory */
 	get currentFiles() {
-		return (this.currentDirectory?.files ?? []).filter((f) => this.matchesFilter(f));
+		return this.filesInDirectory(this.currentDirectory);
+	}
+
+	/** Get the files matching the current file type filter in a given directory */
+	filesInDirectory(directory: TreeDirectory) {
+		return (directory.files ?? []).filter((f) => this.matchesFilter(f));
 	}
 
 	/** Get the direct subdirectories of the currently active Directory */

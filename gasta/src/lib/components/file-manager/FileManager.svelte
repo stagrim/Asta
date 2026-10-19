@@ -34,39 +34,24 @@
 	// svelte-ignore state_referenced_locally
 	const fm = createFileManager(api, fileTree, filterFileType);
 
-	// Sync filterFileType both ways
+	// Deselect files not matching the current filter
 	watch(
 		() => filterFileType,
 		() => {
-			if (fm.filterFileType !== filterFileType) {
-				fm.filterFileType = filterFileType;
-				for (const item of fm.getSelected()) {
-					if ('size' in item && !fm.matchesFilter(item)) {
-						fm.removeSelected(item);
-					}
+			for (const item of fm.getSelected()) {
+				if ('size' in item && !fm.matchesFilter(item)) {
+					fm.removeSelected(item);
 				}
 			}
 		}
 	);
+	filterFileType = fm.filterFileType;
+	selectedItems = fm.getSelected();
 
-	watch(
-		() => fm.filterFileType,
-		() => {
-			if (filterFileType !== fm.filterFileType) {
-				filterFileType = fm.filterFileType;
-			}
-		}
-	);
-
-	// Sync selection outwards
-	watch(
-		() => fm.getSelected(),
-		(currentSelected) => {
-			selectedItems = currentSelected;
-			const single = fm.oneSelected();
-			selectedFile = single && 'size' in single ? single : undefined;
-		}
-	);
+	$effect(() => {
+		const single = fm.oneSelected();
+		selectedFile = single && 'size' in single ? single : undefined;
+	});
 </script>
 
 <div

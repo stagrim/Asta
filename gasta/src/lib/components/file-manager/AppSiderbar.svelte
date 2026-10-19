@@ -27,8 +27,8 @@
 		FolderPlus,
 		Funnel,
 		HardDrive,
-		History,
 		House,
+		RotateCwClock,
 		Search,
 		Upload
 	} from '@lucide/svelte';
@@ -237,7 +237,6 @@
 {/snippet}
 
 {#snippet sidebarContent()}
-	{@const activeFileTypeFilter = fileTypeFilters.find((t) => t.value === fm.filterFileType)}
 	<div class="flex h-full flex-col bg-sidebar border-r-0">
 		<div class="flex items-center px-4 py-3 border-b">
 			<div class="flex items-center gap-2">
@@ -278,12 +277,12 @@
 					>
 						<Select.Trigger class="w-full">
 							<div class="flex items-center gap-2">
-								{#if activeFileTypeFilter?.type}
-									<FileIcon fileType={activeFileTypeFilter.type} />
+								{#if fm.filterFileType}
+									<FileIcon fileType={fm.filterFileTypeObject.type} />
 								{:else}
 									<Funnel class="h-4 w-4 text-muted-foreground" />
 								{/if}
-								<span>{activeFileTypeFilter?.label}</span>
+								<span>{fm.filterFileTypeObject.label}</span>
 							</div>
 						</Select.Trigger>
 						<Select.Content>
@@ -380,7 +379,7 @@
 							class="w-full justify-start h-8"
 							onclick={() => fm.navigateRecent()}
 						>
-							<History class="h-4 w-4" />
+							<RotateCwClock class="h-4 w-4" />
 							Recent
 						</Button>
 						<!-- TODO: Unused tab, where all files unused by Asta is put -->
@@ -390,12 +389,14 @@
 				<div class="mt-4">
 					<h4 class="mb-1 rounded-md px-4 text-xs text-muted-foreground">Filesystem</h4>
 					<div class="grid gap-1">
+						<!-- TODO: Filter tree view items by leaves matching search query? -->
 						<TreeView.Root
 							selectedId={fm.currentPath.type === CurrentPathType.Path ? fm.currentPath.path : ''}
 						>
-							{#each fm.root.directories ?? [] as child}
+							{#each fm.root.directories as child}
 								{@render recursiveNode(child)}
 							{/each}
+							{@render renderFiles(fm.root)}
 						</TreeView.Root>
 					</div>
 				</div>
@@ -427,7 +428,7 @@
 {/if}
 
 {#snippet recursiveNode(node: TreeDirectory)}
-	{#if node.directories.length}
+	{#if node.directories.length || node.files.length}
 		<TreeView.Folder
 			open={false}
 			name={node.name}
@@ -437,6 +438,7 @@
 			{#each node.directories as child}
 				{@render recursiveNode(child)}
 			{/each}
+			{@render renderFiles(node)}
 		</TreeView.Folder>
 	{:else}
 		<TreeView.Folder
@@ -446,4 +448,19 @@
 			ondblclick={() => fm.navigate(node)}
 		/>
 	{/if}
+{/snippet}
+
+{#snippet renderFiles(directory: TreeDirectory)}
+	{#each fm.filesInDirectory(directory) as child}
+		<TreeView.Item
+			label={child.name}
+			value={child.id}
+			complementryData={child}
+			ondblclick={() => {
+				fm.navigate(directory);
+				fm.setSelection(child);
+				fm.previewOpen = true;
+			}}
+		/>
+	{/each}
 {/snippet}
