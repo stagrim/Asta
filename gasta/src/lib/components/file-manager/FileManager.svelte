@@ -19,6 +19,7 @@
 		selectedItems = $bindable<(TreeFile | TreeDirectory)[]>([]),
 		selectedFile = $bindable<TreeFile | undefined>(undefined),
 		filterFileType = $bindable<ValidFileTypeFilters>('all'),
+		title = 'File Manager',
 		class: className
 	}: {
 		api: FileManagerAPI;
@@ -28,11 +29,12 @@
 		selectedItems?: (TreeFile | TreeDirectory)[];
 		selectedFile?: TreeFile | undefined;
 		filterFileType?: ValidFileTypeFilters;
+		title?: string;
 		class?: string;
 	} = $props();
 
 	// svelte-ignore state_referenced_locally
-	const fm = createFileManager(api, fileTree, filterFileType);
+	const fm = createFileManager(api, fileTree, title, filterFileType);
 
 	// Deselect files not matching the current filter
 	watch(

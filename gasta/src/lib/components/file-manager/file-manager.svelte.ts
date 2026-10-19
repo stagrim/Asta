@@ -264,12 +264,16 @@ export class FileManager {
 	constructor(
 		api: FileManagerAPI,
 		initialRoot: TreeDirectory,
+		title: string,
 		initialFilterFileType: ValidFileTypeFilters = 'all'
 	) {
 		this.#api = api;
 		this.#root = $state<TreeDirectory>(initialRoot);
 		this.filterFileType = initialFilterFileType;
+		this.title = title;
 	}
+
+	title: string;
 
 	/** Get the files matching the current file type filter in the currently active Directory */
 	get currentFiles() {
@@ -375,15 +379,17 @@ export class FileManager {
  * Instantiates a new `FileManager` instance and sets it in the context.
  *
  * @param api implementation of the `FileManagerAPI` interface for backend communication
- * @param root The root TreeDirectory node of the file system
+ * @param root the root TreeDirectory node of the file system
+ * @param initialFilterFileType initial value for file type filtering
  * @returns  The `FileManager` instance.
  */
 export function createFileManager(
 	api: FileManagerAPI,
 	root: TreeDirectory,
+	title: string,
 	initialFilterFileType: ValidFileTypeFilters = 'all'
 ): FileManager {
-	return setContext(FM_KEY, new FileManager(api, root, initialFilterFileType));
+	return setContext(FM_KEY, new FileManager(api, root, title, initialFilterFileType));
 }
 
 /**

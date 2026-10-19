@@ -52,6 +52,7 @@
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { CurrentPathType, fileTypeFilters } from './types';
 	import FileIcon from './FileIcon.svelte';
+	import Badge from '../ui/badge/badge.svelte';
 
 	let { uploadFormSnippet }: { uploadFormSnippet?: Snippet<[FormContext]> } = $props();
 
@@ -238,11 +239,12 @@
 
 {#snippet sidebarContent()}
 	<div class="flex h-full flex-col bg-sidebar border-r-0">
-		<div class="flex items-center px-4 py-3 border-b">
+		<div class="flex justify-between items-center px-4 py-3 border-b">
 			<div class="flex items-center gap-2">
 				<HardDrive class="h-4 w-4 text-primary" />
-				<span class="font-semibold">File Manager</span>
+				<span class="font-semibold">{fm.title}</span>
 			</div>
+			<Badge class="h-5">Beta</Badge>
 		</div>
 
 		<ScrollArea class="flex-1 pt-4 overflow-auto">

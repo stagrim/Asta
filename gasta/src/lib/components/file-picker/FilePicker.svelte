@@ -55,6 +55,7 @@
 				bind:selectedItems
 				bind:selectedFile
 				bind:filterFileType={selectedFileTypeValue}
+				title="File Picker"
 			>
 				{#snippet footerSnippet()}
 					<p class="text-sm text-muted-foreground truncate">
