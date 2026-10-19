@@ -10,6 +10,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use tokio::{fs, io::AsyncWriteExt};
 use tracing::{debug, warn};
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -69,6 +70,43 @@ impl std::fmt::Display for FileServerError {
     }
 }
 
+/// Classification of per-item errors in batch file and directory operations.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum ErrorType {
+    /// Target file or directory already exists.
+    AlreadyExists,
+    /// Target file, directory, or parent directory does not exist.
+    NotFound,
+    /// Path violates naming/format rules or uses `/` as a file path.
+    IllegalPath,
+    /// Attempted to move or delete the root directory `/`.
+    CannotModifyRoot,
+    /// Attempted to move a directory into itself or one of its subdirectories.
+    MoveIntoSelf,
+    /// Paired a file path and a directory path at the same rename index.
+    MixedFileAndDirectory,
+    /// Multipart stream failed while reading an uploaded file.
+    UploadFailed,
+    /// Underlying disk I/O or transaction state error.
+    InternalError,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileOperationError {
+    pub error_type: ErrorType,
+    pub message: String,
+}
+
+impl FileOperationError {
+    pub fn new(error_type: ErrorType, message: impl Into<String>) -> Self {
+        Self {
+            error_type,
+            message: message.into(),
+        }
+    }
+}
+
 pub static FILE_PATH_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^/[\w/_\- ]*(\w+\.\w+)$").unwrap());
 
@@ -83,28 +121,37 @@ pub enum VirtualPath<'a> {
 }
 
 impl<'a> VirtualPath<'a> {
-    pub fn parse_file(path: &'a str) -> Result<Self, String> {
+    pub fn parse_file(path: &'a str) -> Result<Self, FileOperationError> {
         Self::internal_parse(path, true)
     }
 
-    pub fn parse_dir(path: &'a str) -> Result<Self, String> {
+    pub fn parse_dir(path: &'a str) -> Result<Self, FileOperationError> {
         Self::internal_parse(path, false)
     }
 
-    fn internal_parse(path: &'a str, is_file: bool) -> Result<Self, String> {
+    fn internal_parse(path: &'a str, is_file: bool) -> Result<Self, FileOperationError> {
         let path = path.trim();
 
         if path == "/" {
             if is_file {
-                return Err("Root path '/' cannot be a file".to_string());
+                return Err(FileOperationError::new(
+                    ErrorType::IllegalPath,
+                    "Root path '/' cannot be a file",
+                ));
             }
             return Ok(VirtualPath::Root);
         }
 
         if is_file && !FILE_PATH_REGEX.is_match(path) {
-            return Err(format!("Illegal file name '{path}'"));
+            return Err(FileOperationError::new(
+                ErrorType::IllegalPath,
+                format!("Illegal file name '{path}'"),
+            ));
         } else if !is_file && !DIR_REGEX.is_match(path) {
-            return Err(format!("Illegal directory name '{path}'"));
+            return Err(FileOperationError::new(
+                ErrorType::IllegalPath,
+                format!("Illegal directory name '{path}'"),
+            ));
         }
 
         let components: Vec<&'a str> = path.split('/').filter(|s| !s.is_empty()).collect();
@@ -318,16 +365,23 @@ impl FileTransaction {
         })
     }
 
-    fn ensure_open(&self) -> Result<(), String> {
+    fn ensure_open(&self) -> Result<(), FileOperationError> {
         if self.finished {
-            Err(FileServerError::TransactionClosed.to_string())
+            Err(FileOperationError::new(
+                ErrorType::InternalError,
+                FileServerError::TransactionClosed.to_string(),
+            ))
         } else {
             Ok(())
         }
     }
 
     /// Add a file and create any missing parent directories. Metadata stays staged until `write`.
-    pub async fn add_file(&mut self, file_path: &str, content: &[u8]) -> Result<File, String> {
+    pub async fn add_file(
+        &mut self,
+        file_path: &str,
+        content: &[u8],
+    ) -> Result<File, FileOperationError> {
         self.ensure_open()?;
         let path = VirtualPath::parse_file(file_path)?;
         debug!("Adding file {}", path.to_string_path());
@@ -339,7 +393,10 @@ impl FileTransaction {
             .find_directory(parent)
             .is_some_and(|directory| directory.files.contains_key(path.name()))
         {
-            return Err(format!("File {} already exists", normalized_path));
+            return Err(FileOperationError::new(
+                ErrorType::AlreadyExists,
+                format!("File {} already exists", normalized_path),
+            ));
         }
 
         let extension = Path::new(path.name())
@@ -360,10 +417,18 @@ impl FileTransaction {
             Ok(mut disk_file) => {
                 if let Err(error) = disk_file.write_all(content).await {
                     let _ = fs::remove_file(&disk_path).await;
-                    return Err(error.to_string());
+                    return Err(FileOperationError::new(
+                        ErrorType::InternalError,
+                        error.to_string(),
+                    ));
                 }
             }
-            Err(error) => return Err(error.to_string()),
+            Err(error) => {
+                return Err(FileOperationError::new(
+                    ErrorType::InternalError,
+                    error.to_string(),
+                ));
+            }
         }
         self.created_files.push(disk_path);
 
@@ -374,7 +439,11 @@ impl FileTransaction {
         Ok(file)
     }
 
-    pub fn move_file(&mut self, old_path: &str, new_path: &str) -> Result<File, String> {
+    pub fn move_file(
+        &mut self,
+        old_path: &str,
+        new_path: &str,
+    ) -> Result<File, FileOperationError> {
         self.ensure_open()?;
         debug!("Moving file {} to {}", old_path, new_path);
         let old = VirtualPath::parse_file(old_path)?;
@@ -382,20 +451,31 @@ impl FileTransaction {
         if self.find_directory(old.parent()).is_none()
             || self.find_directory(new.parent()).is_none()
         {
-            return Err("Directory does not exist".into());
+            return Err(FileOperationError::new(
+                ErrorType::NotFound,
+                "Directory does not exist",
+            ));
         }
         let mut file = self
             .find_directory(old.parent())
             .and_then(|directory| directory.files.get(old.name()).cloned())
-            .ok_or_else(|| format!("File {} does not exist", old.to_string_path()))?;
+            .ok_or_else(|| {
+                FileOperationError::new(
+                    ErrorType::NotFound,
+                    format!("File {} does not exist", old.to_string_path()),
+                )
+            })?;
         if self
             .find_directory(new.parent())
             .and_then(|directory| directory.files.get(new.name()))
             .is_some()
         {
-            return Err(format!(
-                "Cannot move file since {} already exists",
-                new.to_string_path()
+            return Err(FileOperationError::new(
+                ErrorType::AlreadyExists,
+                format!(
+                    "Cannot move file since {} already exists",
+                    new.to_string_path()
+                ),
             ));
         }
 
@@ -412,33 +492,45 @@ impl FileTransaction {
         Ok(file)
     }
 
-    pub fn delete_file(&mut self, file_path: &str) -> Result<File, String> {
+    pub fn delete_file(&mut self, file_path: &str) -> Result<File, FileOperationError> {
         self.ensure_open()?;
         let path = VirtualPath::parse_file(file_path)?;
         let file = self
             .find_directory_mut(path.parent())
             .and_then(|directory| directory.files.remove(path.name()))
-            .ok_or_else(|| format!("File {} does not exists", path.to_string_path()))?;
+            .ok_or_else(|| {
+                FileOperationError::new(
+                    ErrorType::NotFound,
+                    format!("File {} does not exists", path.to_string_path()),
+                )
+            })?;
 
         self.deleted_files.push(self.path.join(&file.file_server));
         Ok(file)
     }
 
-    pub fn add_dir(&mut self, dir_path: &str) -> Result<(), String> {
+    pub fn add_dir(&mut self, dir_path: &str) -> Result<(), FileOperationError> {
         self.ensure_open()?;
         debug!("Adding directory {}", dir_path);
         let path = VirtualPath::parse_dir(dir_path)?;
         self.create_up_to_dir(path.path())
     }
 
-    pub fn move_dir(&mut self, old_path: &str, new_path: &str) -> Result<Directory, String> {
+    pub fn move_dir(
+        &mut self,
+        old_path: &str,
+        new_path: &str,
+    ) -> Result<Directory, FileOperationError> {
         self.ensure_open()?;
         debug!("Moving directory {} to {}", old_path, new_path);
         let old = VirtualPath::parse_dir(old_path)?;
         let new = VirtualPath::parse_dir(new_path)?;
 
         if old.path().is_empty() {
-            return Err("Cannot move root folder".into());
+            return Err(FileOperationError::new(
+                ErrorType::CannotModifyRoot,
+                "Cannot move root folder",
+            ));
         }
         let old_normalized = old.to_string_path();
         let new_normalized = new.to_string_path();
@@ -446,21 +538,32 @@ impl FileTransaction {
             || new_normalized.starts_with(&format!("{old_normalized}/"))
         {
             warn!("Cannot move directory into itself");
-            return Err("Cannot move a directory into itself or its subdirectories.".into());
+            return Err(FileOperationError::new(
+                ErrorType::MoveIntoSelf,
+                "Cannot move a directory into itself or its subdirectories.",
+            ));
         }
         if self.find_directory(old.parent()).is_none()
             || self.find_directory(new.parent()).is_none()
         {
-            return Err("Directory does not exist".into());
+            return Err(FileOperationError::new(
+                ErrorType::NotFound,
+                "Directory does not exist",
+            ));
         }
-        let mut directory = self
-            .find_directory(&old.path())
-            .cloned()
-            .ok_or_else(|| format!("Directory {} does not exist", old_normalized))?;
+        let mut directory = self.find_directory(&old.path()).cloned().ok_or_else(|| {
+            FileOperationError::new(
+                ErrorType::NotFound,
+                format!("Directory {} does not exist", old_normalized),
+            )
+        })?;
         if self.find_directory(&new.path()).is_some() {
-            return Err(format!(
-                "Cannot move directory since {} already exists",
-                new_normalized
+            return Err(FileOperationError::new(
+                ErrorType::AlreadyExists,
+                format!(
+                    "Cannot move directory since {} already exists",
+                    new_normalized
+                ),
             ));
         }
 
@@ -490,18 +593,23 @@ impl FileTransaction {
         }
     }
 
-    pub fn delete_dir(&mut self, dir_path: &str) -> Result<Directory, String> {
+    pub fn delete_dir(&mut self, dir_path: &str) -> Result<Directory, FileOperationError> {
         self.ensure_open()?;
         debug!("Deleting directory {}", dir_path);
         let path = VirtualPath::parse_dir(dir_path)?;
         if path.path().is_empty() {
-            return Err("Will not delete root folder".into());
+            return Err(FileOperationError::new(
+                ErrorType::CannotModifyRoot,
+                "Will not delete root folder",
+            ));
         }
         let parent = path.parent();
         let directory = self
             .find_directory_mut(parent)
             .and_then(|parent| parent.children.remove(path.name()))
-            .ok_or_else(|| "Directory does not exist".to_string())?;
+            .ok_or_else(|| {
+                FileOperationError::new(ErrorType::NotFound, "Directory does not exist")
+            })?;
 
         let mut files = Vec::new();
         Self::collect_files(&directory, &mut files);
@@ -536,7 +644,7 @@ impl FileTransaction {
         }
     }
 
-    fn create_up_to_dir(&mut self, components: &[&str]) -> Result<(), String> {
+    fn create_up_to_dir(&mut self, components: &[&str]) -> Result<(), FileOperationError> {
         let mut current = Vec::<&str>::new();
         for component in components {
             current.push(component);

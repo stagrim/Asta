@@ -22,7 +22,10 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
     AppState,
-    file_server::file_server::{Directory, File, FileServer, FileServerError, FileTransaction},
+    file_server::file_server::{
+        Directory, ErrorType, File, FileOperationError, FileServer, FileServerError,
+        FileTransaction,
+    },
 };
 
 /// Multipart form-data payload for uploading files or creating a directory.
@@ -349,7 +352,7 @@ pub struct DeleteFilesRequest {
     "failed": 1,
     "statuses": [
         { "status": "success", "id": "/api_folder/file.txt" },
-        { "status": "failure", "id": "/api_folder/duplicate_file.txt", "error": "File already exists" }
+        { "status": "failure", "id": "/api_folder/duplicate_file.txt", "error_type": "alreadyExists", "error": "File already exists" }
     ]
 }))]
 pub struct BatchOperationResponse {
@@ -374,6 +377,8 @@ pub enum ItemStatus {
     Failure {
         /// Virtual path of the file or directory that failed.
         id: String,
+        /// Classification of the failure for client-side error handling.
+        error_type: ErrorType,
         /// Human-readable reason for the failure.
         error: String,
     },
@@ -386,7 +391,7 @@ pub enum ItemStatus {
     "failed": 1,
     "statuses": [
         { "status": "success", "from": "/old_file.txt", "to": "/new_file.txt" },
-        { "status": "failure", "from": "/missing.txt", "to": "/new.txt", "error": "File not found" }
+        { "status": "failure", "from": "/missing.txt", "to": "/new.txt", "error_type": "notFound", "error": "File not found" }
     ]
 }))]
 pub struct RenameBatchOperationResponse {
@@ -415,6 +420,8 @@ pub enum RenameItemStatus {
         from: String,
         /// Requested destination virtual path.
         to: String,
+        /// Classification of the failure for client-side error handling.
+        error_type: ErrorType,
         /// Human-readable reason for the failure.
         error: String,
     },
@@ -520,10 +527,11 @@ pub async fn add_files(
                 debug!("No files in request; creating dirs");
                 match transaction.add_dir(&directory) {
                     Ok(_) => return Ok(vec![ItemStatus::Success { id: directory }]),
-                    Err(message) => {
+                    Err(err) => {
                         return Ok(vec![ItemStatus::Failure {
                             id: directory.clone(),
-                            error: format!("{message} ({directory})"),
+                            error_type: err.error_type,
+                            error: format!("{} ({directory})", err.message),
                         }]);
                     }
                 }
@@ -534,7 +542,11 @@ pub async fn add_files(
                 let id = format!("{}/{}", directory, file_item.name);
                 match transaction.add_file(&id, &file_item.content).await {
                     Ok(_) => statuses.push(ItemStatus::Success { id }),
-                    Err(message) => statuses.push(ItemStatus::Failure { id, error: message }),
+                    Err(err) => statuses.push(ItemStatus::Failure {
+                        id,
+                        error_type: err.error_type,
+                        error: err.message,
+                    }),
                 }
             }
             Ok(statuses)
@@ -547,20 +559,18 @@ pub async fn add_files(
     for (filename, error_msg) in upload.failed {
         statuses.push(ItemStatus::Failure {
             id: format!("{}/{}", directory, filename),
+            error_type: ErrorType::UploadFailed,
             error: format!("Stream upload failed: {}", error_msg),
         });
     }
 
-    let successful = statuses.iter().filter(|s| s.is_success()).count();
-    let failed = statuses.iter().filter(|s| !s.is_success()).count();
-
     let response = BatchOperationResponse {
-        successful,
-        failed,
+        successful: statuses.iter().filter(|s| s.is_success()).count(),
+        failed: statuses.iter().filter(|s| !s.is_success()).count(),
         statuses,
     };
 
-    if failed > 0 {
+    if response.failed > 0 {
         Ok((StatusCode::MULTI_STATUS, Json(response)))
     } else {
         Ok((StatusCode::OK, Json(response)))
@@ -686,12 +696,20 @@ pub async fn rename_files(
                 } else if !from.ends_with('/') && !to.ends_with('/') {
                     transaction.move_file(&from, &to).map(|_| ())
                 } else {
-                    Err("Cannot mix file and directories on the corresponding indexes of the arrays fields".to_string())
+                    Err(FileOperationError::new(
+                        ErrorType::MixedFileAndDirectory,
+                        "Cannot mix file and directories on the corresponding indexes of the arrays fields",
+                    ))
                 };
 
                 match result {
                     Ok(_) => statuses.push(RenameItemStatus::Success { from, to }),
-                    Err(message) => statuses.push(RenameItemStatus::Failure { from, to, error: message }),
+                    Err(err) => statuses.push(RenameItemStatus::Failure {
+                        from,
+                        to,
+                        error_type: err.error_type,
+                        error: err.message,
+                    }),
                 }
             }
             Ok(statuses)
@@ -701,16 +719,13 @@ pub async fn rename_files(
     .map_err(file_server_error)?
     .map_err(|message| (StatusCode::BAD_REQUEST, message))?;
 
-    let successful = statuses.iter().filter(|s| s.is_success()).count();
-    let failed = statuses.iter().filter(|s| !s.is_success()).count();
-
     let response = RenameBatchOperationResponse {
-        successful,
-        failed,
+        successful: statuses.iter().filter(|s| s.is_success()).count(),
+        failed: statuses.iter().filter(|s| !s.is_success()).count(),
         statuses,
     };
 
-    if failed > 0 {
+    if response.failed > 0 {
         Ok((StatusCode::MULTI_STATUS, Json(response)))
     } else {
         Ok((StatusCode::OK, Json(response)))
@@ -753,9 +768,10 @@ pub async fn delete_files(
 
                 match result {
                     Ok(_) => statuses.push(ItemStatus::Success { id: id.clone() }),
-                    Err(message) => statuses.push(ItemStatus::Failure {
+                    Err(err) => statuses.push(ItemStatus::Failure {
                         id: id.clone(),
-                        error: message,
+                        error_type: err.error_type,
+                        error: err.message,
                     }),
                 }
             }
@@ -766,16 +782,13 @@ pub async fn delete_files(
     .map_err(file_server_error)?
     .map_err(|message| (StatusCode::BAD_REQUEST, message))?;
 
-    let successful = statuses.iter().filter(|s| s.is_success()).count();
-    let failed = statuses.iter().filter(|s| !s.is_success()).count();
-
     let response = BatchOperationResponse {
-        successful,
-        failed,
+        successful: statuses.iter().filter(|s| s.is_success()).count(),
+        failed: statuses.iter().filter(|s| !s.is_success()).count(),
         statuses,
     };
 
-    if failed > 0 {
+    if response.failed > 0 {
         Ok((StatusCode::MULTI_STATUS, Json(response)))
     } else {
         Ok((StatusCode::OK, Json(response)))
@@ -940,7 +953,7 @@ mod tests {
 
         let no_file_ext = transaction.add_file("/test", &[]).await;
         assert_eq!(
-            no_file_ext.unwrap_err(),
+            no_file_ext.unwrap_err().message,
             "Illegal file name '/test'".to_string()
         );
 
@@ -978,7 +991,7 @@ mod tests {
         let result = transaction.add_file(path, &[]).await;
         assert!(result.is_err());
         assert_eq!(
-            result.unwrap_err(),
+            result.unwrap_err().message,
             "File /duplicates/file.txt already exists"
         );
     }
@@ -1007,7 +1020,7 @@ mod tests {
         let fail_result = followup.delete_file("/to_delete/does_not_exist.txt");
         assert!(fail_result.is_err());
         assert_eq!(
-            fail_result.unwrap_err(),
+            fail_result.unwrap_err().message,
             "File /to_delete/does_not_exist.txt does not exists"
         );
     }
@@ -1049,7 +1062,7 @@ mod tests {
         // Attempting to delete "/" should be blocked
         let result = transaction.delete_dir("/");
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "Will not delete root folder");
+        assert_eq!(result.unwrap_err().message, "Will not delete root folder");
     }
 
     #[tokio::test]
@@ -1065,7 +1078,7 @@ mod tests {
         let weird_path = "/../wonky/.file/....path..txt";
         let file = transaction.add_file(weird_path, &[]).await;
         assert_eq!(
-            file.unwrap_err(),
+            file.unwrap_err().message,
             format!("Illegal file name '{weird_path}'")
         );
 
@@ -1167,19 +1180,19 @@ mod tests {
         let err1 = transaction
             .move_file("/docs/file1.txt", "/docs/file2.txt")
             .unwrap_err();
-        assert!(err1.contains("already exists"));
+        assert_eq!(err1.error_type, ErrorType::AlreadyExists);
 
         // 2. Cross directory collision
         let err2 = transaction
             .move_file("/docs/file1.txt", "/archive/file1.txt")
             .unwrap_err();
-        assert!(err2.contains("already exists"));
+        assert_eq!(err2.error_type, ErrorType::AlreadyExists);
 
         // 3. Source does not exist
         let err3 = transaction
             .move_file("/docs/ghost.txt", "/archive/ghost.txt")
             .unwrap_err();
-        assert!(err3.contains("does not exist"));
+        assert_eq!(err3.error_type, ErrorType::NotFound);
     }
 
     #[tokio::test]
@@ -1232,13 +1245,13 @@ mod tests {
 
         // 1. Block moving into itself
         let err1 = transaction.move_dir("/docs/", "/docs/").unwrap_err();
-        assert!(err1.contains("Cannot move a directory into itself"));
+        assert_eq!(err1.error_type, ErrorType::MoveIntoSelf);
 
         // 2. Block moving into its own child (Orphan Tree Bug)
         let err2 = transaction
             .move_dir("/docs/", "/docs/archive/nested/")
             .unwrap_err();
-        assert!(err2.contains("Cannot move a directory into itself"));
+        assert_eq!(err2.error_type, ErrorType::MoveIntoSelf);
 
         // 3. DO NOT block moving into a different folder with a similar prefix name!
         // This ensures new_dir_path.starts_with(&format!("{}/", old_dir_path)) is working perfectly.
@@ -1345,6 +1358,404 @@ mod tests {
             .unwrap();
 
         assert_eq!(final_api_folder.files.len(), 0);
+        server_task.abort();
+        fs::remove_dir_all(storage_path).await.unwrap();
+        cleanup_test_file_metadata(&state).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_full_api_multi_status() {
+        let state = app_state().await;
+        let storage_path = state.file_server.path.clone();
+
+        let (app, _api) = file_api_router()
+            .with_state(state.clone())
+            .split_for_parts();
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let base_url = format!("http://{}", addr);
+
+        let server_task = tokio::spawn(async move {
+            serve(listener, app).await.unwrap();
+        });
+
+        let client = reqwest::Client::new();
+
+        // ==========================================
+        // 1. POST / (Create Directory): 200 OK & 207 MULTI_STATUS
+        // ==========================================
+        let create_dir_ok_form = multipart::Form::new().text("directory", "/target_dir/");
+        let create_dir_ok_res = client
+            .post(&format!("{}/", base_url))
+            .multipart(create_dir_ok_form)
+            .send()
+            .await
+            .expect("Failed to send create directory request");
+        assert_eq!(create_dir_ok_res.status(), StatusCode::OK);
+        let create_dir_ok_body: BatchOperationResponse = create_dir_ok_res.json().await.unwrap();
+        assert_eq!(create_dir_ok_body.successful, 1);
+        assert_eq!(create_dir_ok_body.failed, 0);
+        assert!(matches!(
+            &create_dir_ok_body.statuses[..],
+            [ItemStatus::Success { id }] if id == "/target_dir/"
+        ));
+
+        let create_dir_fail_form = multipart::Form::new().text("directory", "/bad@dir/");
+        let create_dir_fail_res = client
+            .post(&format!("{}/", base_url))
+            .multipart(create_dir_fail_form)
+            .send()
+            .await
+            .expect("Failed to send invalid create directory request");
+        assert_eq!(create_dir_fail_res.status(), StatusCode::MULTI_STATUS);
+        let create_dir_fail_body: BatchOperationResponse =
+            create_dir_fail_res.json().await.unwrap();
+        assert_eq!(create_dir_fail_body.successful, 0);
+        assert_eq!(create_dir_fail_body.failed, 1);
+        assert!(matches!(
+            &create_dir_fail_body.statuses[..],
+            [ItemStatus::Failure {
+                id,
+                error_type: ErrorType::IllegalPath,
+                error
+            }] if id == "/bad@dir/" && error.contains("Illegal directory name")
+        ));
+
+        // ==========================================
+        // 2. POST / (Upload Files): 200 OK & 207 MULTI_STATUS (1+ success, 1+ failure)
+        // ==========================================
+        let part_a = multipart::Part::bytes(b"File A contents".to_vec())
+            .file_name("file_a.txt")
+            .mime_str("text/plain")
+            .unwrap();
+        let part_b = multipart::Part::bytes(b"File B contents".to_vec())
+            .file_name("file_b.txt")
+            .mime_str("text/plain")
+            .unwrap();
+        let upload_ok_form = multipart::Form::new()
+            .text("directory", "/api_folder")
+            .part("files", part_a)
+            .part("files", part_b);
+
+        let upload_ok_res = client
+            .post(&format!("{}/", base_url))
+            .multipart(upload_ok_form)
+            .send()
+            .await
+            .expect("Failed to send initial upload request");
+        assert_eq!(upload_ok_res.status(), StatusCode::OK);
+        let upload_ok_body: BatchOperationResponse = upload_ok_res.json().await.unwrap();
+        assert_eq!(upload_ok_body.successful, 2);
+        assert_eq!(upload_ok_body.failed, 0);
+
+        // Upload batch with 1 success (file_c.txt) and 2 failures (duplicate file_a.txt, illegal filename)
+        let part_c = multipart::Part::bytes(b"File C contents".to_vec())
+            .file_name("file_c.txt")
+            .mime_str("text/plain")
+            .unwrap();
+        let part_dup = multipart::Part::bytes(b"Duplicate A".to_vec())
+            .file_name("file_a.txt")
+            .mime_str("text/plain")
+            .unwrap();
+        let part_bad = multipart::Part::bytes(b"No extension".to_vec())
+            .file_name("invalid_filename")
+            .mime_str("text/plain")
+            .unwrap();
+        let upload_mixed_form = multipart::Form::new()
+            .text("directory", "/api_folder")
+            .part("files", part_c)
+            .part("files", part_dup)
+            .part("files", part_bad);
+
+        let upload_mixed_res = client
+            .post(&format!("{}/", base_url))
+            .multipart(upload_mixed_form)
+            .send()
+            .await
+            .expect("Failed to send mixed upload request");
+        assert_eq!(upload_mixed_res.status(), StatusCode::MULTI_STATUS);
+        let upload_mixed_body: BatchOperationResponse = upload_mixed_res.json().await.unwrap();
+        assert_eq!(upload_mixed_body.successful, 1);
+        assert_eq!(upload_mixed_body.failed, 2);
+        assert!(matches!(
+            &upload_mixed_body.statuses[0],
+            ItemStatus::Success { id } if id == "/api_folder/file_c.txt"
+        ));
+        assert!(matches!(
+            &upload_mixed_body.statuses[1],
+            ItemStatus::Failure {
+                id,
+                error_type: ErrorType::AlreadyExists,
+                error
+            } if id == "/api_folder/file_a.txt" && error.contains("already exists")
+        ));
+        assert!(matches!(
+            &upload_mixed_body.statuses[2],
+            ItemStatus::Failure {
+                id,
+                error_type: ErrorType::IllegalPath,
+                error
+            } if id == "/api_folder/invalid_filename" && error.contains("Illegal file name")
+        ));
+
+        // ==========================================
+        // 3. PUT / (Rename / Move): 200 OK & 207 MULTI_STATUS (1+ success, 1+ failure)
+        // ==========================================
+        let rename_ok_payload = RenameRequest {
+            ids_from: vec!["/api_folder/file_a.txt".to_string()],
+            ids_to: vec!["/api_folder/file_a_renamed.txt".to_string()],
+        };
+        let rename_ok_res = client
+            .put(&format!("{}/", base_url))
+            .json(&rename_ok_payload)
+            .send()
+            .await
+            .expect("Failed to send rename OK request");
+        assert_eq!(rename_ok_res.status(), StatusCode::OK);
+        let rename_ok_body: RenameBatchOperationResponse = rename_ok_res.json().await.unwrap();
+        assert_eq!(rename_ok_body.successful, 1);
+        assert_eq!(rename_ok_body.failed, 0);
+        assert!(matches!(
+            &rename_ok_body.statuses[..],
+            [RenameItemStatus::Success { from, to }]
+                if from == "/api_folder/file_a.txt" && to == "/api_folder/file_a_renamed.txt"
+        ));
+
+        // Mixed rename batch:
+        // - Success: move /api_folder/file_b.txt -> /target_dir/file_b_moved.txt
+        // - Success: rename directory /target_dir/ -> /moved_dir/
+        // - Failure (NotFound): non-existent source file
+        // - Failure (AlreadyExists): destination file already exists (/api_folder/file_a_renamed.txt)
+        // - Failure (MixedFileAndDirectory): mixing file and directory paths at same index
+        // - Failure (MoveIntoSelf): moving directory into itself/subdirectory
+        // - Failure (CannotModifyRoot): moving root directory "/"
+        let rename_mixed_payload = RenameRequest {
+            ids_from: vec![
+                "/api_folder/file_b.txt".to_string(),
+                "/target_dir/".to_string(),
+                "/api_folder/non_existent.txt".to_string(),
+                "/api_folder/file_c.txt".to_string(),
+                "/api_folder/file_c.txt".to_string(),
+                "/moved_dir/".to_string(),
+                "/".to_string(),
+            ],
+            ids_to: vec![
+                "/target_dir/file_b_moved.txt".to_string(),
+                "/moved_dir/".to_string(),
+                "/api_folder/still_missing.txt".to_string(),
+                "/api_folder/file_a_renamed.txt".to_string(),
+                "/moved_dir/".to_string(),
+                "/moved_dir/sub/".to_string(),
+                "/root_copy/".to_string(),
+            ],
+        };
+        let rename_mixed_res = client
+            .put(&format!("{}/", base_url))
+            .json(&rename_mixed_payload)
+            .send()
+            .await
+            .expect("Failed to send mixed rename request");
+        assert_eq!(rename_mixed_res.status(), StatusCode::MULTI_STATUS);
+        let rename_mixed_body: RenameBatchOperationResponse =
+            rename_mixed_res.json().await.unwrap();
+        assert_eq!(rename_mixed_body.successful, 2);
+        assert_eq!(rename_mixed_body.failed, 5);
+        assert!(matches!(
+            &rename_mixed_body.statuses[0],
+            RenameItemStatus::Success { from, to }
+                if from == "/api_folder/file_b.txt" && to == "/target_dir/file_b_moved.txt"
+        ));
+        assert!(matches!(
+            &rename_mixed_body.statuses[1],
+            RenameItemStatus::Success { from, to }
+                if from == "/target_dir/" && to == "/moved_dir/"
+        ));
+        assert!(matches!(
+            &rename_mixed_body.statuses[2],
+            RenameItemStatus::Failure {
+                from,
+                to,
+                error_type: ErrorType::NotFound,
+                error
+            } if from == "/api_folder/non_existent.txt"
+                && to == "/api_folder/still_missing.txt"
+                && error.contains("does not exist")
+        ));
+        assert!(matches!(
+            &rename_mixed_body.statuses[3],
+            RenameItemStatus::Failure {
+                from,
+                to,
+                error_type: ErrorType::AlreadyExists,
+                error
+            } if from == "/api_folder/file_c.txt"
+                && to == "/api_folder/file_a_renamed.txt"
+                && error.contains("already exists")
+        ));
+        assert!(matches!(
+            &rename_mixed_body.statuses[4],
+            RenameItemStatus::Failure {
+                from,
+                to,
+                error_type: ErrorType::MixedFileAndDirectory,
+                error
+            } if from == "/api_folder/file_c.txt"
+                && to == "/moved_dir/"
+                && error.contains("Cannot mix file and directories")
+        ));
+        assert!(matches!(
+            &rename_mixed_body.statuses[5],
+            RenameItemStatus::Failure {
+                from,
+                to,
+                error_type: ErrorType::MoveIntoSelf,
+                error
+            } if from == "/moved_dir/"
+                && to == "/moved_dir/sub/"
+                && error.contains("Cannot move a directory into itself")
+        ));
+        assert!(matches!(
+            &rename_mixed_body.statuses[6],
+            RenameItemStatus::Failure {
+                from,
+                to,
+                error_type: ErrorType::CannotModifyRoot,
+                error
+            } if from == "/"
+                && to == "/root_copy/"
+                && error.contains("Cannot move root folder")
+        ));
+
+        // ==========================================
+        // 4. GET /tree & GET /list: Verify state after partial batches
+        // ==========================================
+        let tree_res = client
+            .get(&format!("{}/tree", base_url))
+            .send()
+            .await
+            .expect("Failed to fetch tree");
+        assert_eq!(tree_res.status(), StatusCode::OK);
+        let tree_json: TreeDirectory = tree_res.json().await.unwrap();
+        let api_folder = tree_json
+            .directories
+            .iter()
+            .find(|d| d.name == "api_folder")
+            .unwrap();
+        assert_eq!(api_folder.files.len(), 2);
+        assert_eq!(api_folder.files[0].name, "file_a_renamed.txt");
+        assert_eq!(api_folder.files[1].name, "file_c.txt");
+
+        let moved_dir = tree_json
+            .directories
+            .iter()
+            .find(|d| d.name == "moved_dir")
+            .unwrap();
+        assert_eq!(moved_dir.files.len(), 1);
+        assert_eq!(moved_dir.files[0].name, "file_b_moved.txt");
+
+        let list_res = client
+            .get(&format!("{}/list", base_url))
+            .send()
+            .await
+            .expect("Failed to fetch list");
+        assert_eq!(list_res.status(), StatusCode::OK);
+        let list_json: ListView = list_res.json().await.unwrap();
+        assert_eq!(list_json.0.len(), 5); // 2 folders (/api_folder, /moved_dir) + 3 files
+
+        // ==========================================
+        // 5. DELETE / (Delete Files & Directories): 207 MULTI_STATUS & 200 OK
+        // ==========================================
+        // Mixed delete batch:
+        // - Success: delete /api_folder/file_a_renamed.txt
+        // - Failure (NotFound): delete non-existent file /api_folder/ghost.txt
+        // - Failure (CannotModifyRoot): attempt to delete root directory "/"
+        // - Failure (NotFound): delete non-existent directory /ghost_dir/
+        // - Failure (IllegalPath): delete invalid file path
+        let delete_mixed_payload = DeleteFilesRequest {
+            ids: vec![
+                "/api_folder/file_a_renamed.txt".to_string(),
+                "/api_folder/ghost.txt".to_string(),
+                "/".to_string(),
+                "/ghost_dir/".to_string(),
+                "/bad@file.txt".to_string(),
+            ],
+        };
+        let delete_mixed_res = client
+            .delete(&format!("{}/", base_url))
+            .json(&delete_mixed_payload)
+            .send()
+            .await
+            .expect("Failed to send mixed delete request");
+        assert_eq!(delete_mixed_res.status(), StatusCode::MULTI_STATUS);
+        let delete_mixed_body: BatchOperationResponse = delete_mixed_res.json().await.unwrap();
+        assert_eq!(delete_mixed_body.successful, 1);
+        assert_eq!(delete_mixed_body.failed, 4);
+        assert!(matches!(
+            &delete_mixed_body.statuses[0],
+            ItemStatus::Success { id } if id == "/api_folder/file_a_renamed.txt"
+        ));
+        assert!(matches!(
+            &delete_mixed_body.statuses[1],
+            ItemStatus::Failure {
+                id,
+                error_type: ErrorType::NotFound,
+                error
+            } if id == "/api_folder/ghost.txt" && error.contains("does not exists")
+        ));
+        assert!(matches!(
+            &delete_mixed_body.statuses[2],
+            ItemStatus::Failure {
+                id,
+                error_type: ErrorType::CannotModifyRoot,
+                error
+            } if id == "/" && error.contains("Will not delete root folder")
+        ));
+        assert!(matches!(
+            &delete_mixed_body.statuses[3],
+            ItemStatus::Failure {
+                id,
+                error_type: ErrorType::NotFound,
+                error
+            } if id == "/ghost_dir/" && error.contains("Directory does not exist")
+        ));
+        assert!(matches!(
+            &delete_mixed_body.statuses[4],
+            ItemStatus::Failure {
+                id,
+                error_type: ErrorType::IllegalPath,
+                error
+            } if id == "/bad@file.txt" && error.contains("Illegal file name")
+        ));
+
+        // Clean delete batch (200 OK): delete remaining file and directories
+        let delete_ok_payload = DeleteFilesRequest {
+            ids: vec![
+                "/api_folder/file_c.txt".to_string(),
+                "/moved_dir/".to_string(),
+                "/api_folder/".to_string(),
+            ],
+        };
+        let delete_ok_res = client
+            .delete(&format!("{}/", base_url))
+            .json(&delete_ok_payload)
+            .send()
+            .await
+            .expect("Failed to send OK delete request");
+        assert_eq!(delete_ok_res.status(), StatusCode::OK);
+        let delete_ok_body: BatchOperationResponse = delete_ok_res.json().await.unwrap();
+        assert_eq!(delete_ok_body.successful, 3);
+        assert_eq!(delete_ok_body.failed, 0);
+
+        let final_tree_res = client
+            .get(&format!("{}/tree", base_url))
+            .send()
+            .await
+            .unwrap();
+        let final_tree_json: TreeDirectory = final_tree_res.json().await.unwrap();
+        assert!(final_tree_json.directories.is_empty());
+        assert!(final_tree_json.files.is_empty());
+
         server_task.abort();
         fs::remove_dir_all(storage_path).await.unwrap();
         cleanup_test_file_metadata(&state).await.unwrap();
@@ -1481,7 +1892,10 @@ mod tests {
                 let barrier = Arc::clone(&barrier);
                 let attempt = attempts.fetch_add(1, Ordering::SeqCst);
                 Box::pin(async move {
-                    transaction.add_file("/retry-left.txt", b"left").await?;
+                    transaction
+                        .add_file("/retry-left.txt", b"left")
+                        .await
+                        .map_err(|f| f.message)?;
                     if attempt == 0 {
                         barrier.wait().await;
                     }
@@ -1496,7 +1910,10 @@ mod tests {
                 let barrier = Arc::clone(&barrier);
                 let attempt = attempts.fetch_add(1, Ordering::SeqCst);
                 Box::pin(async move {
-                    transaction.add_file("/retry-right.txt", b"right").await?;
+                    transaction
+                        .add_file("/retry-right.txt", b"right")
+                        .await
+                        .map_err(|f| f.message)?;
                     if attempt == 0 {
                         barrier.wait().await;
                     }
@@ -1548,7 +1965,10 @@ mod tests {
                 let barrier = Arc::clone(&barrier);
                 let attempt = attempts.fetch_add(1, Ordering::SeqCst);
                 Box::pin(async move {
-                    let file = transaction.add_file(path, b"left").await?;
+                    let file = transaction
+                        .add_file(path, b"left")
+                        .await
+                        .map_err(|f| f.message)?;
                     if attempt == 0 {
                         barrier.wait().await;
                     }
@@ -1565,7 +1985,10 @@ mod tests {
                 let path = path;
                 let attempt = attempts.fetch_add(1, Ordering::SeqCst);
                 Box::pin(async move {
-                    let file = transaction.add_file(path, b"right").await?;
+                    let file = transaction
+                        .add_file(path, b"right")
+                        .await
+                        .map_err(|f| f.message)?;
                     if attempt == 0 {
                         barrier.wait().await;
                     }
@@ -1713,12 +2136,8 @@ mod tests {
 
         let raced_path = "/after-abort.txt";
         let post_abort = aborted.add_file(raced_path, b"post-abort").await;
-        if let Err(message) = post_abort {
-            assert!(
-                message.to_lowercase().contains("closed")
-                    || message.to_lowercase().contains("finished"),
-                "unexpected error when reusing an aborted transaction: {message}"
-            );
+        if let Err(err) = post_abort {
+            assert_eq!(err.error_type, ErrorType::InternalError);
             return;
         }
 
