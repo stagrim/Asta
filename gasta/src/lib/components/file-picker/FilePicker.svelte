@@ -3,21 +3,23 @@
 	import { AlertDialog as AlertDialogPrimitive } from 'bits-ui';
 	import * as AlertDialog from '../ui/alert-dialog';
 	import type { Snippet } from 'svelte';
-	import { type ValidFileTypeFilters } from '../file-manager/types';
+	import { type FileManagerAPI, type ValidFileTypeFilters } from '../file-manager/types';
 	import FileManager from '../file-manager/FileManager.svelte';
-	import { backendProvider, fileUploadSnippet } from '../../../routes/files/+page.svelte';
+	import type { FormContext } from '../file-manager/AppSiderbar.svelte';
 
 	export type { ValidFileTypeFilters };
 
 	let {
-		root: _originalRoot,
+		api,
 		onSelected,
 		defaultFilterFileType = $bindable<ValidFileTypeFilters>('all'),
+		uploadFormSnippet,
 		children
 	}: {
-		root?: TreeDirectory | Promise<TreeDirectory | undefined> | undefined;
+		api: FileManagerAPI;
 		onSelected: (selected: TreeFile) => void;
 		defaultFilterFileType?: ValidFileTypeFilters;
+		uploadFormSnippet?: Snippet<[FormContext]>;
 		children: Snippet;
 	} = $props();
 
@@ -47,9 +49,9 @@
 		>
 			<FileManager
 				class="h-full shadow-lg"
-				api={backendProvider}
-				fileTree={await backendProvider.getFileTree()}
-				uploadFormSnippet={fileUploadSnippet}
+				{api}
+				fileTree={await api.getFileTree()}
+				{uploadFormSnippet}
 				bind:selectedItems
 				bind:selectedFile
 				bind:filterFileType={selectedFileTypeValue}

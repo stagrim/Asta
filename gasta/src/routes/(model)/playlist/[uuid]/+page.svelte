@@ -20,6 +20,7 @@
 	import * as InputGroup from '#lib/components/ui/input-group/index.js';
 	import { updatePlaylist, deletePlaylist } from '../playlists.remote';
 	import { toast } from 'svelte-sonner';
+	import { backendProvider, fileUploadSnippet } from '../../../files/+page.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -93,7 +94,8 @@
 			<InputGroup.Addon align="inline-end">
 				<FilePicker
 					onSelected={(selected) => (item.settings.url = `ASTA:/${selected.id}`)}
-					root={data.filesPromise}
+					api={backendProvider}
+					uploadFormSnippet={fileUploadSnippet}
 				>
 					<InputGroup.Button variant="secondary"><Paperclip /></InputGroup.Button>
 				</FilePicker>
@@ -105,7 +107,8 @@
 			<InputGroup.Addon align="inline-end">
 				<FilePicker
 					onSelected={(selected) => (item.settings.src = `ASTA:/${selected.id}`)}
-					root={data.filesPromise}
+					api={backendProvider}
+					uploadFormSnippet={fileUploadSnippet}
 					defaultFilterFileType="image"
 				>
 					<InputGroup.Button variant="secondary"><Paperclip /></InputGroup.Button>
@@ -118,7 +121,8 @@
 			<InputGroup.Addon align="inline-end">
 				<FilePicker
 					onSelected={(selected) => (item.settings.path = `ASTA:/${selected.id}`)}
-					root={data.filesPromise}
+					api={backendProvider}
+					uploadFormSnippet={fileUploadSnippet}
 					defaultFilterFileType="pdf"
 				>
 					<InputGroup.Button variant="secondary"><Paperclip /></InputGroup.Button>
