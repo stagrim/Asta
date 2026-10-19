@@ -409,21 +409,25 @@ mod test {
                 // that start is chosen instead of a moment at a later time.
                 start: "* * 10 * * * *".to_string(),
                 end: "0 * 14 * * * *".to_string(),
+                id: Uuid::new_v4(),
             },
             ScheduledPlaylistInput {
                 playlist: scheduled2_uuid,
                 start: "* 0 11 * * * *".to_string(),
                 end: "0 * 15 * * * *".to_string(),
+                id: Uuid::new_v4(),
             },
             ScheduledPlaylistInput {
                 playlist: scheduled3_uuid,
                 start: "* * 12 * * * *".to_string(),
                 end: "* 0 16 * * * *".to_string(),
+                id: Uuid::new_v4(),
             },
             ScheduledPlaylistInput {
                 playlist: scheduled4_uuid,
                 start: "0 * 13 * * * *".to_string(),
                 end: "* 0 17 * * * *".to_string(),
+                id: Uuid::new_v4(),
             },
         ];
         let schedule: Schedule =
@@ -522,11 +526,13 @@ mod test {
                 playlist: scheduled_uuid,
                 start: "0 0 10 * * * *".to_string(),
                 end: "0 0 14 * * * *".to_string(),
+                id: Uuid::new_v4(),
             },
             ScheduledPlaylistInput {
                 playlist: scheduled2_uuid,
                 start: "0 0 10 * * * *".to_string(),
                 end: "0 0 14 * * * *".to_string(),
+                id: Uuid::new_v4(),
             },
         ];
         let schedule: Schedule =
@@ -571,11 +577,13 @@ mod test {
                 playlist: scheduled_uuid,
                 start: "0 0 10 * * * *".to_string(),
                 end: "0 0 14 * * * *".to_string(),
+                id: Uuid::new_v4(),
             },
             ScheduledPlaylistInput {
                 playlist: scheduled2_uuid,
                 start: "0 0 11 * * * *".to_string(),
                 end: "0 0 15 * * * *".to_string(),
+                id: Uuid::new_v4(),
             },
         ];
         let schedule: Schedule =
@@ -687,11 +695,13 @@ mod test {
                 playlist: scheduled_uuid,
                 start: "0 0 10 18 4 * 2023".to_string(),
                 end: "0 0 14 18 4 * 2023".to_string(),
+                id: Uuid::new_v4(),
             },
             ScheduledPlaylistInput {
                 playlist: scheduled2_uuid,
                 start: "0 0 11 18 4 * 2023".to_string(),
                 end: "0 0 15 18 4 * 2023".to_string(),
+                id: Uuid::new_v4(),
             },
         ];
         let schedule: Schedule =
@@ -774,6 +784,7 @@ mod test {
             playlist: scheduled_uuid,
             start: "0 0 10 18 4 * 2023".to_string(),
             end: "0 0 14 18 4 * 2023".to_string(),
+            id: Uuid::new_v4(),
         }];
         let schedule: Schedule =
             Schedule::new("test".to_string(), schedules, default_uuid).unwrap();
@@ -814,6 +825,7 @@ mod test {
             playlist: scheduled_uuid,
             start: "0 0 10 * * * 2025/1".to_string(),
             end: "0 0 11 * * * 2025/1".to_string(),
+            id: Uuid::new_v4(),
         }];
         let schedule: Schedule =
             Schedule::new("test".to_string(), schedules, default_uuid).unwrap();
@@ -848,6 +860,7 @@ mod test {
             playlist: scheduled_uuid,
             start: "0 * 10 * * * *".to_string(),
             end: "0 0 14 * * * *".to_string(),
+            id: Uuid::new_v4(),
         }];
         let schedule: Schedule = Schedule::new("test".to_string(), playlist, default_uuid).unwrap();
 
@@ -886,6 +899,7 @@ mod test {
             playlist: scheduled_uuid,
             start: "0 * 10 32 10 * *".to_string(),
             end: "0 0 14 32 10 * *".to_string(),
+            id: Uuid::new_v4(),
         }];
         assert!(Schedule::new("test".into(), playlist, default_uuid).is_err());
     }
@@ -900,11 +914,13 @@ mod test {
                 playlist: scheduled_uuid,
                 start: "0 0 10 * * * *".to_string(),
                 end: "0 0 14 * * * *".to_string(),
+                id: Uuid::new_v4(),
             },
             ScheduledPlaylistInput {
                 playlist: scheduled2_uuid,
                 start: "0 0 14 * * * *".to_string(),
                 end: "0 0 18 * * * *".to_string(),
+                id: Uuid::new_v4(),
             },
         ];
         let schedule: Schedule =
