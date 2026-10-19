@@ -22,7 +22,16 @@
 
 <script lang="ts">
 	import { Label } from '#lib/components/ui/label/index.js';
-	import { Folder, FolderPlus, HardDrive, History, House, Search, Upload } from '@lucide/svelte';
+	import {
+		Folder,
+		FolderPlus,
+		Funnel,
+		HardDrive,
+		History,
+		House,
+		Search,
+		Upload
+	} from '@lucide/svelte';
 	import * as TreeView from '#lib/components/tree-view/index.js';
 	import * as Resizable from '#lib/components/ui/resizable/index.js';
 	import { ScrollArea } from '#lib/components/ui/scroll-area/index.js';
@@ -30,6 +39,7 @@
 	import * as Sheet from '#lib/components/ui/sheet/index.js';
 	import * as InputGroup from '#lib/components/ui/input-group/index.js';
 	import * as ButtonGroup from '#lib/components/ui/button-group/index.js';
+	import * as Select from '#lib/components/ui/select/index.js';
 	import { useFileManager } from './file-manager.svelte';
 	import { watch } from 'runed';
 	import type { TreeDirectory } from '#lib/server/sasta_client/index.ts';
@@ -40,7 +50,8 @@
 	import { toast } from 'svelte-sonner';
 	import { Separator } from '#lib/components/ui/separator/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
-	import { CurrentPathType } from './types';
+	import { CurrentPathType, fileTypeFilters } from './types';
+	import FileIcon from './FileIcon.svelte';
 
 	let { uploadFormSnippet }: { uploadFormSnippet?: Snippet<[FormContext]> } = $props();
 
@@ -226,6 +237,7 @@
 {/snippet}
 
 {#snippet sidebarContent()}
+	{@const activeFileTypeFilter = fileTypeFilters.find((t) => t.value === fm.filterFileType)}
 	<div class="flex h-full flex-col bg-sidebar border-r-0">
 		<div class="flex items-center px-4 py-3 border-b">
 			<div class="flex items-center gap-2">
@@ -249,6 +261,44 @@
 							<Search />
 						</InputGroup.Addon>
 					</InputGroup.Root>
+				</div>
+
+				<div class="py-1">
+					<Select.Root
+						type="single"
+						required={true}
+						bind:value={fm.filterFileType}
+						onValueChange={() => {
+							for (const item of fm.getSelected()) {
+								if ('size' in item && !fm.matchesFilter(item)) {
+									fm.removeSelected(item);
+								}
+							}
+						}}
+					>
+						<Select.Trigger class="w-full">
+							<div class="flex items-center gap-2">
+								{#if activeFileTypeFilter?.type}
+									<FileIcon fileType={activeFileTypeFilter.type} />
+								{:else}
+									<Funnel class="h-4 w-4 text-muted-foreground" />
+								{/if}
+								<span>{activeFileTypeFilter?.label}</span>
+							</div>
+						</Select.Trigger>
+						<Select.Content>
+							{#each fileTypeFilters as type (type.value)}
+								<Select.Item value={type.value}>
+									{#if type?.type}
+										<FileIcon fileType={type.type} />
+									{:else}
+										<Funnel class="h-4 w-4 text-muted-foreground" />
+									{/if}
+									{type.label}
+								</Select.Item>
+							{/each}
+						</Select.Content>
+					</Select.Root>
 				</div>
 
 				<ButtonGroup.Root class="flex w-full py-4">

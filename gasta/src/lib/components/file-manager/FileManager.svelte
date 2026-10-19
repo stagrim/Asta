@@ -1,28 +1,81 @@
 <script lang="ts">
 	import * as Resizable from '#lib/components/ui/resizable/index.js';
-	import type { TreeDirectory } from '#lib/server/sasta_client/index.ts';
+	import type { TreeDirectory, TreeFile } from '#lib/server/sasta_client/index.ts';
 	import AppSidebar from './AppSiderbar.svelte';
 	import { createFileManager } from './file-manager.svelte';
 	import FileExplorer from './FileExplorer.svelte';
 	import PreviewPanel from './PreviewPanel.svelte';
-	import type { FileManagerAPI } from './types';
+	import type { FileManagerAPI, ValidFileTypeFilters } from './types';
 	import type { Snippet } from 'svelte';
 	import type { FormContext } from './AppSiderbar.svelte';
+	import { cn } from '#lib/utils.js';
+	import { watch } from 'runed';
 
 	let {
 		api,
 		fileTree,
-		uploadFormSnippet
-	}: { api: FileManagerAPI; fileTree: TreeDirectory; uploadFormSnippet?: Snippet<[FormContext]> } =
-		$props();
+		uploadFormSnippet,
+		footerSnippet,
+		selectedItems = $bindable<(TreeFile | TreeDirectory)[]>([]),
+		selectedFile = $bindable<TreeFile | undefined>(undefined),
+		filterFileType = $bindable<ValidFileTypeFilters>('all'),
+		class: className
+	}: {
+		api: FileManagerAPI;
+		fileTree: TreeDirectory;
+		uploadFormSnippet?: Snippet<[FormContext]>;
+		footerSnippet?: Snippet;
+		selectedItems?: (TreeFile | TreeDirectory)[];
+		selectedFile?: TreeFile | undefined;
+		filterFileType?: ValidFileTypeFilters;
+		class?: string;
+	} = $props();
 
-	const fm = createFileManager(api, fileTree);
+	// svelte-ignore state_referenced_locally
+	const fm = createFileManager(api, fileTree, filterFileType);
+
+	// Sync filterFileType both ways
+	watch(
+		() => filterFileType,
+		() => {
+			if (fm.filterFileType !== filterFileType) {
+				fm.filterFileType = filterFileType;
+				for (const item of fm.getSelected()) {
+					if ('size' in item && !fm.matchesFilter(item)) {
+						fm.removeSelected(item);
+					}
+				}
+			}
+		}
+	);
+
+	watch(
+		() => fm.filterFileType,
+		() => {
+			if (filterFileType !== fm.filterFileType) {
+				filterFileType = fm.filterFileType;
+			}
+		}
+	);
+
+	// Sync selection outwards
+	watch(
+		() => fm.getSelected(),
+		(currentSelected) => {
+			selectedItems = currentSelected;
+			const single = fm.oneSelected();
+			selectedFile = single && 'size' in single ? single : undefined;
+		}
+	);
 </script>
 
 <div
-	class="group/filemanager relative flex w-full h-[calc(100dvh-6rem)] border rounded-xl overflow-hidden isolation-isolate bg-background"
+	class={cn(
+		'group/filemanager relative flex flex-col w-full h-[calc(100dvh-6rem)] border rounded-xl overflow-hidden isolation-isolate bg-background',
+		className
+	)}
 >
-	<Resizable.PaneGroup direction="horizontal">
+	<Resizable.PaneGroup direction="horizontal" class="flex-1 min-h-0">
 		<AppSidebar {uploadFormSnippet} />
 
 		<Resizable.Handle />
@@ -37,4 +90,12 @@
 
 		<PreviewPanel />
 	</Resizable.PaneGroup>
+
+	{#if footerSnippet}
+		<div
+			class="shrink-0 border-t border-border bg-card px-4 py-3 flex items-center justify-between gap-4"
+		>
+			{@render footerSnippet()}
+		</div>
+	{/if}
 </div>

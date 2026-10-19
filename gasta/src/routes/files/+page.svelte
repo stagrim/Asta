@@ -1,5 +1,4 @@
-<script lang="ts">
-	import { toast } from 'svelte-sonner';
+<script lang="ts" module>
 	import {
 		createFolder,
 		getFiles,
@@ -12,7 +11,11 @@
 	import FileManager from '#lib/components/file-manager/FileManager.svelte';
 	import type { FormContext } from '#lib/components/file-manager/AppSiderbar.svelte';
 
-	const backendProvider: FileManagerAPI = {
+	import { toast } from 'svelte-sonner';
+
+	const { directory, files } = uploadFile.fields;
+
+	export const backendProvider: FileManagerAPI = {
 		getFileTree: () => getFiles(),
 		createFile: async () => false,
 		createFolder: (directory) => createFolder({ directory, files: [] }),
@@ -21,8 +24,7 @@
 		renameItem: (id_from, id_to) => renameItem({ ids_from: [id_from], ids_to: [id_to] }),
 		moveItems: (ids_from, id_to) => moveItem({ ids_from, id_to })
 	};
-
-	const { directory, files } = uploadFile.fields;
+	export { fileUploadSnippet };
 </script>
 
 {#snippet fileUploadSnippet({

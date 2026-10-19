@@ -3,7 +3,7 @@
 		const authorized_extensions = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'];
 		// TODO: break out into a function
 		const ext = file.name.split('.').at(-1)!;
-		return authorized_extensions.includes(ext) ? `/files/${file.id}` : false;
+		return authorized_extensions.includes(ext) ? `/files${file.id}` : false;
 	}
 </script>
 
@@ -27,6 +27,7 @@
 	import { Input } from '../ui/input';
 	import * as TreeView from '../tree-view';
 	import * as InputGroup from '../ui/input-group';
+	import { fileExtensionType } from './utils';
 
 	// svelte-ignore non_reactive_update
 	let pane: ReturnType<typeof Resizable.Pane>;
@@ -106,7 +107,10 @@
 								{#if previewURL}
 									<img class="rounded-lg" src={previewURL} alt="" />
 								{:else}
-									<FileIcon extension={selectedItem.name.split('.').at(-1)} size="lg" />
+									<FileIcon
+										fileType={fileExtensionType(selectedItem.name.split('.').at(-1))}
+										size="lg"
+									/>
 								{/if}
 							{/if}
 						</div>

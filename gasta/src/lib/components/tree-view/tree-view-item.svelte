@@ -4,6 +4,7 @@
 	import type { HTMLAttributes } from 'svelte/elements';
 	import FileIcon from '../file-manager/FileIcon.svelte';
 	import type { TreeFile } from '#lib/server/sasta_client/index.ts';
+	import { fileExtensionType } from '../file-manager/utils';
 
 	type Props = HTMLAttributes<HTMLButtonElement> & {
 		value: string; // Unique ID for selection
@@ -28,7 +29,7 @@
 	)}
 	{...props}
 >
-	<FileIcon extension={value.split('.').at(-1)} size="sm" />
+	<FileIcon fileType={fileExtensionType(value.split('.').at(-1))} size="sm" />
 	{#if children}
 		{@render children()}
 	{:else}

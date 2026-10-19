@@ -2,7 +2,14 @@ import { setContext, getContext } from 'svelte';
 import { IsMobile } from '#lib/hooks/is-mobile.svelte.js';
 import { SvelteSet } from 'svelte/reactivity';
 import type { TreeDirectory, TreeFile } from '#lib/server/sasta_client/index.ts';
-import { CurrentPathType, FileManagerSearchParams, type FileManagerAPI } from './types';
+import {
+	CurrentPathType,
+	FileManagerSearchParams,
+	fileTypeFilters,
+	type FileManagerAPI,
+	type ValidFileTypeFilters
+} from './types';
+import { fileExtensionType } from './utils';
 import { goto } from '$app/navigation';
 import { page } from '$app/state';
 import * as v from 'valibot';
@@ -30,24 +37,16 @@ export class FileManager {
 		}
 	}
 
-	#params = $derived(
-		v.parse(FileManagerSearchParams, Object.fromEntries(page.url.searchParams))
-	);
+	#params = $derived(v.parse(FileManagerSearchParams, Object.fromEntries(page.url.searchParams)));
 
-	#setParams(
-		updates: Partial<v.InferOutput<typeof FileManagerSearchParams>>,
-		replace = false
-	) {
+	#setParams(updates: Partial<v.InferOutput<typeof FileManagerSearchParams>>, replace = false) {
 		const next = v.parse(FileManagerSearchParams, { ...this.#params, ...updates });
 		this.#params = next;
 
 		const defaults = v.getDefaults(FileManagerSearchParams);
 		const searchParams = new URLSearchParams(page.url.searchParams.toString());
 
-		for (const [key, value] of Object.entries(next) as [
-			keyof typeof defaults,
-			string
-		][]) {
+		for (const [key, value] of Object.entries(next) as [keyof typeof defaults, string][]) {
 			if (!value || value === defaults[key]) {
 				searchParams.delete(key);
 			} else {
@@ -227,6 +226,9 @@ export class FileManager {
 	}
 
 	async moveItems(ids: (TreeFile | TreeDirectory)[], newDirectory: string): Promise<string> {
+		if (!ids.length) {
+			return '';
+		}
 		try {
 			await this.#api.moveItems(
 				ids.map((i) => i.id),
@@ -240,14 +242,27 @@ export class FileManager {
 		return '';
 	}
 
-	constructor(api: FileManagerAPI, initialRoot: TreeDirectory) {
+	filterFileType = $state<ValidFileTypeFilters>('all');
+
+	matchesFilter(file: TreeFile): boolean {
+		const filterDef = fileTypeFilters.find((f) => f.value === this.filterFileType);
+		if (!filterDef?.type) return true;
+		return fileExtensionType(file.name.split('.').at(-1)) === filterDef.type;
+	}
+
+	constructor(
+		api: FileManagerAPI,
+		initialRoot: TreeDirectory,
+		initialFilterFileType: ValidFileTypeFilters = 'all'
+	) {
 		this.#api = api;
 		this.#root = $state<TreeDirectory>(initialRoot);
+		this.filterFileType = initialFilterFileType;
 	}
 
 	/** Get the files in the currently active Directory */
 	get currentFiles() {
-		return this.currentDirectory?.files ?? [];
+		return (this.currentDirectory?.files ?? []).filter((f) => this.matchesFilter(f));
 	}
 
 	/** Get the direct subdirectories of the currently active Directory */
@@ -347,8 +362,12 @@ export class FileManager {
  * @param root The root TreeDirectory node of the file system
  * @returns  The `FileManager` instance.
  */
-export function createFileManager(api: FileManagerAPI, root: TreeDirectory): FileManager {
-	return setContext(FM_KEY, new FileManager(api, root));
+export function createFileManager(
+	api: FileManagerAPI,
+	root: TreeDirectory,
+	initialFilterFileType: ValidFileTypeFilters = 'all'
+): FileManager {
+	return setContext(FM_KEY, new FileManager(api, root, initialFilterFileType));
 }
 
 /**

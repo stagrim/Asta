@@ -38,3 +38,11 @@ export enum FileTypes {
 	Archive = 'archive',
 	Unknown = 'unknown'
 }
+
+export type ValidFileTypeFilters = 'all' | 'image' | 'pdf';
+
+export const fileTypeFilters: { value: ValidFileTypeFilters; label: string; type?: FileTypes }[] = [
+	{ value: 'all', label: 'All files' },
+	{ value: 'image', label: 'Images', type: FileTypes.Image },
+	{ value: 'pdf', label: 'PDFs', type: FileTypes.PDF }
+];

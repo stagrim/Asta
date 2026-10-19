@@ -13,10 +13,10 @@
 	import { fileExtensionType } from './utils';
 
 	let {
-		extension,
+		fileType = FileTypes.Unknown,
 		size = 'md'
 	}: {
-		extension?: string;
+		fileType?: FileTypes;
 		size?: 'sm' | 'md' | 'lg' | 'xl';
 	} = $props();
 
@@ -52,7 +52,7 @@
 		[FileTypes.Unknown]: [FileArchive, 'text-gray-500']
 	};
 
-	const [IconComponent, colorClass] = $derived(icons[fileExtensionType(extension)]);
+	const [IconComponent, colorClass] = $derived(icons[fileType]);
 	const sizeClass = $derived(sizeClasses[size]);
 </script>
 

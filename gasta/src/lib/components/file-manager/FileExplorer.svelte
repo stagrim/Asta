@@ -15,6 +15,7 @@
 	import { PressedKeys, watch } from 'runed';
 	import type { TreeDirectory, TreeFile } from '#lib/server/sasta_client/index.ts';
 	import { CurrentPathType } from './types';
+	import { fileExtensionType } from './utils';
 
 	const fm = useFileManager();
 
@@ -38,7 +39,9 @@
 			const files: TreeFile[] = [];
 			function treeToArray(item: TreeDirectory) {
 				item.directories.forEach((i) => treeToArray(i));
-				item.files.forEach((i) => files.push(i));
+				item.files.forEach((i) => {
+					if (fm.matchesFilter(i)) files.push(i);
+				});
 			}
 			treeToArray(fm.root);
 			return files.toSorted((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -50,7 +53,9 @@
 					items.push(i);
 					treeToArray(i);
 				});
-				item.files.forEach((i) => items.push(i));
+				item.files.forEach((i) => {
+					if (fm.matchesFilter(i)) items.push(i);
+				});
 			}
 			treeToArray(fm.root);
 			return items.filter((f) => f.name.toLowerCase().includes(search));
@@ -104,7 +109,7 @@
 			const active = document.activeElement;
 			const isTyping = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement;
 
-			const isDialogOpen = document.querySelector('[role="alertdialog"]') !== null;
+			const isDialogOpen = document.querySelector('[data-slot="alert-dialog-content"]') !== null;
 
 			if (isTyping || isDialogOpen) {
 				return;
@@ -321,7 +326,7 @@
 									}
 								}}
 							>
-								<FileIcon extension={item.name.split('.').at(-1)} size="lg" />
+								<FileIcon fileType={fileExtensionType(item.name.split('.').at(-1))} size="lg" />
 								<span class="mt-2 text-sm text-foreground text-center break-all w-full">
 									{item.name}
 								</span>
@@ -386,7 +391,10 @@
 									>
 										<td class="px-4 py-3">
 											<div class="flex items-center gap-3">
-												<FileIcon extension={item.name.split('.').at(-1)} size="sm" />
+												<FileIcon
+													fileType={fileExtensionType(item.name.split('.').at(-1))}
+													size="sm"
+												/>
 												<span class="text-sm text-foreground">{item.name}</span>
 											</div>
 										</td>
