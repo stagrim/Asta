@@ -1,28 +1,36 @@
 <script lang="ts">
 	import type { PageData } from './$types';
-	import TypePicker from '$lib/TypePicker.svelte';
-	import UpdateForm from '$lib/UpdateForm.svelte';
+	import TypePicker from '#lib/TypePicker.svelte';
+	import UpdateForm from '#lib/UpdateForm.svelte';
 	import CronField from './CronField.svelte';
 	import { onMount } from 'svelte';
 	import DndTable, {
 		renderSnippet,
 		type ColumnDef
-	} from '$lib/components/ui/dnd-table/DndTable.svelte';
-	import { Label } from '$lib/components/ui/label';
-	import { Input } from '$lib/components/ui/input';
-	import { Button } from '$lib/components/ui/button';
+	} from '#lib/components/ui/dnd-table/DndTable.svelte';
+	import { Label } from '#lib/components/ui/label/index.js';
+	import { Input } from '#lib/components/ui/input/index.js';
+	import { Button, buttonVariants } from '#lib/components/ui/button/index.js';
 	import { EllipsisVertical, ListVideo, PlusIcon, Server } from '@lucide/svelte';
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.js';
+	import * as AlertDialog from '#lib/components/ui/alert-dialog/index.js';
 	import { watch } from 'runed';
-	import cron from 'cron-validate';
-	import { Badge } from '$lib/components/ui/badge';
-	import { cn } from '$lib/utils';
-	import type { Schedule, ScheduledPlaylistInput } from '$lib/server/sasta_client';
-	import { Skeleton } from '$lib/components/ui/skeleton';
+	import cronValidate from 'cron-validate';
+	const cron = typeof cronValidate === 'function' ? cronValidate : (cronValidate as any).default;
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import { cn } from '#lib/utils.js';
+	import type {
+		ReadSchedule,
+		ScheduledPlaylistInput,
+		ScheduleInfo
+	} from '#lib/server/sasta_client/index.ts';
+	import { Skeleton } from '#lib/components/ui/skeleton/index.js';
+	import { updateSchedule, deleteSchedule, scheduleInfo } from '../schedules.remote';
+	import { toast } from 'svelte-sonner';
 
 	let { data }: { data: PageData } = $props();
 
-	let schedule: Schedule | undefined = $state(undefined);
+	let schedule: ReadSchedule | undefined = $state(undefined);
 
 	const add_item = () => {
 		if (schedule) {
@@ -36,8 +44,8 @@
 	let update_enabled = $derived.by(() => {
 		if (schedule?.scheduled) {
 			return schedule.scheduled
-				.flatMap((s) => [s.start, s.end])
-				.every((c) =>
+				.flatMap((s: any) => [s.start, s.end])
+				.every((c: any) =>
 					cron(c.trim(), {
 						override: {
 							useSeconds: true,
@@ -47,15 +55,16 @@
 					}).isValid()
 				);
 		}
-		return false;
+		return true;
 	});
-	let schedule_info = $state(data.schedule_info);
+
+	let schedule_info = $state<Promise<ScheduleInfo | undefined>>();
 
 	let timeout_handle: {
 		readonly promise: Promise<unknown>;
 		cancel(): void;
 	};
-	const clear_timeout = () => (timeout_handle ? timeout_handle.cancel() : null);
+	const clear_timeout = () => (timeout_handle ? timeout_handle.cancel() : undefined);
 	// Clear current timeout if server load function has changed schedule_info on navigation
 	watch(
 		() => data.uuid,
@@ -92,13 +101,24 @@
 		};
 	};
 
-	const updateLoop = async () => {
+	const updateLoop = async (isCancelled: () => boolean) => {
 		const MAX_TIMEOUT = 2147483647;
 
-		while (true) {
-			let sleep: number = ((await schedule_info).next?.in_ms as any as number) ?? 99999999;
+		while (!isCancelled()) {
+			let sleep: number = 0;
+
+			const awaited_schedule_info = await schedule_info;
+			if (isCancelled()) break;
+			if (schedule_info && awaited_schedule_info) {
+				sleep = Math.max(
+					0,
+					new Date(awaited_schedule_info.next?.moment ?? '2038-01-19T03:14:07Z').valueOf() -
+						new Date().valueOf()
+				);
+			}
+
 			if (sleep > MAX_TIMEOUT) {
-				// console.warn(`Sleep duration ${sleep}ms exceeds max. Capping at ${MAX_TIMEOUT}ms.`);
+				console.warn(`Sleep duration ${sleep}ms exceeds max. Capping at ${MAX_TIMEOUT}ms.`);
 				sleep = MAX_TIMEOUT;
 			}
 
@@ -107,8 +127,10 @@
 				await timeout_handle.promise;
 			} catch {}
 
+			if (isCancelled()) break;
+
 			try {
-				schedule_info = fetch(`/schedule/${data.uuid}`).then((response) => response.json());
+				schedule_info = scheduleInfo({ uuid: data.uuid });
 			} catch (e) {
 				console.error(e);
 			}
@@ -116,7 +138,12 @@
 	};
 
 	onMount(() => {
-		updateLoop();
+		let cancelled = false;
+		updateLoop(() => cancelled);
+		return () => {
+			cancelled = true;
+			clear_timeout();
+		};
 	});
 
 	let columns: ColumnDef<ScheduledPlaylistInput & { id: string }>[] = [
@@ -150,6 +177,7 @@
 		}
 	];
 
+	// TODO: fix this
 	let bind_update_enabled = $state(false);
 </script>
 
@@ -160,7 +188,7 @@
 		<Badge
 			class={[
 				'rounded-md h-5 w-5 align-middle transition-colors',
-				!bind_update_enabled && schedule_info.current === item.playlist && 'bg-primary',
+				!bind_update_enabled && schedule_info?.current === item.playlist && 'bg-primary',
 				!bind_update_enabled && schedule_info?.next?.playlist === item.playlist && 'bg-primary/20'
 			]}
 			variant="outline"
@@ -212,31 +240,46 @@
 {/snippet}
 
 <UpdateForm
-	bind:type={data.schedule}
+	type={data.schedule}
 	dependant_state={{ schedules: data.schedule, displays: data.display }}
-	bind:uuid={data.uuid}
+	uuid={data.uuid}
 	bind:item={schedule}
-	bind:update_enabled
-	bind:bind_update_enabled
+	{update_enabled}
+	onsubmit={async (item) => {
+		try {
+			await updateSchedule({
+				uuid: item.uuid,
+				name: item.name,
+				playlist: item.playlist,
+				scheduled: item.scheduled
+			});
+			toast.success('Schedule Updated');
+		} catch (error: any) {
+			console.error(error);
+			toast.error(error.body?.message || 'Failed to update schedule');
+		}
+	}}
+	ondelete={async (item) => {
+		try {
+			await deleteSchedule({ uuid: item.uuid });
+			toast.success('Schedule Deleted');
+		} catch (e: any) {
+			console.error(e);
+			toast.error(e.body?.message || 'Failed to delete schedule');
+		}
+	}}
 >
-	{#if schedule}
+	{#snippet children(schedule)}
 		<div class="grid gap-2 mb-5">
 			<Label>Name</Label>
-			<Input
-				required
-				name="name"
-				class="input"
-				type="text"
-				placeholder="Name must be unique"
-				bind:value={schedule.name}
-			/>
+			<Input bind:value={schedule.name} required class="input" placeholder="Name must be unique" />
 		</div>
 
 		<div class="flex items-center justify-between w-full my-5">
 			<h3>Scheduled Playlists</h3>
 
 			<div class="flex justify-end items-center w-1/2">
-				<Button variant="outline" size="sm" onclick={add_item}>
+				<Button variant="outline" size="sm" type="button" onclick={add_item}>
 					<PlusIcon />
 					<span class="hidden lg:inline">Add Scheduled Playlist</span>
 				</Button>
@@ -246,11 +289,9 @@
 		<!-- TODO: If type hacking continues, then make a union type globally. Otherwise fix server side -->
 		<DndTable
 			bind:data={
-				() => (schedule?.scheduled ?? []) as any,
+				() => schedule.scheduled ?? [],
 				(v) => {
-					if (schedule) {
-						schedule.scheduled = v;
-					}
+					schedule.scheduled = v;
 				}
 			}
 			{columns}
@@ -259,38 +300,34 @@
 			{#snippet preRows()}
 				{@const baseClasses =
 					'hover:[&,&>svelte-css-wrapper]:[&>th,td]:bg-muted/20 data-[state=selected]:bg-muted bg-background/20 border-b transition-colors'}
-				{#if schedule}
-					<tr class={cn(baseClasses)}>
-						<td class={cn(baseClasses, 'px-5')}> </td>
+				<tr class={cn(baseClasses)}>
+					<td class={cn(baseClasses, 'px-5')}> </td>
 
-						<td class={cn(baseClasses, 'p-2')}>
-							{@render DataTableActive({ item: { id: '', playlist: schedule.playlist } })}
-						</td>
-						<td class={cn(baseClasses, 'w-1/3 p-2')}>
-							<Label class="sr-only">Playlist</Label>
-							<TypePicker
-								label={false}
-								types={data.playlist}
-								name="playlist"
-								bind:chosen_type={schedule.playlist}
-							/>
-						</td>
-						<td class={cn(baseClasses, 'italic p-2 text-foreground/60')}> Fallback </td>
-						<td class={cn(baseClasses, 'italic p-2 text-foreground/60')} colspan="20">
-							Fallback
-						</td>
-					</tr>
-				{/if}
+					<td class={cn(baseClasses, 'p-2')}>
+						{@render DataTableActive({ item: { id: '', playlist: schedule.playlist } })}
+					</td>
+					<td class={cn(baseClasses, 'w-1/3 p-2')}>
+						<Label class="sr-only">Playlist</Label>
+						<TypePicker
+							label={false}
+							types={data.playlist}
+							name="playlist"
+							bind:chosen_type={schedule.playlist}
+						/>
+					</td>
+					<td class={cn(baseClasses, 'italic p-2 text-foreground/60')}> Fallback </td>
+					<td class={cn(baseClasses, 'italic p-2 text-foreground/60')} colspan="20"> Fallback </td>
+				</tr>
 			{/snippet}
 		</DndTable>
 
-		<div class="mt-4">
+		<div class="mt-4 h-5">
 			{#await schedule_info}
-				<Skeleton class="h-4 w-[250px]" />
+				<Skeleton class="h-4 w-62.5" />
 			{:then schedule_info}
-				{#if schedule_info.next}
+				{#if schedule_info?.next}
 					{@const next_playlist = data.playlist.content.get(schedule_info.next.playlist)}
-					{@const change_date = new Date(Date.now() + (schedule_info.next.in_ms as any as number))}
+					{@const change_date = new Date(schedule_info.next.moment)}
 					{#if next_playlist}
 						Will change to
 						<a href={`/playlist/${next_playlist.uuid}`}>
@@ -308,5 +345,5 @@
 				{/if}
 			{/await}
 		</div>
-	{/if}
+	{/snippet}
 </UpdateForm>

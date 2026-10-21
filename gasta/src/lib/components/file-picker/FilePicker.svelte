@@ -1,168 +1,91 @@
 <script lang="ts">
-	import type { TreeDirectory, TreeFile } from '$lib/server/sasta_client';
+	import type { TreeDirectory, TreeFile } from '#lib/server/sasta_client/index.ts';
+	import { AlertDialog as AlertDialogPrimitive } from 'bits-ui';
 	import * as AlertDialog from '../ui/alert-dialog';
-	import * as TreeView from '../tree-view';
-	import { previews } from '../file-manager/PreviewPanel.svelte';
-	import FileIcon from '../file-manager/FileIcon.svelte';
-	import { ScrollArea } from '../ui/scroll-area';
 	import type { Snippet } from 'svelte';
-	import { Label } from '../ui/label';
-	import * as InputGroup from '../ui/input-group';
-	import { Funnel } from '@lucide/svelte';
-	import * as Select from '../ui/select';
-	import { FileTypes } from '../file-manager/types';
-	import { fileExtensionType } from '../file-manager/utils';
+	import { type FileManagerAPI, type ValidFileTypeFilters } from '../file-manager/types';
+	import FileManager from '../file-manager/FileManager.svelte';
+	import type { FormContext } from '../file-manager/AppSiderbar.svelte';
+
+	export type { ValidFileTypeFilters };
 
 	let {
-		root: originalRoot,
+		api,
 		onSelected,
-		defaultFilterFileType = $bindable('all'),
+		defaultFilterFileType = $bindable<ValidFileTypeFilters>('all'),
+		uploadFormSnippet,
 		children
 	}: {
-		root: TreeDirectory;
+		api: FileManagerAPI;
 		onSelected: (selected: TreeFile) => void;
 		defaultFilterFileType?: ValidFileTypeFilters;
+		uploadFormSnippet?: Snippet<[FormContext]>;
 		children: Snippet;
 	} = $props();
 
-	let searchQuery = $state('');
-	let root = $derived.by(() => {
-		let root = structuredClone(originalRoot);
-		const search = searchQuery.trim().toLowerCase();
-		const filterFileType = selectedFileType?.type;
-
-		if (!search && !filterFileType) {
-			return root;
-		}
-
-		/** Filters away files not matching searchQuery, and all folders not having a nested, matching file */
-		function recursiveFilterInPlace(item: TreeDirectory, searchQuery: string): boolean {
-			item.directories = item.directories.filter((i) => recursiveFilterInPlace(i, searchQuery));
-			item.files = item.files.filter(
-				(i) =>
-					i.name.toLowerCase().includes(searchQuery) &&
-					(filterFileType ? fileExtensionType(i.name.split('.').at(-1)) === filterFileType : true)
-			);
-
-			return search ? item.directories.length > 0 || item.files.length > 0 : true;
-		}
-
-		recursiveFilterInPlace(root, search);
-		return root;
-	});
-
-	let selectedId = $state('');
+	let selectedItems = $state<(TreeFile | TreeDirectory)[]>([]);
 	let selectedFile = $state<TreeFile | undefined>();
-
 	let open = $state(false);
-
-	export type ValidFileTypeFilters = 'all' | 'image' | 'pdf';
-	const fileTypes: { value: ValidFileTypeFilters; label: string; type?: FileTypes }[] = [
-		{ value: 'all', label: 'All files' },
-		{ value: 'image', label: 'Images', type: FileTypes.Image },
-		{ value: 'pdf', label: 'PDFs', type: FileTypes.PDF }
-	];
 	let selectedFileTypeValue: ValidFileTypeFilters = $state(defaultFilterFileType);
-	let selectedFileType = $derived(fileTypes.find((i) => i.value === selectedFileTypeValue));
 </script>
 
 <AlertDialog.Root
 	bind:open
 	onOpenChange={(state) => {
 		if (state) {
-			selectedId = '';
+			selectedItems = [];
 			selectedFile = undefined;
+			selectedFileTypeValue = defaultFilterFileType;
 		}
 	}}
 >
 	<AlertDialog.Trigger type="button">{@render children()}</AlertDialog.Trigger>
 
-	<AlertDialog.Content class="w-11/12 max-w-[90vw] h-[90vh] flex flex-col sm:max-w-full">
-		<AlertDialog.Header class="shrink-0 pb-4">
-			<AlertDialog.Title>Choose a file</AlertDialog.Title>
-		</AlertDialog.Header>
-
-		<div class="relative py-1 flex-row flex gap-2">
-			<Label for="search" class="sr-only">Search</Label>
-			<InputGroup.Root>
-				<InputGroup.Input type="search" placeholder="Filter..." bind:value={searchQuery} />
-				<InputGroup.Addon>
-					<Funnel />
-				</InputGroup.Addon>
-			</InputGroup.Root>
-			<Select.Root required={true} bind:value={selectedFileTypeValue} type="single">
-				<Select.Trigger class="w-45">
-					{selectedFileType?.label}
-				</Select.Trigger>
-				<Select.Content>
-					{#each fileTypes as type (type.value)}
-						<Select.Item value={type.value}>{type.label}</Select.Item>
-					{/each}
-				</Select.Content>
-			</Select.Root>
-		</div>
-
-		<div class="flex-1 min-h-0 overflow-hidden">
-			<div class="flex h-full gap-4 flex-col lg:flex-row">
-				<ScrollArea class="min-h-0 pr-2 flex-1">
-					{#if !root.directories.length && !root.files.length}
-						<p class="p-4 text-muted-foreground">No files found.</p>
-					{/if}
-					<TreeView.Root bind:selectedId bind:complementryData={selectedFile}>
-						{#each root.directories ?? [] as child}
-							{@render recursiveNode(child)}
-						{/each}
-						{#each root.files ?? [] as child}
-							<TreeView.Item label={child.name} value={child.id} complementryData={child} />
-						{/each}
-					</TreeView.Root>
-				</ScrollArea>
-
-				<div class="min-h-0 flex justify-center items-center max-h-full lg:w-1/4 max-lg:max-h-1/4">
-					{#if selectedFile}
-						{@const previewURL = previews(selectedFile)}
-						{#if previewURL}
-							<img class="rounded-lg object-contain h-full" src={previewURL} alt="" />
-						{:else}
-							<FileIcon extension={selectedFile.name.split('.').at(-1)} size="xl" />
-						{/if}
-					{:else}
-						<p class="text-muted-foreground mt-10 wrap-break-word text-center">
-							Select a file to preview
-						</p>
-					{/if}
-				</div>
-			</div>
-		</div>
-
-		<AlertDialog.Footer class="shrink-0 pb-4">
-			<AlertDialog.Cancel>Close</AlertDialog.Cancel>
-			<AlertDialog.Action
-				disabled={!selectedFile}
-				onclick={() => {
-					if (selectedFile) {
-						open = false;
-						onSelected(selectedFile);
-					}
-				}}
+	<AlertDialog.Portal>
+		<AlertDialog.Overlay />
+		<AlertDialogPrimitive.Content
+			data-slot="file-picker-content"
+			class="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed left-[50%] top-[50%] z-50 w-11/12 max-w-[90vw] h-[90vh] translate-x-[-50%] translate-y-[-50%] duration-200 outline-none"
+		>
+			<FileManager
+				class="h-full shadow-lg"
+				{api}
+				fileTree={await api.getFileTree()}
+				{uploadFormSnippet}
+				bind:selectedItems
+				bind:selectedFile
+				bind:filterFileType={selectedFileTypeValue}
+				title="File Picker"
 			>
-				Select
-			</AlertDialog.Action>
-		</AlertDialog.Footer>
-	</AlertDialog.Content>
+				{#snippet footerSnippet()}
+					<p class="text-sm text-muted-foreground truncate">
+						{#if selectedItems.length > 1}
+							{selectedItems.length} items selected — select a single file to continue
+						{:else if selectedItems.length === 1 && !selectedFile}
+							Folder selected — select a single file to continue
+						{:else if selectedFile}
+							Selected: <span class="font-medium text-foreground">{selectedFile.name}</span>
+						{:else}
+							Select a file
+						{/if}
+					</p>
+					<div class="flex items-center gap-2 shrink-0">
+						<AlertDialog.Cancel type="button">Close</AlertDialog.Cancel>
+						<AlertDialog.Action
+							type="button"
+							disabled={!selectedFile || selectedItems.length !== 1}
+							onclick={() => {
+								if (selectedFile && selectedItems.length === 1) {
+									open = false;
+									onSelected(selectedFile);
+								}
+							}}
+						>
+							Select
+						</AlertDialog.Action>
+					</div>
+				{/snippet}
+			</FileManager>
+		</AlertDialogPrimitive.Content>
+	</AlertDialog.Portal>
 </AlertDialog.Root>
-
-{#snippet recursiveNode(node: TreeDirectory)}
-	{#if node.directories.length || node.files.length}
-		<TreeView.Folder open={searchQuery !== ''} name={node.name} id={node.id}>
-			{#each node.directories as child}
-				{@render recursiveNode(child)}
-			{/each}
-			{#each node.files as child}
-				<TreeView.Item label={child.name} value={child.id} complementryData={child} />
-			{/each}
-		</TreeView.Folder>
-	{:else}
-		<TreeView.Folder open={false} name={node.name} id={node.id} />
-	{/if}
-{/snippet}

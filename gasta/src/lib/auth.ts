@@ -1,8 +1,14 @@
 import { SvelteKitAuth, type DefaultSession } from '@auth/sveltekit';
 import Authentik, { type AuthentikProfile } from '@auth/sveltekit/providers/authentik';
 import * as dotenv from 'dotenv';
-import { env } from '$env/dynamic/private';
-import process from 'node:process';
+import {
+	AUTH_SECRET,
+	AUTH_AUTHENTIK_ISSUER,
+	AUTH_AUTHENTIK_ID,
+	AUTH_AUTHENTIK_SECRET,
+	OAUTH_GROUPS,
+	AUTH_USE_SECURE_COOKIES
+} from '$app/env/private';
 import Credentials from '@auth/sveltekit/providers/credentials';
 import type { Provider } from '@auth/sveltekit/providers';
 import { isInDevEnvironment } from './utils';
@@ -21,12 +27,12 @@ declare module '@auth/sveltekit' {
 }
 
 let providers: Provider[] = [];
-if (env.AUTH_AUTHENTIK_ISSUER) {
+if (AUTH_AUTHENTIK_ISSUER) {
 	providers.push(
 		Authentik({
-			clientId: process.env.AUTH_AUTHENTIK_ID,
-			clientSecret: process.env.AUTH_AUTHENTIK_SECRET,
-			issuer: process.env.AUTH_AUTHENTIK_ISSUER,
+			clientId: AUTH_AUTHENTIK_ID,
+			clientSecret: AUTH_AUTHENTIK_SECRET,
+			issuer: AUTH_AUTHENTIK_ISSUER,
 			profile: (profile: AuthentikProfile) => {
 				return {
 					userId: profile.preferred_username,
@@ -59,18 +65,20 @@ export const {
 	signIn,
 	signOut
 } = SvelteKitAuth({
+	get basePath() {
+		return '/auth';
+	},
+	set basePath(_) {},
 	trustHost: true,
-	secret:
-		isInDevEnvironment && !process.env.AUTH_SECRET
-			? 'dev-mock-secret-1234'
-			: process.env.AUTH_SECRET,
+	useSecureCookies: AUTH_USE_SECURE_COOKIES,
+	secret: isInDevEnvironment && !AUTH_SECRET ? 'dev-mock-secret-1234' : AUTH_SECRET,
 	providers,
 	callbacks: {
 		signIn({ profile }) {
 			console.log({ action: 'Tries to login', profile });
 
 			const userGroups = (profile?.groups as string[] | undefined) ?? [];
-			const adminGroups = (env.OAUTH_GROUPS ?? '')
+			const adminGroups = (OAUTH_GROUPS ?? '')
 				.split(',')
 				.map((i) => i.trim())
 				.filter((i) => i);

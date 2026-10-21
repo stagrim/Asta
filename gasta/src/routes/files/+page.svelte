@@ -1,5 +1,4 @@
-<script lang="ts">
-	import { toast } from 'svelte-sonner';
+<script lang="ts" module>
 	import {
 		createFolder,
 		getFiles,
@@ -8,21 +7,24 @@
 		renameItem,
 		uploadFile
 	} from './files.remote';
-	import type { FileManagerAPI } from '$lib/components/file-manager/types';
-	import FileManager from '$lib/components/file-manager/FileManager.svelte';
-	import type { FormContext } from '$lib/components/file-manager/AppSiderbar.svelte';
+	import type { FileManagerAPI } from '#lib/components/file-manager/types.ts';
+	import FileManager from '#lib/components/file-manager/FileManager.svelte';
+	import type { FormContext } from '#lib/components/file-manager/AppSiderbar.svelte';
 
-	const backendProvider: FileManagerAPI = {
+	import { toast } from 'svelte-sonner';
+
+	const { directory, files } = uploadFile.fields;
+
+	export const backendProvider: FileManagerAPI = {
 		getFileTree: () => getFiles(),
 		createFile: async () => false,
 		createFolder: (directory) => createFolder({ directory, files: [] }),
 		// TODO: Confirm deletion and show playlists using this file
-		deleteFile: (ids) => removeFile({ body: { ids } }),
-		renameItem: (id_from, id_to) => renameItem({ body: { ids_from: [id_from], ids_to: [id_to] } }),
+		deleteFile: (ids) => removeFile({ ids }),
+		renameItem: (id_from, id_to) => renameItem({ ids_from: [id_from], ids_to: [id_to] }),
 		moveItems: (ids_from, id_to) => moveItem({ ids_from, id_to })
 	};
-
-	const { directory, files } = uploadFile.fields;
+	export { fileUploadSnippet };
 </script>
 
 {#snippet fileUploadSnippet({

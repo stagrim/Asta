@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Folder, FolderOpen, House } from '@lucide/svelte';
-	import { cn } from '$lib/utils';
+	import { cn } from '#lib/utils.js';
 	import { getTreeContext } from './ctx.svelte';
 	import * as Collapsible from '../ui/collapsible';
 	import { buttonVariants } from '../ui/button';

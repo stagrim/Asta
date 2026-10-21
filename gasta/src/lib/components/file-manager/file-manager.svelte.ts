@@ -1,10 +1,19 @@
 import { setContext, getContext } from 'svelte';
-import { IsMobile } from '$lib/hooks/is-mobile.svelte';
+import { IsMobile } from '#lib/hooks/is-mobile.svelte.js';
 import { SvelteSet } from 'svelte/reactivity';
-import type { TreeDirectory, TreeFile } from '$lib/server/sasta_client';
-import { CurrentPathType, FileManagerSearchParams, type FileManagerAPI } from './types';
-import { useSearchParams } from 'runed/kit';
-import { pushState } from '$app/navigation';
+import type { TreeDirectory, TreeFile } from '#lib/server/sasta_client/index.ts';
+import {
+	CurrentPathType,
+	FileManagerSearchParams,
+	fileTypeFilters,
+	type FileManagerAPI,
+	type FileTypeFilterObject,
+	type ValidFileTypeFilters
+} from './types';
+import { fileExtensionType } from './utils';
+import { goto } from '$app/navigation';
+import { page } from '$app/state';
+import * as v from 'valibot';
 
 const FM_KEY = Symbol('FILE_MANAGER');
 
@@ -21,7 +30,7 @@ export class FileManager {
 
 			if (this.currentPath.type === CurrentPathType.Path) {
 				if (!this.#traverseTree(this.currentPath.path)) {
-					this.#params.path = '/';
+					this.#setParams({ path: '/' }, true);
 				}
 			}
 		} catch (e) {
@@ -29,7 +38,26 @@ export class FileManager {
 		}
 	}
 
-	#params = useSearchParams(FileManagerSearchParams, { pushHistory: false });
+	#params = $derived(v.parse(FileManagerSearchParams, Object.fromEntries(page.url.searchParams)));
+
+	#setParams(updates: Partial<v.InferOutput<typeof FileManagerSearchParams>>, replace = false) {
+		const next = v.parse(FileManagerSearchParams, { ...this.#params, ...updates });
+		this.#params = next;
+
+		const defaults = v.getDefaults(FileManagerSearchParams);
+		const searchParams = new URLSearchParams(page.url.searchParams.toString());
+
+		for (const [key, value] of Object.entries(next) as [keyof typeof defaults, string][]) {
+			if (!value || value === defaults[key]) {
+				searchParams.delete(key);
+			} else {
+				searchParams.set(key, value);
+			}
+		}
+
+		const query = searchParams.toString();
+		goto(query ? `?${query}` : '?', { replace, reset: false });
+	}
 
 	/** Computed property: Always reflects the current URL parameters */
 	get currentPath():
@@ -199,6 +227,9 @@ export class FileManager {
 	}
 
 	async moveItems(ids: (TreeFile | TreeDirectory)[], newDirectory: string): Promise<string> {
+		if (!ids.length) {
+			return '';
+		}
 		try {
 			await this.#api.moveItems(
 				ids.map((i) => i.id),
@@ -212,14 +243,46 @@ export class FileManager {
 		return '';
 	}
 
-	constructor(api: FileManagerAPI, initialRoot: TreeDirectory) {
-		this.#api = api;
-		this.#root = $state<TreeDirectory>(initialRoot);
+	#filterFileTypeObject = $state<FileTypeFilterObject>(fileTypeFilters[0]);
+	get filterFileTypeObject() {
+		return this.#filterFileTypeObject;
+	}
+	get filterFileType() {
+		return this.#filterFileTypeObject.value;
+	}
+	set filterFileType(filter: ValidFileTypeFilters) {
+		this.#filterFileTypeObject =
+			fileTypeFilters.find((f) => f.value === filter) ?? fileTypeFilters[0];
 	}
 
-	/** Get the files in the currently active Directory */
+	/** Check if a file matches the current file type filter */
+	matchesFilter(file: TreeFile): boolean {
+		if (!this.#filterFileTypeObject.type) return true;
+		return fileExtensionType(file.name.split('.').at(-1)) === this.#filterFileTypeObject.type;
+	}
+
+	constructor(
+		api: FileManagerAPI,
+		initialRoot: TreeDirectory,
+		title: string,
+		initialFilterFileType: ValidFileTypeFilters = 'all'
+	) {
+		this.#api = api;
+		this.#root = $state<TreeDirectory>(initialRoot);
+		this.filterFileType = initialFilterFileType;
+		this.title = title;
+	}
+
+	title: string;
+
+	/** Get the files matching the current file type filter in the currently active Directory */
 	get currentFiles() {
-		return this.currentDirectory?.files ?? [];
+		return this.filesInDirectory(this.currentDirectory);
+	}
+
+	/** Get the files matching the current file type filter in a given directory */
+	filesInDirectory(directory: TreeDirectory) {
+		return (directory.files ?? []).filter((f) => this.matchesFilter(f));
 	}
 
 	/** Get the direct subdirectories of the currently active Directory */
@@ -242,35 +305,34 @@ export class FileManager {
 		}
 
 		this.clearSelection();
-		this.#params.type = CurrentPathType.Path;
-		this.#params.path = targetPath;
-		this.#params.search = '';
-		this.pushCurrentHistoryState();
+		this.#setParams({
+			type: CurrentPathType.Path,
+			path: targetPath,
+			search: ''
+		});
 	}
 
 	navigateRecent() {
 		this.clearSelection();
-		this.#params.type = CurrentPathType.Recent;
-		this.#params.path = '/';
-		this.#params.search = '';
-		this.pushCurrentHistoryState();
+		this.#setParams({
+			type: CurrentPathType.Recent,
+			path: '/',
+			search: ''
+		});
 	}
 
 	navigateSearch(search: string) {
 		const isAlreadySearching = this.currentPath.type === CurrentPathType.Search;
 
 		this.clearSelection();
-		this.#params.type = CurrentPathType.Search;
-		this.#params.path = '/';
-		this.#params.search = search;
-
-		if (!isAlreadySearching) {
-			this.pushCurrentHistoryState();
-		}
-	}
-
-	private pushCurrentHistoryState() {
-		pushState('', {});
+		this.#setParams(
+			{
+				type: CurrentPathType.Search,
+				path: '/',
+				search
+			},
+			isAlreadySearching
+		);
 	}
 
 	/** Get current URLSearchParam search value. Returns `''` if the `currentPath` isn't of type `Search` */
@@ -317,11 +379,17 @@ export class FileManager {
  * Instantiates a new `FileManager` instance and sets it in the context.
  *
  * @param api implementation of the `FileManagerAPI` interface for backend communication
- * @param root The root TreeDirectory node of the file system
+ * @param root the root TreeDirectory node of the file system
+ * @param initialFilterFileType initial value for file type filtering
  * @returns  The `FileManager` instance.
  */
-export function createFileManager(api: FileManagerAPI, root: TreeDirectory): FileManager {
-	return setContext(FM_KEY, new FileManager(api, root));
+export function createFileManager(
+	api: FileManagerAPI,
+	root: TreeDirectory,
+	title: string,
+	initialFilterFileType: ValidFileTypeFilters = 'all'
+): FileManager {
+	return setContext(FM_KEY, new FileManager(api, root, title, initialFilterFileType));
 }
 
 /**

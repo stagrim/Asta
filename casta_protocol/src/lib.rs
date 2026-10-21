@@ -10,6 +10,7 @@ pub enum ResponsePayload {
         #[serde(skip_serializing_if = "Option::is_none")]
         htmx_hash: Option<String>,
     },
+    // TODO: Flesh out type, and send enum value describing pending reason
     Pending(bool),
 }
 

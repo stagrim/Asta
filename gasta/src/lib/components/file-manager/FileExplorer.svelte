@@ -1,20 +1,21 @@
 <script lang="ts">
 	import FileIcon from './FileIcon.svelte';
-	import { Button } from '$lib/components/ui/button';
-	import { Separator } from '$lib/components/ui/separator';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { Separator } from '#lib/components/ui/separator/index.js';
 	import LayoutGridIcon from '@lucide/svelte/icons/layout-grid';
 	import ListIcon from '@lucide/svelte/icons/list';
 	import PanelRightIcon from '@lucide/svelte/icons/panel-right';
 	import FolderIcon from '@lucide/svelte/icons/folder';
-	import { Folder, FolderTree, History, House, Search, SearchIcon } from '@lucide/svelte';
+	import { Folder, FolderTree, RotateCwClock, House, Search, SearchIcon } from '@lucide/svelte';
 	import { filesize } from 'filesize';
-	import { cn } from '$lib/utils';
-	import * as Breadcrumb from '$lib/components/ui/breadcrumb';
+	import { cn } from '#lib/utils.js';
+	import * as Breadcrumb from '#lib/components/ui/breadcrumb/index.js';
 	import * as ContextMenu from '../ui/context-menu';
 	import { useFileManager } from './file-manager.svelte';
 	import { PressedKeys, watch } from 'runed';
-	import type { TreeDirectory, TreeFile } from '$lib/server/sasta_client';
+	import type { TreeDirectory, TreeFile } from '#lib/server/sasta_client/index.ts';
 	import { CurrentPathType } from './types';
+	import { fileExtensionType } from './utils';
 
 	const fm = useFileManager();
 
@@ -38,7 +39,9 @@
 			const files: TreeFile[] = [];
 			function treeToArray(item: TreeDirectory) {
 				item.directories.forEach((i) => treeToArray(i));
-				item.files.forEach((i) => files.push(i));
+				item.files.forEach((i) => {
+					if (fm.matchesFilter(i)) files.push(i);
+				});
 			}
 			treeToArray(fm.root);
 			return files.toSorted((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -50,7 +53,9 @@
 					items.push(i);
 					treeToArray(i);
 				});
-				item.files.forEach((i) => items.push(i));
+				item.files.forEach((i) => {
+					if (fm.matchesFilter(i)) items.push(i);
+				});
 			}
 			treeToArray(fm.root);
 			return items.filter((f) => f.name.toLowerCase().includes(search));
@@ -104,7 +109,7 @@
 			const active = document.activeElement;
 			const isTyping = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement;
 
-			const isDialogOpen = document.querySelector('[role="alertdialog"]') !== null;
+			const isDialogOpen = document.querySelector('[data-slot="alert-dialog-content"]') !== null;
 
 			if (isTyping || isDialogOpen) {
 				return;
@@ -182,27 +187,25 @@
 				<Separator orientation="vertical" class="h-4 mx-2" />
 				<Breadcrumb.Root>
 					<Breadcrumb.List>
-						<Breadcrumb.Item>
-							{#if fm.currentPath.type === CurrentPathType.Path}
-								{#if recursivePath?.length}
-									<Breadcrumb.Link
-										class="cursor-pointer inline-flex items-center gap-1"
-										onclick={() => fm.navigate('/')}
-									>
-										<House size={18} />
-									</Breadcrumb.Link>
-									<Breadcrumb.Separator />
-								{:else}
-									<Breadcrumb.Page class="inline-flex items-center gap-1">
-										<House size={18} />
-									</Breadcrumb.Page>
-								{/if}
-							{:else if fm.currentPath.type === CurrentPathType.Search}
-								<Breadcrumb.Page><Search size={18} /></Breadcrumb.Page>
+						{#if fm.currentPath.type === CurrentPathType.Path}
+							{#if recursivePath?.length}
+								<Breadcrumb.Link
+									class="cursor-pointer inline-flex items-center gap-1"
+									onclick={() => fm.navigate('/')}
+								>
+									<House size={18} />
+								</Breadcrumb.Link>
+								<Breadcrumb.Separator />
 							{:else}
-								<Breadcrumb.Page><History size={18} /></Breadcrumb.Page>
+								<Breadcrumb.Page class="inline-flex items-center gap-1">
+									<House size={18} />
+								</Breadcrumb.Page>
 							{/if}
-						</Breadcrumb.Item>
+						{:else if fm.currentPath.type === CurrentPathType.Search}
+							<Breadcrumb.Page><Search size={18} /></Breadcrumb.Page>
+						{:else}
+							<Breadcrumb.Page><RotateCwClock size={18} /></Breadcrumb.Page>
+						{/if}
 						{#if recursivePath}
 							{#each recursivePath as dir, i}
 								<Breadcrumb.Item>
@@ -323,7 +326,7 @@
 									}
 								}}
 							>
-								<FileIcon extension={item.name.split('.').at(-1)} size="lg" />
+								<FileIcon fileType={fileExtensionType(item.name.split('.').at(-1))} size="lg" />
 								<span class="mt-2 text-sm text-foreground text-center break-all w-full">
 									{item.name}
 								</span>
@@ -388,7 +391,10 @@
 									>
 										<td class="px-4 py-3">
 											<div class="flex items-center gap-3">
-												<FileIcon extension={item.name.split('.').at(-1)} size="sm" />
+												<FileIcon
+													fileType={fileExtensionType(item.name.split('.').at(-1))}
+													size="sm"
+												/>
 												<span class="text-sm text-foreground">{item.name}</span>
 											</div>
 										</td>

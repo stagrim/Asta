@@ -1,27 +1,30 @@
 <script lang="ts">
 	import type { PageData } from './$types';
-	import UpdateForm from '$lib/UpdateForm.svelte';
-	import type { Playlist } from '$lib/api_bindings/read/Playlist';
-	import Label from '$lib/components/ui/label/label.svelte';
-	import Input from '$lib/components/ui/input/input.svelte';
-	import { Button } from '$lib/components/ui/button';
+	import UpdateForm from '#lib/UpdateForm.svelte';
+	import type { ReadPlaylist, PlaylistItem } from '#lib/server/sasta_client/index.ts';
+	import Label from '#lib/components/ui/label/label.svelte';
+	import Input from '#lib/components/ui/input/input.svelte';
+	import { Button, buttonVariants } from '#lib/components/ui/button/index.js';
 	import { PlusIcon, EllipsisVertical, Paperclip } from '@lucide/svelte';
-	import { capitalize, cn } from '$lib/utils';
-	import type { PlaylistItem } from '$lib/api_bindings/update/PlaylistItem';
-	import { Textarea } from '$lib/components/ui/textarea';
-	import * as Select from '$lib/components/ui/select';
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+	import { capitalize, cn } from '#lib/utils.js';
+	import { Textarea } from '#lib/components/ui/textarea/index.js';
+	import * as Select from '#lib/components/ui/select/index.js';
+	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.js';
+	import * as AlertDialog from '#lib/components/ui/alert-dialog/index.js';
 	import DndTable, {
 		renderSnippet,
 		type ColumnDef
-	} from '$lib/components/ui/dnd-table/DndTable.svelte';
+	} from '#lib/components/ui/dnd-table/DndTable.svelte';
 	import EditDrawer from './EditDrawer.svelte';
-	import FilePicker from '$lib/components/file-picker/FilePicker.svelte';
-	import * as InputGroup from '$lib/components/ui/input-group';
+	import FilePicker from '#lib/components/file-picker/FilePicker.svelte';
+	import * as InputGroup from '#lib/components/ui/input-group/index.js';
+	import { updatePlaylist, deletePlaylist } from '../playlists.remote';
+	import { toast } from 'svelte-sonner';
+	import { backendProvider, fileUploadSnippet } from '../../../files/+page.svelte';
 
 	let { data }: { data: PageData } = $props();
 
-	let playlist: Playlist | undefined = $state(undefined);
+	let playlist: ReadPlaylist | undefined = $state(undefined);
 
 	const add_item = () => {
 		if (!playlist) return;
@@ -30,7 +33,7 @@
 		playlist.items.push({
 			type: 'WEBSITE',
 			id,
-			settings: { duration: 60 as unknown as bigint, url: '' }
+			settings: { duration: 60, url: '' }
 		});
 	};
 
@@ -91,7 +94,8 @@
 			<InputGroup.Addon align="inline-end">
 				<FilePicker
 					onSelected={(selected) => (item.settings.url = `ASTA:/${selected.id}`)}
-					root={data.files}
+					api={backendProvider}
+					uploadFormSnippet={fileUploadSnippet}
 				>
 					<InputGroup.Button variant="secondary"><Paperclip /></InputGroup.Button>
 				</FilePicker>
@@ -103,7 +107,8 @@
 			<InputGroup.Addon align="inline-end">
 				<FilePicker
 					onSelected={(selected) => (item.settings.src = `ASTA:/${selected.id}`)}
-					root={data.files}
+					api={backendProvider}
+					uploadFormSnippet={fileUploadSnippet}
 					defaultFilterFileType="image"
 				>
 					<InputGroup.Button variant="secondary"><Paperclip /></InputGroup.Button>
@@ -116,7 +121,8 @@
 			<InputGroup.Addon align="inline-end">
 				<FilePicker
 					onSelected={(selected) => (item.settings.path = `ASTA:/${selected.id}`)}
-					root={data.files}
+					api={backendProvider}
+					uploadFormSnippet={fileUploadSnippet}
 					defaultFilterFileType="pdf"
 				>
 					<InputGroup.Button variant="secondary"><Paperclip /></InputGroup.Button>
@@ -171,7 +177,7 @@
 			<DropdownMenu.Item
 				onclick={() => {
 					if (playlist) {
-						playlist.items = playlist.items.filter((i) => i.id !== item.id);
+						playlist.items = playlist.items.filter((i: any) => i.id !== item.id);
 
 						if (editorItem?.id === item.id) {
 							editorOpen = false;
@@ -190,25 +196,40 @@
 	dependant_state={{ schedules: data.schedule, displays: data.display }}
 	uuid={data.uuid}
 	bind:item={playlist}
+	onsubmit={async (item) => {
+		try {
+			await updatePlaylist({
+				uuid: item.uuid,
+				name: item.name,
+				items: item.items
+			});
+			toast.success('Playlist Updated');
+		} catch (error: any) {
+			console.error(error);
+			toast.error(error.body?.message || 'Failed to update playlist');
+		}
+	}}
+	ondelete={async (item) => {
+		try {
+			await deletePlaylist({ uuid: item.uuid });
+			toast.success('Playlist Deleted');
+		} catch (e: any) {
+			console.error(e);
+			toast.error(e.body?.message || 'Failed to delete playlist');
+		}
+	}}
 >
-	{#if playlist}
+	{#snippet children(playlist)}
 		<div class="grid gap-2 mb-5">
 			<Label>Name</Label>
-			<Input
-				required
-				name="name"
-				class="input"
-				type="text"
-				placeholder="Name must be unique"
-				bind:value={playlist.name}
-			/>
+			<Input bind:value={playlist.name} required class="input" placeholder="Name must be unique" />
 		</div>
 
 		<div class="flex items-center justify-between w-full my-5">
 			<h3>Playlist Items</h3>
 
 			<div class="flex justify-end items-center w-1/2">
-				<Button variant="outline" size="sm" onclick={add_item}>
+				<Button variant="outline" size="sm" type="button" onclick={add_item}>
 					<PlusIcon />
 					<span class="hidden lg:inline">Add Playlist Item</span>
 				</Button>
@@ -220,5 +241,5 @@
 
 			<DndTable bind:data={playlist.items} {columns} emptyMessage={'No Playlist Items added'} />
 		{/if}
-	{/if}
+	{/snippet}
 </UpdateForm>

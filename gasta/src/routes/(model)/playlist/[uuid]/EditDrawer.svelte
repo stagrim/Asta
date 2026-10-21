@@ -1,11 +1,11 @@
 <script lang="ts">
-	import { Button } from '$lib/components/ui/button';
-	import { IsMobile } from '$lib/hooks/is-mobile.svelte.js';
-	import { Label } from '$lib/components/ui/label';
-	import { Input } from '$lib/components/ui/input';
-	import * as Drawer from '$lib/components/ui/drawer';
-	import { Textarea } from '$lib/components/ui/textarea';
-	import type { PlaylistItem } from '$lib/api_bindings/update/PlaylistItem';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { IsMobile } from '#lib/hooks/is-mobile.svelte.js';
+	import { Label } from '#lib/components/ui/label/index.js';
+	import { Input } from '#lib/components/ui/input/index.js';
+	import * as Drawer from '#lib/components/ui/drawer/index.js';
+	import { Textarea } from '#lib/components/ui/textarea/index.js';
+	import type { PlaylistItem } from '#lib/server/sasta_client/index.ts';
 
 	const isMobile = new IsMobile();
 
