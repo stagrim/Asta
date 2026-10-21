@@ -48,8 +48,10 @@
 		}
 	);
 	filterFileType = fm.filterFileType;
-	selectedItems = fm.getSelected();
 
+	$effect(() => {
+		selectedItems = fm.getSelected();
+	});
 	$effect(() => {
 		const single = fm.oneSelected();
 		selectedFile = single && 'size' in single ? single : undefined;

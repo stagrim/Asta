@@ -15,7 +15,6 @@ fn main() {
     let mut env_file = File::create("../gasta/.env").unwrap();
     writedoc! {env_file, "
         SERVER_URL=http://127.0.0.1:{sasta_port}
-        LDAP_URL=ldap://localhost
     "}
     .unwrap();
 

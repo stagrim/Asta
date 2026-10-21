@@ -2,7 +2,7 @@
 version: "3.8"
 services:
   sasta-db-dev:
-    image: redis/redis-stack-server:latest
+    image: docker.io/redis/redis-stack-server:latest
     restart: always
     # use REDIS_ARGS for redis-stack-server instead of command arguments
     environment:

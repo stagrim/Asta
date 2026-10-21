@@ -16,16 +16,17 @@ Gasta relies on several environment variables to locate the Sasta backend and co
 
 When developing locally, the `dev/` script automatically creates a `.env` file for you. For production or manual setup, create a `.env` file based on `.env.template`:
 
-| Variable                | Required | Description                                                                                                                                                            |
-| ----------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SERVER_URL`            | **Yes**  | URL pointing to the Sasta backend API. Example: `http://127.0.0.1:8080`.                                                                                               |
-| `AUTH_SECRET`           | **Yes**  | A random secret string used by Auth.js to encrypt session tokens.                                                                                                      |
-| `AUTH_AUTHENTIK_ID`     | Optional | Authentik Client ID for OAuth login.                                                                                                                                   |
-| `AUTH_AUTHENTIK_SECRET` | Optional | Authentik Client Secret.                                                                                                                                               |
-| `AUTH_AUTHENTIK_ISSUER` | Optional | Authentik OIDC Endpoint URL.                                                                                                                                           |
-| `OAUTH_GROUPS`          | Optional | Space-separated list of OAuth groups permitted to log in. If omitted, anyone can log in.                                                                               |
-| `ORIGIN`                | Optional | The URL where the web UI will be publicly available (e.g., `https://gasta.example.com`). Required by SvelteKit when running the production node server behind a proxy. |
-| `AUTH_TRUST_HOST`       | Optional | Set to `true` when running behind a reverse proxy to trust the forwarded host headers.                                                                                 |
+| Variable                  | Required | Description                                                                                                                                                            |
+| ------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SERVER_URL`              | **Yes**  | URL pointing to the Sasta backend API. Example: `http://127.0.0.1:8080`.                                                                                               |
+| `AUTH_SECRET`             | **Yes**  | A random secret string used by Auth.js to encrypt session tokens.                                                                                                      |
+| `AUTH_AUTHENTIK_ID`       | Optional | Authentik Client ID for OAuth login.                                                                                                                                   |
+| `AUTH_AUTHENTIK_SECRET`   | Optional | Authentik Client Secret.                                                                                                                                               |
+| `AUTH_AUTHENTIK_ISSUER`   | Optional | Authentik OIDC Endpoint URL.                                                                                                                                           |
+| `OAUTH_GROUPS`            | Optional | Space-separated list of OAuth groups permitted to log in. If omitted, anyone can log in.                                                                               |
+| `ORIGIN`                  | Optional | The URL where the web UI will be publicly available (e.g., `https://gasta.example.com`). Required by SvelteKit when running the production node server behind a proxy. |
+| `AUTH_TRUST_HOST`         | Optional | Set to `true` when running behind a reverse proxy to trust the forwarded host headers.                                                                                 |
+| `AUTH_USE_SECURE_COOKIES` | Optional | When set to true then all cookies set auth will only be accessible from HTTPS URLs. Defaults to false in dev mode and true in production.                              |
 
 ## 🛠 Build & Run Instructions
 

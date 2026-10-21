@@ -6,7 +6,8 @@ import {
 	AUTH_AUTHENTIK_ISSUER,
 	AUTH_AUTHENTIK_ID,
 	AUTH_AUTHENTIK_SECRET,
-	OAUTH_GROUPS
+	OAUTH_GROUPS,
+	AUTH_USE_SECURE_COOKIES
 } from '$app/env/private';
 import Credentials from '@auth/sveltekit/providers/credentials';
 import type { Provider } from '@auth/sveltekit/providers';
@@ -69,6 +70,7 @@ export const {
 	},
 	set basePath(_) {},
 	trustHost: true,
+	useSecureCookies: AUTH_USE_SECURE_COOKIES,
 	secret: isInDevEnvironment && !AUTH_SECRET ? 'dev-mock-secret-1234' : AUTH_SECRET,
 	providers,
 	callbacks: {
